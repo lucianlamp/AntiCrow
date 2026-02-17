@@ -1,0 +1,143 @@
+// ---------------------------------------------------------------------------
+// configHelper.ts — 設定値の一元管理
+// ---------------------------------------------------------------------------
+// 責務:
+//   1. 設定キー名・デフォルト値を一箇所で管理
+//   2. 型安全な設定取得ヘルパーを提供
+//   3. マジックナンバー散在を防止
+// ---------------------------------------------------------------------------
+
+import * as vscode from 'vscode';
+import * as fs from 'fs';
+import * as path from 'path';
+import { logInfo, logDebug, logWarn } from './logger';
+
+// ---------------------------------------------------------------------------
+// デフォルト値定数
+// ---------------------------------------------------------------------------
+
+/** CDP ポートスキャン範囲（フォールバック用） */
+export const CDP_PORT_RANGE: number[] = [
+    ...Array.from({ length: 6 }, (_, i) => 9000 + i),   // 9000-9005
+    ...Array.from({ length: 11 }, (_, i) => 9330 + i),  // 9330-9340
+];
+
+/**
+ * CDP ポート一覧を取得する。
+ * cdp_ports/ ディレクトリにポートファイルがあればそれを優先し、
+ * 従来の固定範囲はフォールバックとして末尾に追加。
+ * 
+ * @param storagePath globalStorage のパス
+ */
+export function getCdpPorts(storagePath: string): number[] {
+    const portDir = path.join(storagePath, 'cdp_ports');
+    const dynamicPorts: number[] = [];
+
+    try {
+        if (fs.existsSync(portDir)) {
+            const files = fs.readdirSync(portDir);
+            for (const f of files) {
+                if (!f.startsWith('port_') || !f.endsWith('.txt')) { continue; }
+                try {
+                    const content = fs.readFileSync(path.join(portDir, f), 'utf-8').trim();
+                    const port = parseInt(content, 10);
+                    if (!isNaN(port) && port > 0 && port <= 65535) {
+                        dynamicPorts.push(port);
+                        logDebug(`getCdpPorts: read dynamic port ${port} from ${f}`);
+                    }
+                } catch { /* ignore unreadable files */ }
+            }
+
+            // 古いポートファイルをクリーンアップ（10分以上前）
+            cleanupStalePortFiles(portDir);
+        }
+    } catch (e) {
+        logWarn(`getCdpPorts: failed to read cdp_ports directory: ${e instanceof Error ? e.message : e}`);
+    }
+
+    if (dynamicPorts.length > 0) {
+        // 動的ポートを優先、固定範囲をフォールバックとして追加
+        const merged = [...new Set([...dynamicPorts, ...CDP_PORT_RANGE])];
+        logInfo(`getCdpPorts: using ${dynamicPorts.length} dynamic port(s) + ${CDP_PORT_RANGE.length} fallback port(s)`);
+        return merged;
+    }
+
+    return CDP_PORT_RANGE;
+}
+
+/** 古いポートファイルを削除（プロセスが終了済みの場合） */
+function cleanupStalePortFiles(portDir: string): void {
+    try {
+        const files = fs.readdirSync(portDir);
+        for (const f of files) {
+            if (!f.startsWith('port_') || !f.endsWith('.txt')) { continue; }
+            const fp = path.join(portDir, f);
+            try {
+                const stat = fs.statSync(fp);
+                // 10分以上前のファイルは削除
+                if (Date.now() - stat.mtimeMs > 10 * 60 * 1000) {
+                    fs.unlinkSync(fp);
+                    logDebug(`getCdpPorts: cleaned up stale port file ${f}`);
+                }
+            } catch { /* ignore */ }
+        }
+    } catch { /* ignore */ }
+}
+
+/** CDP レスポンスタイムアウト（ms）のデフォルト値 */
+export const DEFAULT_RESPONSE_TIMEOUT_MS = 300_000;
+
+/** タイムゾーンのデフォルト値 */
+export const DEFAULT_TIMEZONE = 'Asia/Tokyo';
+
+/** カテゴリーアーカイブ日数のデフォルト値 */
+export const DEFAULT_ARCHIVE_DAYS = 7;
+
+// ---------------------------------------------------------------------------
+// 設定取得ヘルパー
+// ---------------------------------------------------------------------------
+
+/** 設定セクション名 */
+const SECTION = 'antiCrow';
+
+/** 設定オブジェクトを取得する */
+export function getConfig(): vscode.WorkspaceConfiguration {
+    return vscode.workspace.getConfiguration(SECTION);
+}
+
+
+
+/** CDP レスポンスタイムアウト（ms）を取得する（デフォルト: 300,000） */
+export function getResponseTimeout(): number {
+    return getConfig().get<number>('cdpResponseTimeoutMs') || DEFAULT_RESPONSE_TIMEOUT_MS;
+}
+
+/** タイムゾーンを取得する（デフォルト: 'Asia/Tokyo'） */
+export function getTimezone(): string {
+    return getConfig().get<string>('timezone') || DEFAULT_TIMEZONE;
+}
+
+/** カテゴリーアーカイブ日数を取得する（デフォルト: 7） */
+export function getArchiveDays(): number {
+    return getConfig().get<number>('categoryArchiveDays') ?? DEFAULT_ARCHIVE_DAYS;
+}
+
+/** workspacePaths を取得する */
+export function getWorkspacePaths(): Record<string, string> {
+    return getConfig().get<Record<string, string>>('workspacePaths') || {};
+}
+
+/** clientId を取得する */
+export function getClientId(): string {
+    return getConfig().get<string>('clientId') || '';
+}
+
+/** 許可ユーザーID一覧を取得する（空=全員許可） */
+export function getAllowedUserIds(): string[] {
+    return getConfig().get<string[]>('allowedUserIds') || [];
+}
+
+/** メッセージ最大文字数を取得する（0=無制限、デフォルト: 4000） */
+export function getMaxMessageLength(): number {
+    return getConfig().get<number>('maxMessageLength') ?? 6000;
+}

@@ -1,0 +1,140 @@
+{
+  "name": "anti-crow",
+  "displayName": "AntiCrow",
+  "description": "Discord→Antigravity自動操作ブリッジ。自然文で依頼→定期/即時実行→結果通知。",
+  "version": "0.1.0",
+  "publisher": "ytvar",
+  "icon": "AntiCrow.PNG",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "anti-crow.start",
+        "title": "Start",
+        "category": "AntiCrow"
+      },
+      {
+        "command": "anti-crow.stop",
+        "title": "Stop",
+        "category": "AntiCrow"
+      },
+      {
+        "command": "anti-crow.setToken",
+        "title": "Set Bot Token",
+        "category": "AntiCrow"
+      },
+      {
+        "command": "anti-crow.showPlans",
+        "title": "Show Plans",
+        "category": "AntiCrow"
+      },
+      {
+        "command": "anti-crow.clearPlans",
+        "title": "Clear All Plans",
+        "category": "AntiCrow"
+      },
+      {
+        "command": "anti-crow.openDashboard",
+        "title": "Open Schedule Dashboard",
+        "category": "AntiCrow"
+      },
+      {
+        "command": "anti-crow.createShortcut",
+        "title": "Create Desktop Shortcut",
+        "category": "AntiCrow"
+      }
+    ],
+    "configuration": {
+      "title": "AntiCrow",
+      "properties": {
+        "antiCrow.botToken": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Bot Token 設定状態（SecretStorage に暗号化保存）。\n\nトークンを設定するには、コマンドパレット（`Ctrl+Shift+P`）から **[AntiCrow: Set Bot Token](command:anti-crow.setToken)** を実行してください。\n\n設定完了後、このチェックボックスは自動的にオンになります。"
+        },
+        "antiCrow.timezone": {
+          "type": "string",
+          "default": "Asia/Tokyo",
+          "description": "CRON実行のタイムゾーン"
+        },
+        "antiCrow.cdpResponseTimeoutMs": {
+          "type": "number",
+          "default": 300000,
+          "description": "Antigravity応答待ちタイムアウト(ms)。デフォルト5分。"
+        },
+        "antiCrow.autoStart": {
+          "type": "boolean",
+          "default": false,
+          "description": "VS Code起動時に自動でブリッジを開始する"
+        },
+        "antiCrow.clientId": {
+          "type": "string",
+          "default": "",
+          "description": "Discord Application の Client ID（スラッシュコマンド登録に必要）。Developer Portal で確認できます。"
+        },
+        "antiCrow.workspacePaths": {
+          "type": "object",
+          "default": {},
+          "description": "ワークスペース名→フォルダパスの対応表。例: { \"dev\": \"C:\\\\Users\\\\user\\\\dev\" }。Discord カテゴリーからメッセージ送信時、ワークスペースが開いていなければ自動起動します。",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "antiCrow.categoryArchiveDays": {
+          "type": "number",
+          "default": 7,
+          "description": "ワークスペースカテゴリーの自動アーカイブ日数。この日数以上使用されていないカテゴリーは自動削除されます。0で無効。"
+        },
+        "antiCrow.allowedUserIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "メッセージ処理を許可する Discord ユーザーID一覧。空の場合は全ユーザーを許可。Developer Mode でユーザーIDをコピーできます。"
+        },
+        "antiCrow.maxMessageLength": {
+          "type": "number",
+          "default": 6000,
+          "description": "処理するメッセージの最大文字数。超過メッセージは拒否されます。0で無制限。"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "typecheck": "tsc -p ./ --noEmit",
+    "bundle": "node ./esbuild.js",
+    "package": "npx -y @vscode/vsce package --no-dependencies --allow-missing-repository --skip-license",
+    "deploy": "npm run compile && npm run bundle && npm run package && antigravity --install-extension anti-crow-0.1.0.vsix --force",
+    "test": "vitest run",
+    "vscode:prepublish": "npm run typecheck && npm run bundle"
+  },
+  "dependencies": {
+    "discord.js": "^14.16.3",
+    "luxon": "^3.5.0",
+    "node-cron": "^3.0.3",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/luxon": "^3.4.2",
+    "@types/node": "^20.12.7",
+    "@types/node-cron": "^3.0.11",
+    "@types/vscode": "^1.90.0",
+    "@types/ws": "^8.5.10",
+    "esbuild": "^0.20.2",
+    "typescript": "^5.4.5",
+    "vitest": "^4.0.18"
+  }
+}
