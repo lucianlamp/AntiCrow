@@ -125,7 +125,7 @@ export class CdpPool {
 
                     // コールバックで呼び出し元に通知（Discord へのフィードバック用）
                     if (onAutoLaunch) {
-                        try { await onAutoLaunch(workspaceName); } catch { /* ignore */ }
+                        try { await onAutoLaunch(workspaceName); } catch (e) { logDebug(`CdpPool: onAutoLaunch callback failed: ${e}`); }
                     }
 
                     await cdp.connect();  // launchAntigravity のために接続が必要

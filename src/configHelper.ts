@@ -16,16 +16,19 @@ import { logInfo, logDebug, logWarn } from './logger';
 // デフォルト値定数
 // ---------------------------------------------------------------------------
 
-/** CDP ポートスキャン範囲（フォールバック用） */
-export const CDP_PORT_RANGE: number[] = [
-    ...Array.from({ length: 6 }, (_, i) => 9000 + i),   // 9000-9005
-    ...Array.from({ length: 11 }, (_, i) => 9330 + i),  // 9330-9340
-];
+/** CDP ポートスキャン範囲（レガシー: 現在は cdp_ports/ の動的ポートファイルを使用） */
+export const CDP_PORT_RANGE: number[] = [];
+
+/**
+ * CDP ポートとして使用してはいけないポート番号。
+ * - 9222: ブラウザエージェント（Playwright 等）が使用する CDP ポート
+ */
+export const EXCLUDED_CDP_PORTS: ReadonlySet<number> = new Set([9222]);
 
 /**
  * CDP ポート一覧を取得する。
- * cdp_ports/ ディレクトリにポートファイルがあればそれを優先し、
- * 従来の固定範囲はフォールバックとして末尾に追加。
+ * cdp_ports/ ディレクトリのポートファイルから動的に検出する。
+ * EXCLUDED_CDP_PORTS に含まれるポートは自動的に除外される。
  * 
  * @param storagePath globalStorage のパス
  */
@@ -42,13 +45,17 @@ export function getCdpPorts(storagePath: string): number[] {
                     const content = fs.readFileSync(path.join(portDir, f), 'utf-8').trim();
                     const port = parseInt(content, 10);
                     if (!isNaN(port) && port > 0 && port <= 65535) {
+                        if (EXCLUDED_CDP_PORTS.has(port)) {
+                            logWarn(`getCdpPorts: skipping excluded port ${port} from ${f} (reserved for browser agent)`);
+                            continue;
+                        }
                         dynamicPorts.push(port);
                         logDebug(`getCdpPorts: read dynamic port ${port} from ${f}`);
                     }
-                } catch { /* ignore unreadable files */ }
+                } catch (e) { logDebug(`getCdpPorts: failed to read port file ${f}: ${e}`); }
             }
 
-            // 古いポートファイルをクリーンアップ（10分以上前）
+            // 古いポートファイルをクリーンアップ（プロセスが終了済みの場合）
             cleanupStalePortFiles(portDir);
         }
     } catch (e) {
@@ -56,13 +63,12 @@ export function getCdpPorts(storagePath: string): number[] {
     }
 
     if (dynamicPorts.length > 0) {
-        // 動的ポートを優先、固定範囲をフォールバックとして追加
-        const merged = [...new Set([...dynamicPorts, ...CDP_PORT_RANGE])];
-        logInfo(`getCdpPorts: using ${dynamicPorts.length} dynamic port(s) + ${CDP_PORT_RANGE.length} fallback port(s)`);
-        return merged;
+        logInfo(`getCdpPorts: using ${dynamicPorts.length} dynamic port(s)`);
+        return dynamicPorts;
     }
 
-    return CDP_PORT_RANGE;
+    logWarn('getCdpPorts: no dynamic ports found in cdp_ports/ directory');
+    return [];
 }
 
 /** 古いポートファイルを削除（プロセスが終了済みの場合） */
@@ -73,15 +79,30 @@ function cleanupStalePortFiles(portDir: string): void {
             if (!f.startsWith('port_') || !f.endsWith('.txt')) { continue; }
             const fp = path.join(portDir, f);
             try {
-                const stat = fs.statSync(fp);
-                // 10分以上前のファイルは削除
-                if (Date.now() - stat.mtimeMs > 10 * 60 * 1000) {
+                // ファイル名からPIDを抽出（port_12345.txt → 12345）
+                const pidMatch = f.match(/^port_(\d+)\.txt$/);
+                if (!pidMatch) {
+                    // PID形式でないファイルは古い形式として削除
                     fs.unlinkSync(fp);
-                    logDebug(`getCdpPorts: cleaned up stale port file ${f}`);
+                    logDebug(`cleanupStalePortFiles: removed non-PID port file ${f}`);
+                    continue;
                 }
-            } catch { /* ignore */ }
+                const pid = parseInt(pidMatch[1], 10);
+                // プロセスが存在するか確認（process.kill(pid, 0) はシグナルを送らず存在確認のみ）
+                let alive = false;
+                try {
+                    process.kill(pid, 0);
+                    alive = true;
+                } catch {
+                    alive = false;
+                }
+                if (!alive) {
+                    fs.unlinkSync(fp);
+                    logDebug(`cleanupStalePortFiles: removed stale port file ${f} (PID ${pid} not running)`);
+                }
+            } catch (e) { logDebug(`cleanupStalePortFiles: failed to process ${f}: ${e}`); }
         }
-    } catch { /* ignore */ }
+    } catch (e) { logDebug(`cleanupStalePortFiles: readdir failed: ${e}`); }
 }
 
 /** CDP レスポンスタイムアウト（ms）のデフォルト値 */

@@ -283,7 +283,7 @@ export class CdpConnection {
             // CDP イベントの通知
             if (msg.method && this.eventListeners.length > 0) {
                 for (const listener of this.eventListeners) {
-                    try { listener(msg.method, msg.params); } catch { /* ignore */ }
+                    try { listener(msg.method, msg.params); } catch (e) { logDebug(`CdpConnection: event listener error: ${e}`); }
                 }
             }
         } catch {

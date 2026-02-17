@@ -28,7 +28,7 @@ import {
     fetchTargetsFromPort,
     extractWorkspaceName,
 } from './cdpTargets';
-import { CDP_PORT_RANGE, getCdpPorts } from './configHelper';
+import { getCdpPorts } from './configHelper';
 
 // Re-export for backward compatibility
 export { DiscoveredInstance } from './cdpTargets';
@@ -40,7 +40,7 @@ export class CdpBridge {
     private ports: number[];
 
     constructor(timeoutMs: number = 300_000, ports?: number[]) {
-        this.ports = ports ?? CDP_PORT_RANGE;
+        this.ports = ports ?? [];
         this.conn = new CdpConnection(this.ports);
         this.timeoutMs = timeoutMs;
     }
@@ -50,7 +50,7 @@ export class CdpBridge {
     // -----------------------------------------------------------------------
 
     static discoverInstances(ports?: number[]): Promise<DiscoveredInstance[]> {
-        return discoverInstances(ports ?? CDP_PORT_RANGE);
+        return discoverInstances(ports ?? []);
     }
 
     /** インスタンスのポート一覧を取得 */
@@ -564,6 +564,587 @@ export class CdpBridge {
         logInfo('CDP: startNewChat — sent Ctrl+Shift+L');
         await this.sleep(1500);
         this.cascadeContextId = null;
+    }
+
+    // -----------------------------------------------------------------------
+    // 会話履歴ポップアップ操作
+    // -----------------------------------------------------------------------
+
+    /** 会話履歴ポップアップを開く（チャット画面右上の時計アイコンをクリック） */
+    async openHistoryPopup(): Promise<void> {
+        await this.conn.connect();
+
+        const CLICK_HISTORY_BUTTON = `
+(function() {
+    // Cascade iframe 内の履歴ボタン（時計アイコン）を探してクリックする
+    // 複数のセレクタ候補をフォールバックで試行
+    var selectors = [
+        'button[aria-label*="history" i]',
+        'button[aria-label*="History" i]',
+        'button[aria-label*="conversation" i]',
+        'button[aria-label*="Conversation" i]',
+        '.codicon-history',
+        '[class*="history"]',
+        'button[data-testid*="history"]',
+    ];
+
+    function isVisible(el) {
+        if (!el) return false;
+        var rect = el.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0;
+    }
+
+    function clickEl(el) {
+        var rect = el.getBoundingClientRect();
+        var cx = rect.left + rect.width / 2;
+        var cy = rect.top + rect.height / 2;
+        var opts = { bubbles: true, cancelable: true, view: window, clientX: cx, clientY: cy };
+        el.dispatchEvent(new MouseEvent('mousedown', opts));
+        el.dispatchEvent(new MouseEvent('mouseup', opts));
+        el.dispatchEvent(new MouseEvent('click', opts));
+        try {
+            el.dispatchEvent(new PointerEvent('pointerdown', opts));
+            el.dispatchEvent(new PointerEvent('pointerup', opts));
+        } catch(e) {}
+    }
+
+    // セレクタ候補で検索
+    for (var i = 0; i < selectors.length; i++) {
+        try {
+            var els = document.querySelectorAll(selectors[i]);
+            for (var j = 0; j < els.length; j++) {
+                var el = els[j];
+                // .codicon-history などアイコン要素の場合は親ボタンを探す
+                var target = el;
+                if (el.tagName !== 'BUTTON') {
+                    var parent = el.closest('button') || el.parentElement;
+                    if (parent && parent.tagName === 'BUTTON') {
+                        target = parent;
+                    }
+                }
+                if (isVisible(target)) {
+                    clickEl(target);
+                    return { success: true, method: 'selector', selector: selectors[i] };
+                }
+            }
+        } catch(e) {}
+    }
+
+    // フォールバック: SVG の中にクロック系パスを持つボタンを探す
+    var buttons = document.querySelectorAll('button');
+    for (var k = 0; k < buttons.length; k++) {
+        var btn = buttons[k];
+        var svg = btn.querySelector('svg');
+        if (svg && isVisible(btn)) {
+            var paths = svg.querySelectorAll('path, circle');
+            if (paths.length > 0) {
+                var ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
+                var title = (btn.getAttribute('title') || '').toLowerCase();
+                if (ariaLabel.indexOf('histor') >= 0 || ariaLabel.indexOf('clock') >= 0 ||
+                    title.indexOf('histor') >= 0 || title.indexOf('clock') >= 0) {
+                    clickEl(btn);
+                    return { success: true, method: 'svg_fallback', label: ariaLabel || title };
+                }
+            }
+        }
+    }
+
+    return { success: false, error: 'History button not found in Cascade panel' };
+})()
+        `.trim();
+
+        try {
+            const result = await this.evaluateInCascade(CLICK_HISTORY_BUTTON) as {
+                success: boolean;
+                method?: string;
+                selector?: string;
+                label?: string;
+                error?: string;
+            };
+
+            if (result?.success) {
+                logInfo(`CDP: openHistoryPopup — clicked history button (method=${result.method}, selector=${result.selector || result.label || 'N/A'})`);
+            } else {
+                logWarn(`CDP: openHistoryPopup — history button not found: ${result?.error || 'unknown'}`);
+            }
+        } catch (e) {
+            logWarn(`CDP: openHistoryPopup — failed to click history button: ${e instanceof Error ? e.message : e}`);
+        }
+
+        await this.sleep(1500);
+    }
+
+    /** 会話履歴ポップアップ内の会話一覧を取得 (Quick Pick ウィジェットの DOM スクレイピング) */
+    async getConversationList(): Promise<{ title: string; index: number }[]> {
+        await this.conn.connect();
+
+        const SCRAPE_SCRIPT = `
+(function() {
+// 会話履歴は VS Code の Quick Pick ウィジェットとしてメインウィンドウに表示される
+// Quick Pick 専用のセレクタのみ使用し、エクスプローラ等の誤マッチを防止する
+var selectors = [
+    // Quick Pick ウィジェット内のリスト行（Quick Pick 内に限定）
+    '.quick-input-list .monaco-list-row',
+    '.quick-input-widget [role="option"]',
+    '.quick-input-widget .monaco-list-row',
+    '.quick-input-widget [role="listbox"] [role="option"]',
+];
+
+var debugInfo = { tried: [], foundSelector: null, totalElements: 0, quickInputVisible: false };
+
+// Quick Pick ウィジェットが表示されているか確認
+var quickInput = document.querySelector('.quick-input-widget');
+var qiStyle = quickInput ? window.getComputedStyle(quickInput) : null;
+debugInfo.quickInputVisible = quickInput ? (quickInput.style.display !== 'none' && (!qiStyle || qiStyle.display !== 'none')) : false;
+
+// Quick Pick が表示されていない場合はスキップ
+if (!debugInfo.quickInputVisible) {
+    return {
+        success: false, items: [], debugInfo: debugInfo,
+        error: 'Quick Pick widget not visible'
+    };
+}
+
+var rows = [];
+for (var s = 0; s < selectors.length; s++) {
+    try {
+        var found = document.querySelectorAll(selectors[s]);
+        debugInfo.tried.push({ selector: selectors[s], count: found ? found.length : 0 });
+        if (found && found.length > 0) {
+            rows = Array.from(found);
+            debugInfo.foundSelector = selectors[s];
+            break;
+        }
+    } catch(e) {
+        debugInfo.tried.push({ selector: selectors[s], error: e.message });
+    }
+}
+
+debugInfo.totalElements = document.querySelectorAll('*').length;
+
+if (rows.length === 0) {
+    return {
+        success: false, items: [], debugInfo: debugInfo,
+        error: 'No Quick Pick items found. quickInputVisible=' + debugInfo.quickInputVisible
+    };
+}
+var items = [];
+for (var i = 0; i < Math.min(rows.length, 10); i++) {
+    var el = rows[i];
+    // Quick Pick の各行からラベルテキストを抽出
+    // 構造: .monaco-list-row > ... > .label-name > span (複数)
+    // .label-name 直下のスパンを結合してフルラベルを得る
+    var labelEl = el.querySelector('.label-name');
+    var text = '';
+    if (labelEl) {
+        // .label-name 内のハイライトスパンを結合
+        var spans = labelEl.querySelectorAll(':scope > span');
+        if (spans.length > 0) {
+            var parts = [];
+            for (var j = 0; j < spans.length; j++) {
+                parts.push(spans[j].textContent || '');
+            }
+            text = parts.join('').trim();
+        }
+        // スパンがない場合は textContent をそのまま使う
+        if (!text) {
+            text = (labelEl.textContent || '').trim();
+        }
+    }
+    // フォールバック: aria-label や行全体の textContent
+    if (!text) {
+        text = (el.getAttribute('aria-label') || el.textContent || '').trim();
+    }
+    if (text.length > 0) {
+        items.push({ title: text.substring(0, 100), index: i });
+    }
+}
+return { success: true, items: items, debugInfo: debugInfo };
+})()
+        `.trim();
+
+        // Quick Pick ウィジェットはメインウィンドウに表示されるため、メインを先に検索
+        // フォールバックとして Cascade iframe 内も検索する
+        for (const [label, evaluator] of [
+            ['main', () => this.conn.evaluate(SCRAPE_SCRIPT)],
+            ['cascade', () => this.evaluateInCascade(SCRAPE_SCRIPT)],
+        ] as [string, () => Promise<unknown>][]) {
+            try {
+                const result = await evaluator() as {
+                    success: boolean;
+                    items: { title: string; index: number }[];
+                    debugInfo?: unknown;
+                    error?: string;
+                };
+
+                if (result?.success && result.items.length > 0) {
+                    logInfo(`CDP: getConversationList — found ${result.items.length} conversations in ${label} context`);
+                    logDebug(`CDP: getConversationList debugInfo (${label}): ${JSON.stringify(result.debugInfo)}`);
+                    return result.items;
+                }
+
+                logDebug(`CDP: getConversationList (${label}) — ${result?.error || 'no items'}, debugInfo: ${JSON.stringify(result?.debugInfo)}`);
+            } catch (e) {
+                logDebug(`CDP: getConversationList (${label}) exception — ${e instanceof Error ? e.message : e}`);
+            }
+        }
+
+        logWarn('CDP: getConversationList — no conversations found in either context');
+        return [];
+    }
+
+    /**
+     * 会話履歴ポップアップを開き、会話一覧を取得する（統合版）。
+     *
+     * Quick Pick ポップアップが一瞬で閉じても検出できるよう、
+     * MutationObserver をクリック前にメインウィンドウに設置し、
+     * Quick Pick の表示をリアルタイムにキャプチャする。
+     */
+    async openHistoryAndGetList(): Promise<{ title: string; index: number }[]> {
+        await this.conn.connect();
+
+        // --- Step 1: メインウィンドウに MutationObserver を設置 ---
+        // Quick Pick が一瞬でも表示されたら、その内容をキャプチャする
+        const INSTALL_OBSERVER = `
+(function() {
+    // 既存のオブザーバーがあればクリーンアップ
+    if (window.__historyCaptureObserver) {
+        try { window.__historyCaptureObserver.disconnect(); } catch(e) {}
+    }
+    window.__historyCapture = { items: [], captured: false, events: 0, diag: [] };
+
+    function scrapeQuickPick() {
+        var qiw = document.querySelector('.quick-input-widget');
+        if (!qiw) return;
+        var style = window.getComputedStyle(qiw);
+        if (style.display === 'none' || qiw.style.display === 'none') return;
+
+        // Quick Pick が表示された！リスト行を取得
+        var selectors = [
+            '.quick-input-list .monaco-list-row',
+            '.quick-input-widget [role="option"]',
+            '.quick-input-widget .monaco-list-row',
+        ];
+
+        var rows = [];
+        for (var s = 0; s < selectors.length; s++) {
+            try {
+                var found = qiw.querySelectorAll(selectors[s].replace('.quick-input-widget ', '').replace('.quick-input-list ', '.quick-input-list '));
+                // Quick Pick ウィジェット内に限定して検索
+                found = document.querySelectorAll(selectors[s]);
+                if (found && found.length > 0) {
+                    rows = Array.from(found);
+                    break;
+                }
+            } catch(e) {}
+        }
+
+        if (rows.length === 0) {
+            window.__historyCapture.diag.push('visible_but_no_rows');
+            return;
+        }
+
+        var items = [];
+        for (var i = 0; i < Math.min(rows.length, 20); i++) {
+            var el = rows[i];
+            var labelEl = el.querySelector('.label-name');
+            var text = '';
+            if (labelEl) {
+                var spans = labelEl.querySelectorAll(':scope > span');
+                if (spans.length > 0) {
+                    var parts = [];
+                    for (var j = 0; j < spans.length; j++) {
+                        parts.push(spans[j].textContent || '');
+                    }
+                    text = parts.join('').trim();
+                }
+                if (!text) {
+                    text = (labelEl.textContent || '').trim();
+                }
+            }
+            if (!text) {
+                text = (el.getAttribute('aria-label') || '').trim();
+            }
+            if (!text) {
+                var descEl = el.querySelector('.label-description');
+                if (descEl) { text = (descEl.textContent || '').trim(); }
+            }
+            if (!text) {
+                text = (el.textContent || '').trim();
+            }
+            if (text.length > 0) {
+                items.push({ title: text.substring(0, 100), index: i });
+            }
+        }
+
+        if (items.length > 0 && !window.__historyCapture.captured) {
+            window.__historyCapture.items = items;
+            window.__historyCapture.captured = true;
+        }
+    }
+
+    var observer = new MutationObserver(function() {
+        window.__historyCapture.events++;
+        scrapeQuickPick();
+    });
+
+    observer.observe(document.body, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ['style', 'class', 'aria-hidden']
+    });
+    window.__historyCaptureObserver = observer;
+
+    // 設置直後にも一度チェック（既に表示されている場合に備える）
+    scrapeQuickPick();
+
+    return { success: true };
+})()
+        `.trim();
+
+        try {
+            await this.conn.evaluate(INSTALL_OBSERVER);
+            logInfo('CDP: openHistoryAndGetList — installed MutationObserver in main window');
+        } catch (e) {
+            logWarn(`CDP: openHistoryAndGetList — failed to install observer: ${e instanceof Error ? e.message : e}`);
+        }
+
+        // --- Step 2: 履歴ボタンをクリック ---
+        const CLICK_HISTORY_BUTTON = `
+(function() {
+var selectors = [
+    'button[aria-label*="history" i]',
+    'button[aria-label*="History" i]',
+    'button[aria-label*="conversation" i]',
+    'button[aria-label*="Conversation" i]',
+    '.codicon-history',
+    '[class*="history"]',
+    'button[data-testid*="history"]',
+];
+
+function isVisible(el) {
+    if (!el) return false;
+    var rect = el.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
+}
+
+function clickEl(el) {
+    var rect = el.getBoundingClientRect();
+    var cx = rect.left + rect.width / 2;
+    var cy = rect.top + rect.height / 2;
+    var opts = { bubbles: true, cancelable: true, view: window, clientX: cx, clientY: cy };
+    el.dispatchEvent(new MouseEvent('mousedown', opts));
+    el.dispatchEvent(new MouseEvent('mouseup', opts));
+    el.dispatchEvent(new MouseEvent('click', opts));
+    try {
+        el.dispatchEvent(new PointerEvent('pointerdown', opts));
+        el.dispatchEvent(new PointerEvent('pointerup', opts));
+    } catch(e) {}
+}
+
+for (var i = 0; i < selectors.length; i++) {
+    try {
+        var els = document.querySelectorAll(selectors[i]);
+        for (var j = 0; j < els.length; j++) {
+            var el = els[j];
+            var target = el;
+            if (el.tagName !== 'BUTTON') {
+                var parent = el.closest('button') || el.parentElement;
+                if (parent && parent.tagName === 'BUTTON') {
+                    target = parent;
+                }
+            }
+            if (isVisible(target)) {
+                clickEl(target);
+                return { success: true, method: 'selector', selector: selectors[i] };
+            }
+        }
+    } catch(e) {}
+}
+
+var buttons = document.querySelectorAll('button');
+for (var k = 0; k < buttons.length; k++) {
+    var btn = buttons[k];
+    var svg = btn.querySelector('svg');
+    if (svg && isVisible(btn)) {
+        var paths = svg.querySelectorAll('path, circle');
+        if (paths.length > 0) {
+            var ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
+            var title = (btn.getAttribute('title') || '').toLowerCase();
+            if (ariaLabel.indexOf('histor') >= 0 || ariaLabel.indexOf('clock') >= 0 ||
+                title.indexOf('histor') >= 0 || title.indexOf('clock') >= 0) {
+                clickEl(btn);
+                return { success: true, method: 'svg_fallback', label: ariaLabel || title };
+            }
+        }
+    }
+}
+
+return { success: false, error: 'History button not found in Cascade panel' };
+})()
+        `.trim();
+
+        try {
+            const clickResult = await this.evaluateInCascade(CLICK_HISTORY_BUTTON) as {
+                success: boolean;
+                method?: string;
+                selector?: string;
+                label?: string;
+                error?: string;
+            };
+
+            if (clickResult?.success) {
+                logInfo(`CDP: openHistoryAndGetList — clicked history button (method=${clickResult.method}, selector=${clickResult.selector || clickResult.label || 'N/A'})`);
+            } else {
+                logWarn(`CDP: openHistoryAndGetList — history button not found: ${clickResult?.error || 'unknown'}`);
+                await this.cleanupHistoryObserver();
+                return [];
+            }
+        } catch (e) {
+            logWarn(`CDP: openHistoryAndGetList — failed to click history button: ${e instanceof Error ? e.message : e}`);
+            await this.cleanupHistoryObserver();
+            return [];
+        }
+
+        // --- Step 3: MutationObserver のキャプチャ結果をポーリング ---
+        const READ_CAPTURE = `
+(function() {
+    var c = window.__historyCapture || { items: [], captured: false, events: 0, diag: [] };
+    var qiw = document.querySelector('.quick-input-widget');
+    var qpState = 'not_found';
+    if (qiw) {
+        var s = window.getComputedStyle(qiw);
+        qpState = (qiw.style.display || s.display) + ' children=' + qiw.children.length;
+    }
+    return {
+        captured: c.captured,
+        items: c.items,
+        events: c.events,
+        diag: c.diag,
+        quickPickState: qpState,
+    };
+})()
+        `.trim();
+
+        const POLL_INTERVAL_MS = 80;
+        const POLL_TIMEOUT_MS = 6000;
+        const deadline = Date.now() + POLL_TIMEOUT_MS;
+        let pollCount = 0;
+
+        type CaptureResult = {
+            captured: boolean;
+            items: { title: string; index: number }[];
+            events: number;
+            diag: string[];
+            quickPickState: string;
+        };
+
+        while (Date.now() < deadline) {
+            pollCount++;
+            try {
+                const result = await this.conn.evaluate(READ_CAPTURE) as CaptureResult;
+
+                if (pollCount === 1 || pollCount % 10 === 0) {
+                    logInfo(`CDP: openHistoryAndGetList poll #${pollCount} — captured=${result?.captured}, events=${result?.events}, qp=${result?.quickPickState}, diag=${JSON.stringify(result?.diag)}`);
+                }
+
+                if (result?.captured && result.items.length > 0) {
+                    logInfo(`CDP: openHistoryAndGetList — captured ${result.items.length} conversations via MutationObserver (poll #${pollCount}, events=${result.events})`);
+                    await this.cleanupHistoryObserver();
+                    return result.items;
+                }
+            } catch (e) {
+                logDebug(`CDP: openHistoryAndGetList polling exception — ${e instanceof Error ? e.message : e}`);
+            }
+            await this.sleep(POLL_INTERVAL_MS);
+        }
+
+        // タイムアウト — 最終診断ログ
+        try {
+            const finalResult = await this.conn.evaluate(READ_CAPTURE) as CaptureResult;
+            logWarn(`CDP: openHistoryAndGetList — timeout after ${pollCount} polls. events=${finalResult?.events}, qp=${finalResult?.quickPickState}, diag=${JSON.stringify(finalResult?.diag)}`);
+        } catch (e) { /* ignore */ }
+
+        await this.cleanupHistoryObserver();
+        logWarn(`CDP: openHistoryAndGetList — no conversations found after ${pollCount} polls`);
+        return [];
+    }
+
+    /** メインウィンドウに設置した MutationObserver をクリーンアップする */
+    private async cleanupHistoryObserver(): Promise<void> {
+        try {
+            await this.conn.evaluate(
+                'if(window.__historyCaptureObserver){window.__historyCaptureObserver.disconnect();delete window.__historyCaptureObserver;delete window.__historyCapture;}'
+            );
+        } catch (e) {
+            logDebug(`CDP: cleanupHistoryObserver — ${e instanceof Error ? e.message : e}`);
+        }
+    }
+
+    /** ポップアップ内の N 番目の会話を選択 (Arrow Down + Enter) */
+    async selectConversation(index: number): Promise<boolean> {
+        await this.conn.connect();
+
+        // Arrow Down で目的の行まで移動
+        for (let i = 0; i < index; i++) {
+            await this.conn.send('Input.dispatchKeyEvent', {
+                type: 'keyDown',
+                windowsVirtualKeyCode: 40,
+                code: 'ArrowDown',
+                key: 'ArrowDown',
+            });
+            await this.sleep(30);
+            await this.conn.send('Input.dispatchKeyEvent', {
+                type: 'keyUp',
+                windowsVirtualKeyCode: 40,
+                code: 'ArrowDown',
+                key: 'ArrowDown',
+            });
+            await this.sleep(100);
+        }
+
+        // Enter で選択
+        await this.conn.send('Input.dispatchKeyEvent', {
+            type: 'keyDown',
+            windowsVirtualKeyCode: 13,
+            code: 'Enter',
+            key: 'Enter',
+        });
+        await this.sleep(30);
+        await this.conn.send('Input.dispatchKeyEvent', {
+            type: 'keyUp',
+            windowsVirtualKeyCode: 13,
+            code: 'Enter',
+            key: 'Enter',
+        });
+
+        logInfo(`CDP: selectConversation — selected index ${index}`);
+        await this.sleep(1000);
+        this.cascadeContextId = null;
+        return true;
+    }
+
+    /** ポップアップを閉じる (Escape) */
+    async closePopup(): Promise<void> {
+        await this.conn.connect();
+
+        await this.conn.send('Input.dispatchKeyEvent', {
+            type: 'keyDown',
+            windowsVirtualKeyCode: 27,
+            code: 'Escape',
+            key: 'Escape',
+        });
+        await this.sleep(30);
+        await this.conn.send('Input.dispatchKeyEvent', {
+            type: 'keyUp',
+            windowsVirtualKeyCode: 27,
+            code: 'Escape',
+            key: 'Escape',
+        });
+
+        logInfo('CDP: closePopup — sent Escape');
+        await this.sleep(300);
     }
 
     async sendPrompt(prompt: string): Promise<void> {

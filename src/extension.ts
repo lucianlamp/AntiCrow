@@ -12,7 +12,7 @@ import * as vscode from 'vscode';
 import { PlanStore } from './planStore';
 import { Scheduler } from './scheduler';
 import { initLogger, logInfo, logError, disposeLogger } from './logger';
-import { ScheduleDashboardPanel } from './webviewPanel';
+
 import { BridgeContext } from './bridgeContext';
 import { startBridge, stopBridge, updateStatusBar } from './bridgeLifecycle';
 import { checkAndOfferShortcut, createDesktopShortcut } from './shortcutInstaller';
@@ -33,7 +33,7 @@ const ctx: BridgeContext = {
     isBotOwner: false,
     globalStoragePath: '',
     statusBarItem: undefined!,
-    dashboardBarItem: undefined!,
+
     lockWatchTimer: null,
     categoryWatchTimer: null,
 };
@@ -48,18 +48,13 @@ export function activate(context: vscode.ExtensionContext) {
 
     // StatusBar
     ctx.statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
-    ctx.statusBarItem.text = '$(circle-slash) Discord Bridge';
+    ctx.statusBarItem.text = '$(circle-slash) AntiCrow';
     ctx.statusBarItem.tooltip = 'AntiCrow — Stopped';
     ctx.statusBarItem.command = 'anti-crow.start';
     ctx.statusBarItem.show();
     context.subscriptions.push(ctx.statusBarItem);
 
-    // Dashboard StatusBar (Bridge 起動中のみ表示)
-    ctx.dashboardBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 99);
-    ctx.dashboardBarItem.text = '$(calendar) Schedules';
-    ctx.dashboardBarItem.tooltip = 'スケジュール管理ダッシュボードを開く';
-    ctx.dashboardBarItem.command = 'anti-crow.openDashboard';
-    context.subscriptions.push(ctx.dashboardBarItem);
+
 
     // -----------------------------------------------------------------
     // コマンド: Set Bot Token
@@ -86,7 +81,7 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
         vscode.commands.registerCommand('anti-crow.start', async () => {
             if (ctx.bot && ctx.bot.isReady()) {
-                vscode.window.showInformationMessage('Discord Bridge は既に稼働中です。');
+                vscode.window.showInformationMessage('AntiCrow は既に稼働中です。');
                 return;
             }
 
@@ -107,7 +102,7 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
         vscode.commands.registerCommand('anti-crow.stop', async () => {
             await stopBridge(ctx);
-            vscode.window.showInformationMessage('Discord Bridge を停止しました。');
+            vscode.window.showInformationMessage('AntiCrow を停止しました。');
         })
     );
 
@@ -157,20 +152,7 @@ export function activate(context: vscode.ExtensionContext) {
         })
     );
 
-    // -----------------------------------------------------------------
-    // コマンド: Open Schedule Dashboard
-    // -----------------------------------------------------------------
-    context.subscriptions.push(
-        vscode.commands.registerCommand('anti-crow.openDashboard', () => {
-            if (!ctx.planStore || !ctx.scheduler) {
-                vscode.window.showWarningMessage('Bridge が起動していません。');
-                return;
-            }
-            ScheduleDashboardPanel.createOrShow(context.extensionUri, ctx.planStore, ctx.scheduler, async (channelId, newName) => {
-                if (ctx.bot) { await ctx.bot.renamePlanChannel(channelId, newName); }
-            });
-        })
-    );
+
 
     // -----------------------------------------------------------------
     // コマンド: Create Desktop Shortcut

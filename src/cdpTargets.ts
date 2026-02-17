@@ -9,6 +9,7 @@
 
 import * as http from 'http';
 import { logInfo, logWarn, logDebug, logError } from './logger';
+import { EXCLUDED_CDP_PORTS } from './configHelper';
 
 /** CDP /json から取得できるターゲット情報 */
 export interface CdpTarget {
@@ -127,12 +128,18 @@ export function scoreTarget(target: CdpTarget): number {
  * 全ポートを並列スキャンし、結果をマージしてスコア降順で返す。
  */
 export async function discoverInstances(ports: number[]): Promise<DiscoveredInstance[]> {
+    // セーフティネット: 除外ポートをフィルタリング
+    const safePorts = ports.filter(p => !EXCLUDED_CDP_PORTS.has(p));
+    if (safePorts.length < ports.length) {
+        logWarn(`CDP: discoverInstances — filtered out ${ports.length - safePorts.length} excluded port(s)`);
+    }
+
     const allInstances: DiscoveredInstance[] = [];
     const seen = new Set<string>();
 
     // 全ポートを並列スキャン
     const results = await Promise.allSettled(
-        ports.map(async (port) => {
+        safePorts.map(async (port) => {
             const targets = await fetchTargetsFromPort(port);
             return { port, targets };
         }),
@@ -176,7 +183,7 @@ export async function discoverInstances(ports: number[]): Promise<DiscoveredInst
     // スコア降順でソート
     allInstances.sort((a, b) => b.score - a.score);
 
-    logInfo(`CDP: discovered ${allInstances.length} instance(s) across ${ports.length} port(s)`);
+    logInfo(`CDP: discovered ${allInstances.length} instance(s) across ${safePorts.length} port(s)`);
     return allInstances;
 }
 
@@ -207,9 +214,15 @@ export function extractWorkspaceName(title: string): string {
  * 初回スキャン結果を再利用し、重複ネットワークコールを排除。
  */
 export async function findAntigravityTarget(ports: number[]): Promise<{ target: CdpTarget; port: number } | null> {
+    // セーフティネット: 除外ポートをフィルタリング
+    const safePorts = ports.filter(p => !EXCLUDED_CDP_PORTS.has(p));
+    if (safePorts.length < ports.length) {
+        logWarn(`CDP: findAntigravityTarget — filtered out ${ports.length - safePorts.length} excluded port(s)`);
+    }
+
     // 全ポートを並列スキャン（1回のみ）
     const results = await Promise.allSettled(
-        ports.map(async (port) => {
+        safePorts.map(async (port) => {
             const targets = await fetchTargetsFromPort(port);
             return { port, targets };
         }),

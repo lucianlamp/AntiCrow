@@ -217,9 +217,9 @@ Discord に進捗がリアルタイム通知されます。書き込みは任意
 
             // typing indicator 開始（実行中に「入力中...」を表示）
             const typingInterval = setInterval(async () => {
-                try { await this.sendTypingToChannel(notifyChannel); } catch { /* ignore */ }
+                try { await this.sendTypingToChannel(notifyChannel); } catch (e) { logDebug(`Executor: sendTyping failed: ${e}`); }
             }, 8_000);
-            try { await this.sendTypingToChannel(notifyChannel); } catch { /* ignore */ }
+            try { await this.sendTypingToChannel(notifyChannel); } catch (e) { logDebug(`Executor: sendTyping failed: ${e}`); }
 
             // 進捗監視ループ開始（5秒間隔）
             let lastProgressContent = '';
@@ -293,7 +293,7 @@ Discord に進捗がリアルタイム通知されます。書き込みは任意
             const errMsg = err instanceof Error ? err.message : String(err);
 
             // 進捗ファイルクリーンアップ（エラー時も確実に削除）
-            if (progressPath) { try { await this.fileIpc.cleanupProgress(progressPath); } catch { /* ignore */ } }
+            if (progressPath) { try { await this.fileIpc.cleanupProgress(progressPath); } catch (e) { logDebug(`Executor: progress cleanup failed: ${e}`); } }
 
             // エラー通知
             const errorTemplate = plan.discord_templates.run_error || '❌ 実行失敗';

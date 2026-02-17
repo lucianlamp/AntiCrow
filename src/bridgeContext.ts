@@ -27,7 +27,6 @@ export interface BridgeContext {
     isBotOwner: boolean;
     globalStoragePath: string;
     statusBarItem: vscode.StatusBarItem;
-    dashboardBarItem: vscode.StatusBarItem;
     lockWatchTimer: NodeJS.Timeout | null;
     categoryWatchTimer: NodeJS.Timeout | null;
 }

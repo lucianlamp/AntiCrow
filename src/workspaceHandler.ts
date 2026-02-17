@@ -15,7 +15,7 @@ import {
     EmbedBuilder,
 } from 'discord.js';
 import { CdpBridge } from './cdpBridge';
-import { logInfo, logError, logWarn } from './logger';
+import { logInfo, logError, logWarn, logDebug } from './logger';
 import { buildEmbed, EmbedColor } from './embedHelper';
 import { BridgeContext } from './bridgeContext';
 import { getArchiveDays } from './configHelper';
@@ -33,7 +33,7 @@ export async function getRunningWsNames(ports?: number[]): Promise<Set<string>> 
         for (const inst of instances) {
             result.add(CdpBridge.extractWorkspaceName(inst.title));
         }
-    } catch { /* CDP 未接続時は空セット */ }
+    } catch (e) { logDebug(`getRunningWsNames: CDP scan failed: ${e}`); }
     return result;
 }
 
@@ -61,7 +61,7 @@ export async function buildWorkspaceListEmbed(ctx: BridgeContext): Promise<{
         for (const inst of instances) {
             runningWsNames.add(CdpBridge.extractWorkspaceName(inst.title));
         }
-    } catch { /* CDP 未接続でもカテゴリー一覧は表示 */ }
+    } catch (e) { logDebug(`buildWorkspaceListEmbed: CDP scan failed: ${e}`); }
 
     // 各カテゴリーの最終使用日時を算出
     const categories: { wsName: string; categoryId: string; lastActivity: number }[] = [];
@@ -172,7 +172,7 @@ export async function handleWorkspaceButton(
                 if (!interaction.replied && !interaction.deferred) {
                     await interaction.reply({ embeds: [buildEmbed('⚠️ 更新に失敗しました。もう一度お試しください。', EmbedColor.Warning)], ephemeral: true });
                 }
-            } catch { /* interaction may have already expired */ }
+            } catch (e) { logDebug(`handleWorkspaceButton: interaction response failed: ${e}`); }
         }
         return true;
     }

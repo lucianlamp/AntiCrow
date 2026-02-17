@@ -23,7 +23,7 @@ import { ExecutorPool } from './executorPool';
 import { ChannelIntent, Plan } from './types';
 import { logInfo, logError, logWarn, logDebug } from './logger';
 import { registerGuildCommands } from './slashCommands';
-import { ScheduleDashboardPanel } from './webviewPanel';
+
 import { cleanupOldAttachments } from './attachmentDownloader';
 import { acquireLock, releaseLock } from './botLock';
 import { BridgeContext } from './bridgeContext';
@@ -268,7 +268,7 @@ async function promoteToBotOwner(
             const wsName = CdpBridge.extractWorkspaceName(inst.title);
             if (wsName) { knownWorkspaces.add(wsName); }
         }
-    } catch { /* ignore */ }
+    } catch (e) { logDebug(`archiveOldCategories: failed to process category: ${e}`); }
 
     ctx.categoryWatchTimer = setInterval(async () => {
         if (!ctx.bot || !ctx.bot.isReady()) { return; }
@@ -420,7 +420,6 @@ export async function startBridge(
                 try {
                     await promoteToBotOwner(ctx, context);
                     updateStatusBar(ctx);
-                    ctx.dashboardBarItem.show();
                 } catch (e) {
                     logError('Bridge: auto-promotion failed', e);
                 }
@@ -430,9 +429,6 @@ export async function startBridge(
 
     // StatusBar 更新
     updateStatusBar(ctx);
-    if (ctx.isBotOwner) {
-        ctx.dashboardBarItem.show();
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -475,10 +471,10 @@ export async function stopBridge(ctx: BridgeContext): Promise<void> {
 
     // planStore は残す（データ保持）
 
-    ctx.statusBarItem.text = '$(circle-slash) Discord Bridge';
+    ctx.statusBarItem.text = '$(circle-slash) AntiCrow';
     ctx.statusBarItem.tooltip = 'AntiCrow — Stopped';
     ctx.statusBarItem.command = 'anti-crow.start';
-    ctx.dashboardBarItem.hide();
+
 
     logInfo('Bridge stopped');
 }
@@ -493,14 +489,14 @@ export function updateStatusBar(ctx: BridgeContext): void {
     const title = ctx.cdp?.getActiveTargetTitle();
 
     if (ctx.isBotOwner) {
-        ctx.statusBarItem.text = '$(check) Discord Bridge';
+        ctx.statusBarItem.text = '$(check) AntiCrow';
         const tooltipLines = ['AntiCrow — Active (メッセージを処理中)'];
         if (title) {
             tooltipLines.push(`Target: ${title}${port ? ` (port ${port})` : ''}`);
         }
         ctx.statusBarItem.tooltip = tooltipLines.join('\n');
     } else {
-        ctx.statusBarItem.text = '$(eye) Discord Bridge (Standby)';
+        ctx.statusBarItem.text = '$(eye) AntiCrow (Standby)';
         const tooltipLines = ['AntiCrow — Standby (別ワークスペースが Bot 管理中)'];
         if (title) {
             tooltipLines.push(`CDP Target: ${title}${port ? ` (port ${port})` : ''}`);

@@ -161,6 +161,7 @@ export class DiscordBot {
             case 'reset': return 'admin';
             case 'newchat': return 'admin';
             case 'workspaces': return 'admin';
+            case 'history': return 'admin';
             default: return null;
         }
     }

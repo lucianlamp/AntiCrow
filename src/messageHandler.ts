@@ -195,11 +195,15 @@ function buildConfirmMessage(plan: Plan): string {
     // choice_mode に応じたフッター
     lines.push('');
     switch (choiceMode) {
+        case 'all':
+            lines.push('▶️ 以下の内容をすべて実行します（自動承認）');
+            break;
         case 'single': {
             const choiceCount = countChoiceItems(plan.discord_templates.confirm);
             const numberEmojis = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟'];
             const lastEmoji = numberEmojis[Math.min(choiceCount || 1, 10) - 1];
             lines.push(`1️⃣~${lastEmoji} で1つ選択、❌ で却下`);
+            lines.push('💡 修正したい場合は ❌ で却下し、要件を修正して再送信できます。');
             break;
         }
         case 'multi': {
@@ -208,13 +212,14 @@ function buildConfirmMessage(plan: Plan): string {
             const lastEmoji = numberEmojis[Math.min(choiceCount || 1, 10) - 1];
             lines.push(`1️⃣~${lastEmoji} で複数選択 → ☑️ で確定`);
             lines.push('✅ 全て選択 / ❌ 却下');
+            lines.push('💡 修正したい場合は ❌ で却下し、要件を修正して再送信できます。');
             break;
         }
         default:
             lines.push('✅ で承認、❌ で却下');
+            lines.push('💡 修正したい場合は ❌ で却下し、要件を修正して再送信できます。');
             break;
     }
-    lines.push('💡 修正したい場合は ❌ で却下し、要件を修正して再送信できます。');
 
     return lines.join('\n');
 }
@@ -291,7 +296,9 @@ export async function handleDiscordMessage(
     // セキュリティ: 許可ユーザーID制限
     // -----------------------------------------------------------------
     const allowedIds = getAllowedUserIds();
-    if (allowedIds.length > 0 && !allowedIds.includes(message.author.id)) {
+    if (allowedIds.length === 0) {
+        logDebug('handleDiscordMessage: allowedUserIds is empty — all users are permitted');
+    } else if (!allowedIds.includes(message.author.id)) {
         logWarn(`handleDiscordMessage: unauthorized user ${message.author.tag} (${message.author.id}) — message ignored`);
         return;
     }
@@ -313,11 +320,29 @@ export async function handleDiscordMessage(
         try {
             const refMsg = await channel.messages.fetch(message.reference.messageId);
             if (refMsg) {
-                const refContent = refMsg.content?.trim();
+                const refContent = refMsg.content?.trim() || '';
                 const refAuthor = refMsg.author?.tag ?? '不明';
-                if (refContent) {
-                    logInfo(`handleDiscordMessage: reply detected, referenced message from ${refAuthor} (${refContent.length} chars)`);
-                    text = `## 返信先メッセージ（${refAuthor} の発言）\n${refContent}\n\n## 上記メッセージに対する指示\n${text}`;
+
+                // 返信先の Embed 内容も取得
+                let embedText = '';
+                if (refMsg.embeds && refMsg.embeds.length > 0) {
+                    const parts: string[] = [];
+                    for (const embed of refMsg.embeds) {
+                        if (embed.title) { parts.push(embed.title); }
+                        if (embed.description) { parts.push(embed.description); }
+                        if (embed.fields && embed.fields.length > 0) {
+                            for (const field of embed.fields) {
+                                parts.push(`${field.name}: ${field.value}`);
+                            }
+                        }
+                    }
+                    embedText = parts.join('\n');
+                }
+
+                const combinedContent = [refContent, embedText].filter(Boolean).join('\n\n');
+                if (combinedContent) {
+                    logInfo(`handleDiscordMessage: reply detected, referenced message from ${refAuthor} (content=${refContent.length} chars, embeds=${embedText.length} chars)`);
+                    text = `## 返信先メッセージ（${refAuthor} の発言）\n${combinedContent}\n\n## 上記メッセージに対する指示\n${text}`;
                 }
             }
         } catch (e) {
@@ -362,7 +387,7 @@ export async function handleDiscordMessage(
                     try {
                         await channel.sendTyping();
                         await channel.send({ embeds: [buildEmbed(`🚀 ワークスペース "${wsName}" を起動中です。しばらくお待ちください...`, EmbedColor.Info)] });
-                    } catch { /* ignore */ }
+                    } catch (e) { logDebug(`handleDiscordMessage: failed to react: ${e}`); }
                 });
                 logInfo(`handleDiscordMessage: acquired CdpBridge from pool for workspace "${wsNameFromCategory || 'default'}"`);
             } catch (e) {
@@ -493,9 +518,9 @@ export async function handleDiscordMessage(
 
         // typing indicator 開始（CDP応答待機中に「入力中...」を表示）
         const typingInterval = setInterval(async () => {
-            try { await channel.sendTyping(); } catch { /* ignore */ }
+            try { await channel.sendTyping(); } catch (e) { logDebug(`handleDiscordMessage: sendTyping failed: ${e}`); }
         }, 8_000);
-        try { await channel.sendTyping(); } catch { /* ignore */ }
+        try { await channel.sendTyping(); } catch (e) { logDebug(`handleDiscordMessage: sendTyping failed: ${e}`); }
 
         let skillResponse: string;
         try {

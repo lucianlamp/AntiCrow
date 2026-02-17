@@ -133,7 +133,7 @@ export function cleanupOldAttachments(storageBasePath: string): void {
                     fs.rmSync(dirPath, { recursive: true, force: true });
                     cleaned++;
                 }
-            } catch { /* skip */ }
+            } catch (e) { logDebug(`cleanupOldAttachments: failed to stat dir ${entry.name}: ${e}`); }
         }
     } catch (e) {
         logWarn(`attachmentDownloader: cleanupOldAttachments error: ${e}`);

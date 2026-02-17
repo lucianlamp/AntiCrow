@@ -296,6 +296,7 @@ async function handleManageSlash(
         return;
     }
 
+
     await interaction.reply({ embeds: [buildEmbed(`⚠️ 未対応の管理コマンド: /${commandName}`, EmbedColor.Warning)], ephemeral: true });
 }
 

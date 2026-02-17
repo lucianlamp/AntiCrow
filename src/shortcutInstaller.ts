@@ -57,7 +57,7 @@ export function createDesktopShortcut(extensionPath: string): void {
     const desktopPath = path.join(process.env.USERPROFILE || '', 'Desktop');
     const shortcutPath = path.join(desktopPath, 'AntiCrow.lnk');
     // VSIX パッケージに同梱済みの ICO ファイルを使用
-    const iconIco = path.join(extensionPath, 'AntiCrow.ico');
+    const iconIco = path.join(extensionPath, 'images', 'AntiCrowIcon.ico');
 
     // PowerShell で WScript.Shell COM 経由で .lnk を作成
     const escShortcut = shortcutPath.replace(/'/g, "''");

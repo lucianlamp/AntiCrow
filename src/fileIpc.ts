@@ -89,7 +89,7 @@ export class FileIpc {
                 if (content.length > MAX_RESPONSE_SIZE) {
                     logError(`FileIpc: response file too large (${content.length} bytes > ${MAX_RESPONSE_SIZE}). Truncating.`);
                     // クリーンアップして切り詰め版を返す
-                    try { await fs.promises.unlink(responsePath); } catch { /* ignore */ }
+                    try { await fs.promises.unlink(responsePath); } catch (e) { logDebug(`FileIpc: failed to unlink truncated response: ${e}`); }
                     return content.substring(0, MAX_RESPONSE_SIZE);
                 }
 
@@ -147,28 +147,66 @@ export class FileIpc {
                         await fs.promises.unlink(fp);
                         logDebug(`FileIpc: cleaned up old file ${f}`);
                     }
-                } catch { /* ignore */ }
+                } catch (e) { logDebug(`FileIpc: failed to clean up old file ${f}: ${e}`); }
             }
-        } catch { /* ignore */ }
+        } catch (e) { logDebug(`FileIpc: cleanupOldFiles readdir failed: ${e}`); }
     }
 
     /**
-     * レスポンス文字列から response / result / reply フィールドを抽出する。
-     * JSON `{"response":"..."}` or `{"result":"..."}` or `{"reply":"..."}` 形式の場合はその値を返し、
-     * それ以外の場合は元の文字列をそのまま返す。
+     * レスポンス文字列からテキストコンテンツを抽出する。
+     *
+     * 以下の優先順でキーを探索し、最初に見つかった文字列値を返す:
+     *   response → result → reply → content → text → output → message
+     *
+     * いずれのキーも該当しない場合、JSON オブジェクトが文字列値を1つだけ持つなら
+     * その値をフォールバックとして返す（未知のスキーマに対応）。
+     *
+     * JSON でない場合やパースに失敗した場合は元の文字列をそのまま返す。
      */
     static extractResult(raw: string): string {
+        const trimmed = raw.trim();
+        // JSON オブジェクトらしき文字列でなければ早期リターン
+        if (!trimmed.startsWith('{')) {
+            return raw;
+        }
+
         try {
-            const parsed = JSON.parse(raw);
-            if (parsed && typeof parsed === 'object') {
-                if ('response' in parsed) {
-                    return String(parsed.response);
+            const parsed = JSON.parse(trimmed);
+            if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+                // 既知のキーを優先順に試行（summary を最優先）
+                const knownKeys = ['summary', 'response', 'result', 'reply', 'content', 'text', 'output', 'message'];
+                let bestValue: string | null = null;
+
+                for (const key of knownKeys) {
+                    if (key in parsed && typeof parsed[key] === 'string') {
+                        const val = parsed[key] as string;
+                        if (val.length > 20) {
+                            // 十分な長さがあればそのまま採用
+                            return val;
+                        }
+                        // 短い値は一旦保持し、他により長い値がないか探す
+                        if (!bestValue) { bestValue = val; }
+                    }
                 }
-                if ('result' in parsed) {
-                    return String(parsed.result);
+
+                // 短い値しか見つからなかった場合、全文字列値から最長を探す
+                if (bestValue && bestValue.length <= 20) {
+                    const allStringValues = Object.entries(parsed)
+                        .filter(([, v]) => typeof v === 'string' && (v as string).length > 0)
+                        .sort(([, a], [, b]) => (b as string).length - (a as string).length);
+                    if (allStringValues.length > 0 && (allStringValues[0][1] as string).length > bestValue.length) {
+                        logDebug(`FileIpc.extractResult: short value "${bestValue}" found, using longer "${allStringValues[0][0]}" key instead`);
+                        return allStringValues[0][1] as string;
+                    }
                 }
-                if ('reply' in parsed) {
-                    return String(parsed.reply);
+
+                if (bestValue) { return bestValue; }
+
+                // フォールバック: 文字列値が1つだけなら抽出
+                const stringValues = Object.values(parsed).filter((v): v is string => typeof v === 'string');
+                if (stringValues.length === 1) {
+                    logDebug(`FileIpc.extractResult: fallback — extracted single string value from JSON`);
+                    return stringValues[0];
                 }
             }
         } catch {
@@ -203,7 +241,7 @@ export class FileIpc {
         try {
             await fs.promises.unlink(progressPath);
             logDebug('FileIpc: progress file cleaned up');
-        } catch { /* ignore */ }
+        } catch (e) { logDebug(`FileIpc: cleanupProgress failed: ${e}`); }
     }
 
     private sleep(ms: number): Promise<void> {

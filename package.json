@@ -4,7 +4,7 @@
   "description": "Discord→Antigravity自動操作ブリッジ。自然文で依頼→定期/即時実行→結果通知。",
   "version": "0.1.0",
   "publisher": "ytvar",
-  "icon": "AntiCrow.PNG",
+  "icon": "images/AntiCrowIcon.png",
   "license": "MIT",
   "engines": {
     "vscode": "^1.90.0"
@@ -44,11 +44,6 @@
         "category": "AntiCrow"
       },
       {
-        "command": "anti-crow.openDashboard",
-        "title": "Open Schedule Dashboard",
-        "category": "AntiCrow"
-      },
-      {
         "command": "anti-crow.createShortcut",
         "title": "Create Desktop Shortcut",
         "category": "AntiCrow"
@@ -74,7 +69,7 @@
         },
         "antiCrow.autoStart": {
           "type": "boolean",
-          "default": false,
+          "default": true,
           "description": "VS Code起動時に自動でブリッジを開始する"
         },
         "antiCrow.clientId": {

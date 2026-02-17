@@ -64,7 +64,7 @@ VS Codeで「拡張機能をフォルダからインストール」→ このフ
 
 1. コマンドパレット → **AntiCrow: Set Bot Token** → トークン入力
 2. コマンドパレット → **AntiCrow: Start**
-3. ステータスバーに `✓ Discord Bridge` が表示されれば稼働中
+3. ステータスバーに `✓ AntiCrow` が表示されれば稼働中
 
 ## 設定 (settings.json)
 

@@ -7,6 +7,8 @@ description: anti-crow をビルド・VSIX パッケージして Antigravity に
 
 anti-crow プロジェクトをビルドし、VSIX パッケージを作成して Antigravity にインストールします。
 
+> **重要:** anti-crow 拡張機能のコードを改修した場合は、改修完了後に必ずこの deploy スキルの手順を実行し、デプロイまで完了させてください。コード変更だけで終わらせず、TypeScript コンパイル → esbuild バンドル → VSIX パッケージ作成 → Antigravity インストールの一連の流れを改修作業の一部として行ってください。
+
 ## 手順
 
 すべてのコマンドはプロジェクトルート `c:\Users\ysk41\dev\anti-crow` で実行してください。
