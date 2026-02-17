@@ -106,7 +106,7 @@ function cleanupStalePortFiles(portDir: string): void {
 }
 
 /** CDP レスポンスタイムアウト（ms）のデフォルト値 */
-export const DEFAULT_RESPONSE_TIMEOUT_MS = 300_000;
+export const DEFAULT_RESPONSE_TIMEOUT_MS = 1_800_000;
 
 /** タイムゾーンのデフォルト値 */
 export const DEFAULT_TIMEZONE = 'Asia/Tokyo';
@@ -128,14 +128,24 @@ export function getConfig(): vscode.WorkspaceConfiguration {
 
 
 
-/** CDP レスポンスタイムアウト（ms）を取得する（デフォルト: 300,000） */
+/** CDP レスポンスタイムアウト（ms）を取得する（デフォルト: 1,800,000 = 30分） */
 export function getResponseTimeout(): number {
-    return getConfig().get<number>('cdpResponseTimeoutMs') || DEFAULT_RESPONSE_TIMEOUT_MS;
+    return getConfig().get<number>('responseTimeoutMs') || DEFAULT_RESPONSE_TIMEOUT_MS;
 }
 
-/** タイムゾーンを取得する（デフォルト: 'Asia/Tokyo'） */
+/** タイムゾーンを取得する（設定値が空の場合は OS から自動取得） */
 export function getTimezone(): string {
-    return getConfig().get<string>('timezone') || DEFAULT_TIMEZONE;
+    const configured = getConfig().get<string>('timezone') || '';
+    if (configured) { return configured; }
+    // OS のタイムゾーンを自動取得
+    try {
+        const osTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        logDebug(`getTimezone: auto-detected OS timezone: ${osTimezone}`);
+        return osTimezone || DEFAULT_TIMEZONE;
+    } catch {
+        logWarn('getTimezone: failed to auto-detect OS timezone, using default');
+        return DEFAULT_TIMEZONE;
+    }
 }
 
 /** カテゴリーアーカイブ日数を取得する（デフォルト: 7） */
@@ -161,4 +171,9 @@ export function getAllowedUserIds(): string[] {
 /** メッセージ最大文字数を取得する（0=無制限、デフォルト: 4000） */
 export function getMaxMessageLength(): number {
     return getConfig().get<number>('maxMessageLength') ?? 6000;
+}
+
+/** 自動リトライ最大回数を取得する（デフォルト: 1） */
+export function getMaxRetries(): number {
+    return getConfig().get<number>('maxRetries') ?? 1;
 }

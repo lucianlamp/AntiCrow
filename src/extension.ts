@@ -30,8 +30,10 @@ const ctx: BridgeContext = {
     planStore: null,
     executor: null,
     executorPool: null,
+    templateStore: null,
     isBotOwner: false,
     globalStoragePath: '',
+    extensionPath: '',
     statusBarItem: undefined!,
 
     lockWatchTimer: null,

@@ -15,6 +15,8 @@ import { logInfo, logError } from './logger';
 export class PlanStore {
     private plans: Map<string, Plan> = new Map();
     private filePath: string;
+    private persistTimer: NodeJS.Timeout | null = null;
+    private readonly PERSIST_DEBOUNCE_MS = 500;
 
     constructor(storageUri: vscode.Uri) {
         this.filePath = path.join(storageUri.fsPath, 'plans.json');
@@ -23,40 +25,53 @@ export class PlanStore {
     /** ストレージディレクトリ＆ファイルが無ければ作る */
     async init(): Promise<void> {
         const dir = path.dirname(this.filePath);
-        if (!fs.existsSync(dir)) {
-            fs.mkdirSync(dir, { recursive: true });
-        }
-        if (fs.existsSync(this.filePath)) {
-            try {
-                const raw = fs.readFileSync(this.filePath, 'utf-8');
-                const arr: Plan[] = JSON.parse(raw);
-                for (const p of arr) {
-                    this.plans.set(p.plan_id, p);
-                }
-                logInfo(`PlanStore: loaded ${this.plans.size} plans`);
+        try {
+            await fs.promises.mkdir(dir, { recursive: true });
+        } catch { /* already exists */ }
 
-                // 即時実行 Plan（cron=null）のクリーンアップ
-                // 定期実行のみ保持する方針のため、起動時にゴミを除去
-                const immediatePlanIds = arr
-                    .filter(p => !p.cron)
-                    .map(p => p.plan_id);
-                if (immediatePlanIds.length > 0) {
-                    for (const id of immediatePlanIds) {
-                        this.plans.delete(id);
-                    }
-                    this.persist();
-                    logInfo(`PlanStore: cleaned up ${immediatePlanIds.length} immediate plan(s)`);
+        try {
+            const raw = await fs.promises.readFile(this.filePath, 'utf-8');
+            const arr: Plan[] = JSON.parse(raw);
+            for (const p of arr) {
+                this.plans.set(p.plan_id, p);
+            }
+            logInfo(`PlanStore: loaded ${this.plans.size} plans`);
+
+            // 即時実行 Plan（cron=null）のクリーンアップ
+            // 定期実行のみ保持する方針のため、起動時にゴミを除去
+            const immediatePlanIds = arr
+                .filter(p => !p.cron)
+                .map(p => p.plan_id);
+            if (immediatePlanIds.length > 0) {
+                for (const id of immediatePlanIds) {
+                    this.plans.delete(id);
                 }
-            } catch (e) {
+                await this.persistNow();
+                logInfo(`PlanStore: cleaned up ${immediatePlanIds.length} immediate plan(s)`);
+            }
+        } catch (e) {
+            // ファイルが無い場合は正常（初回起動）
+            if ((e as NodeJS.ErrnoException).code !== 'ENOENT') {
                 logError('PlanStore: failed to load plans.json', e);
             }
         }
     }
 
+    /** デバウンス付き永続化（500ms 内の連続呼び出しをまとめる） */
     private persist(): void {
+        if (this.persistTimer) {
+            clearTimeout(this.persistTimer);
+        }
+        this.persistTimer = setTimeout(() => {
+            this.persistNow().catch(e => logError('PlanStore: deferred persist failed', e));
+        }, this.PERSIST_DEBOUNCE_MS);
+    }
+
+    /** 即時永続化 */
+    private async persistNow(): Promise<void> {
         try {
             const arr = Array.from(this.plans.values());
-            fs.writeFileSync(this.filePath, JSON.stringify(arr, null, 2), 'utf-8');
+            await fs.promises.writeFile(this.filePath, JSON.stringify(arr, null, 2), 'utf-8');
         } catch (e) {
             logError('PlanStore: failed to persist', e);
         }

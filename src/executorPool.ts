@@ -30,6 +30,7 @@ export class ExecutorPool {
     private timeoutMs: number;
     private notifyDiscord: NotifyFunc;
     private sendTyping: SendTypingFunc;
+    private extensionPath: string;
 
     constructor(
         cdpPool: CdpPool,
@@ -38,6 +39,7 @@ export class ExecutorPool {
         timeoutMs: number,
         notifyDiscord: NotifyFunc,
         sendTyping: SendTypingFunc,
+        extensionPath?: string,
     ) {
         this.cdpPool = cdpPool;
         this.fileIpc = fileIpc;
@@ -45,6 +47,7 @@ export class ExecutorPool {
         this.timeoutMs = timeoutMs;
         this.notifyDiscord = notifyDiscord;
         this.sendTyping = sendTyping;
+        this.extensionPath = extensionPath || '';
     }
 
     // -------------------------------------------------------------------
@@ -76,6 +79,7 @@ export class ExecutorPool {
             this.timeoutMs,
             this.notifyDiscord,
             this.sendTyping,
+            this.extensionPath,
         );
 
         this.pool.set(key, executor);
@@ -154,6 +158,16 @@ export class ExecutorPool {
         this.forceResetAll();
         this.pool.clear();
         logInfo('ExecutorPool: pool cleared');
+    }
+
+    /**
+     * 全 Executor の自動クリックルールを設定画面から再読み込みする。
+     */
+    reloadAutoClickRules(): void {
+        for (const [key, executor] of this.pool.entries()) {
+            executor.loadAutoClickRulesFromConfig();
+            logDebug(`ExecutorPool: reloaded auto-click rules for workspace "${key}"`);
+        }
     }
 
     /**

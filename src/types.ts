@@ -21,7 +21,7 @@ export interface PlanExecution {
 
 /** Discord テンプレート群 */
 export interface DiscordTemplates {
-    ack: string;
+    ack?: string;
     confirm?: string;
     run_start?: string;
     run_success_prefix?: string;

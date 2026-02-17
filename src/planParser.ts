@@ -39,10 +39,8 @@ export function parseSkillJson(raw: string): SkillOutput | null {
     const dt = o.discord_templates;
     if (typeof dt !== 'object' || dt === null) { return null; }
     const dtObj = dt as Record<string, unknown>;
-    if (typeof dtObj.ack !== 'string') { return null; }
-
     const templates: DiscordTemplates = {
-        ack: dtObj.ack as string,
+        ack: typeof dtObj.ack === 'string' ? dtObj.ack : undefined,
         confirm: typeof dtObj.confirm === 'string' ? dtObj.confirm : undefined,
         run_start: typeof dtObj.run_start === 'string' ? dtObj.run_start : undefined,
         run_success_prefix: typeof dtObj.run_success_prefix === 'string' ? dtObj.run_success_prefix : undefined,

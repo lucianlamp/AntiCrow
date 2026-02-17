@@ -41,6 +41,22 @@ export const slashCommandDefinitions = [
     new SlashCommandBuilder()
         .setName('workspaces')
         .setDescription('検出された Antigravity ワークスペース一覧を表示'),
+
+    new SlashCommandBuilder()
+        .setName('queue')
+        .setDescription('実行キューの状態を表示'),
+
+    new SlashCommandBuilder()
+        .setName('templates')
+        .setDescription('テンプレート一覧を表示・管理'),
+
+    new SlashCommandBuilder()
+        .setName('models')
+        .setDescription('利用可能な AI モデル一覧を表示・切り替え'),
+
+    new SlashCommandBuilder()
+        .setName('mode')
+        .setDescription('AI モード切替（Planning / Fast）'),
 ];
 
 // -----------------------------------------------------------------------

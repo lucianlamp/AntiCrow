@@ -1,6 +1,9 @@
 // ---------------------------------------------------------------------------
 // discordBot.ts — Discord Bot ライフサイクル & チャンネルルーティング
 // ---------------------------------------------------------------------------
+// ファサードとして機能: リアクション待ち → discordReactions.ts,
+// チャンネル管理 → discordChannels.ts に委譲。
+// ---------------------------------------------------------------------------
 
 import {
     Client,
@@ -12,11 +15,17 @@ import {
     Partials,
     ChatInputCommandInteraction,
     ButtonInteraction,
+    AutocompleteInteraction,
+    ModalSubmitInteraction,
 } from 'discord.js';
 import { ChannelIntent } from './types';
 import { splitForEmbeds, extractTableFields } from './discordFormatter';
 import { logInfo, logError, logWarn, logDebug } from './logger';
 import { buildEmbed, EmbedColor } from './embedHelper';
+
+// 委譲先モジュール
+import * as reactions from './discordReactions';
+import * as channels from './discordChannels';
 
 export type MessageHandler = (
     message: Message,
@@ -33,6 +42,14 @@ export type ButtonHandler = (
     interaction: ButtonInteraction,
 ) => Promise<void>;
 
+export type AutocompleteHandler = (
+    interaction: AutocompleteInteraction,
+) => Promise<void>;
+
+export type ModalSubmitHandler = (
+    interaction: ModalSubmitInteraction,
+) => Promise<void>;
+
 export class DiscordBot {
     private client: Client;
     private token: string;
@@ -40,6 +57,8 @@ export class DiscordBot {
     private messageHandler: MessageHandler | null = null;
     private interactionHandler: InteractionHandler | null = null;
     private buttonHandler: ButtonHandler | null = null;
+    private autocompleteHandler: AutocompleteHandler | null = null;
+    private modalSubmitHandler: ModalSubmitHandler | null = null;
     private ready = false;
 
     constructor(token: string) {
@@ -114,6 +133,35 @@ export class DiscordBot {
                 return;
             }
 
+            // ----- Autocomplete Interaction -----
+            if (interaction.isAutocomplete()) {
+                if (this.autocompleteHandler) {
+                    try {
+                        await this.autocompleteHandler(interaction);
+                    } catch (e) {
+                        logError(`Discord: autocomplete handler error for /${interaction.commandName}`, e);
+                    }
+                }
+                return;
+            }
+
+            // ----- Modal Submit Interaction -----
+            if (interaction.isModalSubmit()) {
+                logInfo(`Discord: modal submit customId=${interaction.customId} from ${interaction.user.tag}`);
+                if (this.modalSubmitHandler) {
+                    try {
+                        await this.modalSubmitHandler(interaction);
+                    } catch (e) {
+                        logError(`Discord: modal submit handler error for ${interaction.customId}`, e);
+                        const errMsg = e instanceof Error ? e.message : String(e);
+                        if (!interaction.replied && !interaction.deferred) {
+                            await interaction.reply({ embeds: [buildEmbed(`❌ エラー: ${errMsg}`, EmbedColor.Error)], ephemeral: true }).catch(() => { });
+                        }
+                    }
+                }
+                return;
+            }
+
             if (!interaction.isChatInputCommand()) { return; }
 
             const commandName = interaction.commandName;
@@ -162,6 +210,10 @@ export class DiscordBot {
             case 'newchat': return 'admin';
             case 'workspaces': return 'admin';
             case 'history': return 'admin';
+            case 'queue': return 'admin';
+            case 'templates': return 'admin';
+            case 'models': return 'admin';
+            case 'mode': return 'admin';
             default: return null;
         }
     }
@@ -179,6 +231,16 @@ export class DiscordBot {
     /** ボタンインタラクションハンドラを登録 */
     onButton(handler: ButtonHandler): void {
         this.buttonHandler = handler;
+    }
+
+    /** オートコンプリートハンドラを登録 */
+    onAutocomplete(handler: AutocompleteHandler): void {
+        this.autocompleteHandler = handler;
+    }
+
+    /** モーダル送信ハンドラを登録 */
+    onModalSubmit(handler: ModalSubmitHandler): void {
+        this.modalSubmitHandler = handler;
     }
 
     /** Bot を起動 */
@@ -256,7 +318,6 @@ export class DiscordBot {
                 .setColor(color ?? DiscordBot.EMBED_COLOR);
 
             if (extracted.description.length > 0) {
-                // description が長い場合は切り詰め
                 embed.setDescription(
                     extracted.description.length > 4096
                         ? extracted.description.slice(0, 4093) + '...'
@@ -264,7 +325,6 @@ export class DiscordBot {
                 );
             }
 
-            // fields を最大 25 個まで設定
             embed.addFields(
                 extracted.fields.slice(0, 25).map(f => ({
                     name: f.name.slice(0, 256),
@@ -290,104 +350,18 @@ export class DiscordBot {
         }
     }
 
+    // -----------------------------------------------------------------------
+    // リアクション待ち — discordReactions.ts に委譲
+    // -----------------------------------------------------------------------
+
     /** メッセージにリアクション待ちして確認を取る */
     async waitForConfirmation(message: Message, timeoutMs: number = 120_000): Promise<boolean> {
-        const confirmEmoji = '✅';
-        const rejectEmoji = '❌';
-
-        try {
-            await message.react(confirmEmoji);
-            await message.react(rejectEmoji);
-            logInfo(`waitForConfirmation: reactions added, waiting for user reaction (timeout=${timeoutMs}ms)`);
-        } catch (e) {
-            logError('waitForConfirmation: failed to add reactions', e);
-            return false;
-        }
-
-        const botId = this.client.user?.id;
-        logDebug(`waitForConfirmation: bot ID = ${botId}`);
-
-        return new Promise<boolean>((resolve) => {
-            const collector = message.createReactionCollector({
-                filter: (reaction, user) => {
-                    const emojiName = reaction.emoji.name || '';
-                    const isTargetEmoji = [confirmEmoji, rejectEmoji].includes(emojiName);
-                    const isNotBot = user.id !== botId;
-                    logDebug(`waitForConfirmation: reaction '${emojiName}' from user ${user.id} (bot=${!isNotBot}, targetEmoji=${isTargetEmoji})`);
-                    return isTargetEmoji && isNotBot;
-                },
-                max: 1,
-                time: timeoutMs,
-            });
-
-            collector.on('collect', (reaction, user) => {
-                const emoji = reaction.emoji.name;
-                logInfo(`waitForConfirmation: collected reaction '${emoji}' from user ${user.tag || user.id}`);
-                collector.stop('received');
-                resolve(emoji === confirmEmoji);
-            });
-
-            collector.on('end', (_collected, reason) => {
-                logInfo(`waitForConfirmation: collector ended — reason: ${reason}`);
-                if (reason !== 'received') {
-                    resolve(false); // タイムアウトまたはその他の理由
-                }
-            });
-        });
+        return reactions.waitForConfirmation(message, this.client.user?.id, timeoutMs);
     }
 
     /** 番号付き絵文字リアクションで選択を待つ（1️⃣~🔟 + ❌） */
     async waitForChoice(message: Message, choiceCount: number, timeoutMs: number = 120_000): Promise<number> {
-        const numberEmojis = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟'];
-        const rejectEmoji = '❌';
-        const activeEmojis = numberEmojis.slice(0, Math.min(choiceCount, 10));
-
-        try {
-            for (const emoji of activeEmojis) {
-                await message.react(emoji);
-            }
-            await message.react(rejectEmoji);
-            logInfo(`waitForChoice: ${activeEmojis.length} choice reactions + ❌ added, waiting (timeout=${timeoutMs}ms)`);
-        } catch (e) {
-            logError('waitForChoice: failed to add reactions', e);
-            return -1;
-        }
-
-        const botId = this.client.user?.id;
-        const allEmojis = [...activeEmojis, rejectEmoji];
-
-        return new Promise<number>((resolve) => {
-            const collector = message.createReactionCollector({
-                filter: (reaction, user) => {
-                    const emojiName = reaction.emoji.name || '';
-                    const isTarget = allEmojis.includes(emojiName);
-                    const isNotBot = user.id !== botId;
-                    logDebug(`waitForChoice: reaction '${emojiName}' from user ${user.id} (bot=${!isNotBot}, target=${isTarget})`);
-                    return isTarget && isNotBot;
-                },
-                max: 1,
-                time: timeoutMs,
-            });
-
-            collector.on('collect', (reaction, user) => {
-                const emoji = reaction.emoji.name || '';
-                logInfo(`waitForChoice: collected '${emoji}' from user ${user.tag || user.id}`);
-                collector.stop('received');
-                if (emoji === rejectEmoji) {
-                    resolve(-1);
-                } else {
-                    const idx = activeEmojis.indexOf(emoji);
-                    resolve(idx >= 0 ? idx + 1 : -1);
-                }
-            });
-
-            collector.on('end', (_collected, reason) => {
-                logInfo(`waitForChoice: collector ended — reason: ${reason}`);
-                if (reason !== 'received') {
-                    resolve(-1);
-                }
-            });
-        });
+        return reactions.waitForChoice(message, this.client.user?.id, choiceCount, timeoutMs);
     }
 
     /**
@@ -395,325 +369,52 @@ export class DiscordBot {
      * @returns 選択された番号の配列（1-indexed）。空配列 = 却下/タイムアウト。[-1] = 全選択。
      */
     async waitForMultiChoice(message: Message, choiceCount: number, timeoutMs: number = 120_000): Promise<number[]> {
-        const numberEmojis = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟'];
-        const confirmEmoji = '☑️';
-        const allEmoji = '✅';
-        const rejectEmoji = '❌';
-        const activeEmojis = numberEmojis.slice(0, Math.min(choiceCount, 10));
-
-        try {
-            for (const emoji of activeEmojis) {
-                await message.react(emoji);
-            }
-            await message.react(confirmEmoji);
-            await message.react(allEmoji);
-            await message.react(rejectEmoji);
-            logInfo(`waitForMultiChoice: ${activeEmojis.length} choices + ☑️/✅/❌ added (timeout=${timeoutMs}ms)`);
-        } catch (e) {
-            logError('waitForMultiChoice: failed to add reactions', e);
-            return [];
-        }
-
-        const botId = this.client.user?.id;
-        const controlEmojis = [confirmEmoji, allEmoji, rejectEmoji];
-        const allValidEmojis = [...activeEmojis, ...controlEmojis];
-
-        return new Promise<number[]>((resolve) => {
-            const selected = new Set<number>();
-
-            const collector = message.createReactionCollector({
-                filter: (reaction, user) => {
-                    const emojiName = reaction.emoji.name || '';
-                    const isTarget = allValidEmojis.includes(emojiName);
-                    const isNotBot = user.id !== botId;
-                    logDebug(`waitForMultiChoice: reaction '${emojiName}' from user ${user.id} (bot=${!isNotBot}, target=${isTarget})`);
-                    return isTarget && isNotBot;
-                },
-                time: timeoutMs,
-            });
-
-            collector.on('collect', (reaction, user) => {
-                const emoji = reaction.emoji.name || '';
-
-                if (emoji === rejectEmoji) {
-                    logInfo(`waitForMultiChoice: rejected by ${user.tag || user.id}`);
-                    collector.stop('rejected');
-                    resolve([]);
-                    return;
-                }
-
-                if (emoji === allEmoji) {
-                    logInfo(`waitForMultiChoice: all selected by ${user.tag || user.id}`);
-                    collector.stop('all');
-                    resolve([-1]);
-                    return;
-                }
-
-                if (emoji === confirmEmoji) {
-                    logInfo(`waitForMultiChoice: confirmed [${[...selected].join(',')}] by ${user.tag || user.id}`);
-                    collector.stop('confirmed');
-                    resolve([...selected].sort((a, b) => a - b));
-                    return;
-                }
-
-                // 番号リアクション — 選択/解除
-                const idx = activeEmojis.indexOf(emoji);
-                if (idx >= 0) {
-                    const num = idx + 1;
-                    if (selected.has(num)) {
-                        selected.delete(num);
-                        logDebug(`waitForMultiChoice: deselected ${num}`);
-                    } else {
-                        selected.add(num);
-                        logDebug(`waitForMultiChoice: selected ${num}`);
-                    }
-                }
-            });
-
-            collector.on('end', (_collected, reason) => {
-                logInfo(`waitForMultiChoice: collector ended — reason: ${reason}`);
-                if (!['rejected', 'all', 'confirmed'].includes(reason || '')) {
-                    resolve([]); // タイムアウト
-                }
-            });
-        });
+        return reactions.waitForMultiChoice(message, this.client.user?.id, choiceCount, timeoutMs);
     }
 
     // -----------------------------------------------------------------------
-    // Schedules カテゴリー & Plan 専用チャンネル管理
+    // チャンネル管理 — discordChannels.ts に委譲
     // -----------------------------------------------------------------------
 
-    private static readonly SCHEDULES_CATEGORY_NAME = 'Schedules';
+    static readonly WORKSPACE_CATEGORY_PREFIX = channels.WORKSPACE_CATEGORY_PREFIX;
 
-    /**
-     * 「Schedules」カテゴリーを取得 or 作成する。
-     * カテゴリーが既に存在すればそのまま返す。
-     */
-    async ensureSchedulesCategory(guildId: string): Promise<string | null> {
-        const guild = this.client.guilds.cache.get(guildId);
-        if (!guild) {
-            logWarn(`Discord: guild ${guildId} not found`);
-            return null;
-        }
-
-        // 既存カテゴリーを検索
-        const existing = guild.channels.cache.find(
-            c => c.type === ChannelType.GuildCategory
-                && c.name === DiscordBot.SCHEDULES_CATEGORY_NAME
-        );
-        if (existing) {
-            logInfo(`Discord: found existing Schedules category: ${existing.id}`);
-            return existing.id;
-        }
-
-        // 新規作成
-        try {
-            const category = await guild.channels.create({
-                name: DiscordBot.SCHEDULES_CATEGORY_NAME,
-                type: ChannelType.GuildCategory,
-            });
-            logInfo(`Discord: created Schedules category: ${category.id}`);
-            return category.id;
-        } catch (e) {
-            logError('Discord: failed to create Schedules category', e);
-            return null;
-        }
-    }
-
-    /**
-     * Plan 専用チャンネルを作成する。
-     * workspaceName が指定された場合はそのワークスペースカテゴリー内に、
-     * 未指定の場合は従来の Schedules カテゴリー内に作成する。
-     */
-    async createPlanChannel(guildId: string, channelName: string, workspaceName?: string): Promise<string | null> {
-        let categoryId: string | null;
-        if (workspaceName) {
-            categoryId = await this.ensureWorkspaceCategory(guildId, workspaceName);
-        } else {
-            categoryId = await this.ensureSchedulesCategory(guildId);
-        }
-        if (!categoryId) { return null; }
-
-        const guild = this.client.guilds.cache.get(guildId);
-        if (!guild) { return null; }
-
-        const parentLabel = workspaceName ? `workspace "${workspaceName}"` : 'Schedules';
-        try {
-            const channel = await guild.channels.create({
-                name: channelName,
-                type: ChannelType.GuildText,
-                parent: categoryId,
-            });
-            logInfo(`Discord: created plan channel #${channel.name} (${channel.id}) in ${parentLabel}`);
-            return channel.id;
-        } catch (e) {
-            logError(`Discord: failed to create plan channel "${channelName}" in ${parentLabel}`, e);
-            return null;
-        }
-    }
-
-    // -----------------------------------------------------------------------
-    // ワークスペースカテゴリー管理
-    // -----------------------------------------------------------------------
-
-    static readonly WORKSPACE_CATEGORY_PREFIX = '🤖 ';
-
-    /**
-     * ワークスペース名からカテゴリー名を組み立てる。
-     */
     static workspaceCategoryName(workspaceName: string): string {
-        return `${DiscordBot.WORKSPACE_CATEGORY_PREFIX}${workspaceName}`;
+        return channels.workspaceCategoryName(workspaceName);
     }
 
-    /**
-     * カテゴリー名からワークスペース名を抽出する。
-     * プレフィックスが無ければ null を返す。
-     */
     static extractWorkspaceFromCategoryName(categoryName: string): string | null {
-        if (categoryName.startsWith(DiscordBot.WORKSPACE_CATEGORY_PREFIX)) {
-            return categoryName.slice(DiscordBot.WORKSPACE_CATEGORY_PREFIX.length);
-        }
-        return null;
+        return channels.extractWorkspaceFromCategoryName(categoryName);
     }
 
-    /**
-     * ワークスペース用カテゴリーを取得 or 作成する。
-     */
-    async ensureWorkspaceCategory(guildId: string, workspaceName: string): Promise<string | null> {
-        const guild = this.client.guilds.cache.get(guildId);
-        if (!guild) {
-            logWarn(`Discord: guild ${guildId} not found`);
-            return null;
-        }
-
-        const catName = DiscordBot.workspaceCategoryName(workspaceName);
-
-        const existing = guild.channels.cache.find(
-            c => c.type === ChannelType.GuildCategory && c.name === catName
-        );
-        if (existing) {
-            logDebug(`Discord: found existing workspace category "${catName}": ${existing.id}`);
-            return existing.id;
-        }
-
-        try {
-            const category = await guild.channels.create({
-                name: catName,
-                type: ChannelType.GuildCategory,
-            });
-            logInfo(`Discord: created workspace category "${catName}": ${category.id}`);
-            return category.id;
-        } catch (e) {
-            logError(`Discord: failed to create workspace category "${catName}"`, e);
-            return null;
-        }
-    }
-
-    /**
-     * ワークスペース用カテゴリー + #agent-chat チャンネルを作成する。
-     * 既に存在していればスキップ。
-     * @returns カテゴリーID（失敗時 null）
-     */
-    async ensureWorkspaceStructure(guildId: string, workspaceName: string): Promise<string | null> {
-        const categoryId = await this.ensureWorkspaceCategory(guildId, workspaceName);
-        if (!categoryId) { return null; }
-
-        const guild = this.client.guilds.cache.get(guildId);
-        if (!guild) { return null; }
-
-        // #agent-chat が既にあるかチェック
-        const existing = guild.channels.cache.find(
-            c => c.type === ChannelType.GuildText
-                && c.parentId === categoryId
-                && c.name === 'agent-chat'
-        );
-        if (existing) {
-            logDebug(`Discord: workspace "${workspaceName}" already has #agent-chat (${existing.id})`);
-            return categoryId;
-        }
-
-        try {
-            const channel = await guild.channels.create({
-                name: 'agent-chat',
-                type: ChannelType.GuildText,
-                parent: categoryId,
-            });
-            logInfo(`Discord: created #agent-chat (${channel.id}) in workspace "${workspaceName}"`);
-        } catch (e) {
-            logError(`Discord: failed to create #agent-chat in workspace "${workspaceName}"`, e);
-        }
-
-        return categoryId;
-    }
-
-    /**
-     * Guild 上のワークスペースカテゴリーを列挙する。
-     * @returns ワークスペース名 → カテゴリーID のマップ
-     */
-    discoverWorkspaceCategories(guildId: string): Map<string, string> {
-        const result = new Map<string, string>();
-        const guild = this.client.guilds.cache.get(guildId);
-        if (!guild) { return result; }
-
-        for (const [id, channel] of guild.channels.cache) {
-            if (channel.type !== ChannelType.GuildCategory) { continue; }
-            const wsName = DiscordBot.extractWorkspaceFromCategoryName(channel.name);
-            if (wsName) {
-                result.set(wsName, id);
-            }
-        }
-        return result;
-    }
-
-    /**
-     * テキストチャンネルの親カテゴリーからワークスペース名を特定する。
-     * ワークスペースカテゴリー配下の #agent-chat の場合のみ名前を返す。
-     */
     static resolveWorkspaceFromChannel(channel: TextChannel): string | null {
-        if (!channel.parent) { return null; }
-        if (channel.parent.type !== ChannelType.GuildCategory) { return null; }
-        return DiscordBot.extractWorkspaceFromCategoryName(channel.parent.name);
+        return channels.resolveWorkspaceFromChannel(channel);
     }
 
-    /**
-     * Plan 専用チャンネルを削除する。
-     */
+    async ensureSchedulesCategory(guildId: string): Promise<string | null> {
+        return channels.ensureSchedulesCategory(this.client, guildId);
+    }
+
+    async createPlanChannel(guildId: string, channelName: string, workspaceName?: string): Promise<string | null> {
+        return channels.createPlanChannel(this.client, guildId, channelName, workspaceName);
+    }
+
+    async ensureWorkspaceCategory(guildId: string, workspaceName: string): Promise<string | null> {
+        return channels.ensureWorkspaceCategory(this.client, guildId, workspaceName);
+    }
+
+    async ensureWorkspaceStructure(guildId: string, workspaceName: string): Promise<string | null> {
+        return channels.ensureWorkspaceStructure(this.client, guildId, workspaceName);
+    }
+
+    discoverWorkspaceCategories(guildId: string): Map<string, string> {
+        return channels.discoverWorkspaceCategories(this.client, guildId);
+    }
+
     async deletePlanChannel(channelId: string): Promise<boolean> {
-        try {
-            const channel = await this.client.channels.fetch(channelId);
-            if (!channel) {
-                logWarn(`Discord: channel ${channelId} not found for deletion`);
-                return false;
-            }
-            if ('delete' in channel && typeof channel.delete === 'function') {
-                await channel.delete();
-                logInfo(`Discord: deleted plan channel ${channelId}`);
-                return true;
-            }
-            logWarn(`Discord: channel ${channelId} is not deletable`);
-            return false;
-        } catch (e) {
-            logError(`Discord: failed to delete plan channel ${channelId}`, e);
-            return false;
-        }
+        return channels.deletePlanChannel(this.client, channelId);
     }
 
-    /**
-     * Plan 専用チャンネルの名前を変更する。
-     */
     async renamePlanChannel(channelId: string, newName: string): Promise<boolean> {
-        try {
-            const channel = await this.client.channels.fetch(channelId);
-            if (!channel || !(channel instanceof TextChannel)) {
-                logWarn(`Discord: channel ${channelId} not found or not text channel for rename`);
-                return false;
-            }
-            await channel.setName(newName);
-            logInfo(`Discord: renamed plan channel ${channelId} to "${newName}"`);
-            return true;
-        } catch (e) {
-            logError(`Discord: failed to rename plan channel ${channelId}`, e);
-            return false;
-        }
+        return channels.renamePlanChannel(this.client, channelId, newName);
     }
 }

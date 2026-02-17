@@ -1,151 +1,141 @@
-# AntiCrow
+# 🐦‍⬛ AntiCrow
 
-スマホのDiscordから自然文で依頼 → VS Code拡張がAntigravityを自動操作 → 結果をDiscordに返す。
+**Discord → Antigravity 自動操作ブリッジ**
 
-## 仕組み
+スマホの Discord から自然文で依頼 → Antigravity が自動実行 → 結果を Discord に返す 🚀
 
-```
-Discord(自然文) → VS Code拡張 → CDP → Antigravity → CDP → VS Code拡張 → Discord(結果)
-```
+## ✨ 特徴
 
-拡張一本で完結。外部プロセス不要。
+- 📱 **スマホから遠隔操作** — 外出先からでも Discord 経由で AI にタスクを依頼
+- ⏰ **定期実行** — cron 式で毎日・毎週など自動タスク登録
+- 📂 **複数ワークスペース対応** — プロジェクトごとに Discord カテゴリーで自動振り分け
+- 📎 **ファイル添付対応** — 画像やドキュメントを AI に分析させる
+- 📊 **進捗通知** — 長時間タスクの進捗をリアルタイム表示
+- 🛡️ **セキュリティ** — Token 暗号化保存、ユーザー ID 制限
 
-## セットアップ
+> 📖 **[詳しいユーザーガイドはこちら →](docs/user-guide.md)**
 
-### 1. 前提
+---
 
-- **VS Code** 1.90+
-- **Node.js** 16.11+（VS Code組込みで通常OK）
-- **Antigravity** を `--remote-debugging-port=9333` で起動
+## クイックスタート
 
-```powershell
-# Antigravity起動例（Windows）
-& "C:\Users\<username>\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Antigravity\Antigravity.lnk" --remote-debugging-port=9333
-```
+### 前提条件
 
-### 2. Discord Bot作成
+- **Antigravity** インストール済み
+- **Discord Bot** （[作成手順はユーザーガイド参照](docs/user-guide.md#1️⃣-discord-bot-を作成する)）
 
-1. [Discord Developer Portal](https://discord.com/developers/applications) → New Application
-2. Bot → **Reset Token** でトークン取得（控えておく）
-3. **Privileged Gateway Intents** で以下を有効化:
-   - MESSAGE CONTENT Intent ✅
-   - SERVER MEMBERS Intent ✅ （任意）
-4. OAuth2 → bot スコープ + Send Messages, Read Message History, Add Reactions 権限でURLを生成
-5. 生成URLでBotを自分のサーバーに招待
+> ⚠️ **重要:** AntiCrow は専用のデスクトップショートカットから Antigravity を起動する必要があります。
+> 初回セットアップ後、`AntiCrow: Create Desktop Shortcut` コマンドでショートカットを作成し、以降はそのショートカットから起動してください。
 
-### 3. Discordサーバー準備
+### インストール
 
-以下のチャンネルを作成:
+1. `.vsix` ファイルを入手
+2. Antigravity でコマンドパレット（`Ctrl+Shift+P`）→ **Extensions: Install from VSIX...** を選択
+3. `.vsix` ファイルを指定してインストール
 
-| チャンネル名 | 用途 |
-|---|---|
-| `schedule` | 定期登録（毎日/毎週/平日など） |
-| `run` | 単発の即時実行 |
-| `inbox` | どちらでも受ける |
-| `logs` | 通知のみ（入力は無視） |
-| `admin` | 状態確認・管理 |
+### 初回設定
 
-### 4. 拡張インストール
+1. コマンドパレット（`Ctrl+Shift+P`）→ **AntiCrow: Set Bot Token** → トークン入力
+2. ステータスバーに **`✓ AntiCrow`** が表示されれば起動完了 🎉
 
-```powershell
-cd anti-crow
-npm install
-npm run bundle
-```
+> 自動起動（`autoStart`）がデフォルトで有効なため、トークン設定後に自動的にブリッジが起動します。
 
-VS Codeで「拡張機能をフォルダからインストール」→ このフォルダを選択。
+> 📖 **[セットアップの詳細はユーザーガイドを参照](docs/user-guide.md#セットアップ手順)**
 
-または開発モード:
-```powershell
-# VS Codeでこのフォルダを開いて F5 で起動
-```
-
-### 5. 初回設定
-
-1. コマンドパレット → **AntiCrow: Set Bot Token** → トークン入力
-2. コマンドパレット → **AntiCrow: Start**
-3. ステータスバーに `✓ AntiCrow` が表示されれば稼働中
-
-## 設定 (settings.json)
-
-```json
-{
-  "antiCrow.cdpPort": 9333,
-  "antiCrow.watchChannels": {
-    "schedule": "schedule",
-    "run": "run",
-    "inbox": "inbox",
-    "admin": "admin"
-  },
-  "antiCrow.logsChannel": "logs",
-  "antiCrow.timezone": "Asia/Tokyo",
-  "antiCrow.cdpResponseTimeoutMs": 300000,
-  "antiCrow.autoStart": false
-}
-```
+---
 
 ## 使い方
 
-### 即時実行 (#run)
+### 💬 即時実行
+
+Discord の `#agent-chat` チャンネルにメッセージを送るだけ:
+
 ```
-今のプロジェクトのTODOを一覧にして
+今のプロジェクトの TODO を一覧にして
 ```
 
-### 定期登録 (#schedule)
+### ⏰ 定期登録
+
 ```
-毎朝9時にGitHubの通知をまとめて
+毎朝9時に GitHub の通知をまとめて
 ```
+
 → 確認が必要な場合は ✅/❌ リアクションで回答
 
-### 管理 (#admin)
-```
-状態確認
-計画一覧
-停止 <plan_id>
-```
-
-## VS Code コマンド一覧
+### 🎮 スラッシュコマンド
 
 | コマンド | 説明 |
-|---|---|
-| `Start` | Bridge起動 |
-| `Stop` | Bridge停止 |
-| `Set Bot Token` | Discordトークン保存 |
-| `Show Plans` | 全計画をエディタ表示 |
-| `Clear All Plans` | 全計画削除 |
+| --- | --- |
+| `/schedule` | cron 式で定期実行を登録 |
+| `/status` | Bridge の接続状態表示 |
+| `/schedules` | スケジュール管理パネル（ボタン操作） |
+| `/reset` | 処理中リクエストの強制リセット |
+| `/newchat` | 新しいチャットを開く |
+| `/workspaces` | ワークスペース一覧表示 |
+
+> 📖 **[使い方の詳細はユーザーガイドを参照](docs/user-guide.md#基本的な使い方)**
+
+---
+
+## 設定項目
+
+| 設定キー | デフォルト | 説明 |
+| --- | --- | --- |
+| `antiCrow.botToken` | — | Bot Token（`Set Bot Token` コマンドで設定） |
+| `antiCrow.timezone` | `Asia/Tokyo` | CRON 実行のタイムゾーン |
+| `antiCrow.responseTimeoutMs` | `300000` | 応答タイムアウト（ms） |
+| `antiCrow.autoStart` | `true` | 起動時に自動でブリッジ開始 |
+| `antiCrow.clientId` | `""` | Discord Client ID（スラッシュコマンド用） |
+| `antiCrow.workspacePaths` | `{}` | ワークスペース名→パスの対応表 |
+| `antiCrow.categoryArchiveDays` | `7` | カテゴリー自動アーカイブ日数 |
+| `antiCrow.allowedUserIds` | `[]` | 許可ユーザーID（空=全員） |
+| `antiCrow.maxMessageLength` | `6000` | 最大メッセージ文字数 |
+
+> 📖 **[設定の詳細はユーザーガイドを参照](docs/user-guide.md#設定項目リファレンス)**
+
+---
+
+## コマンド一覧
+
+| コマンド | 説明 |
+| --- | --- |
+| `AntiCrow: Start` | Bridge 起動 |
+| `AntiCrow: Stop` | Bridge 停止 |
+| `AntiCrow: Set Bot Token` | Discord Token 保存（暗号化） |
+| `AntiCrow: Show Plans` | 全計画をエディタ表示 |
+| `AntiCrow: Clear All Plans` | 全計画削除 |
+| `AntiCrow: Create Desktop Shortcut` | デスクトップショートカット作成 |
+
+---
+
+## カスタマイズ
+
+`~/.anticrow/ANTICROW.md` に AI の性格・口調を記述すると、すべての応答スタイルをカスタマイズできます。
+このファイルはデフォルトでは空です。必要に応じて以下のように記述してください：
+
+```markdown
+# 基本スタイル
+- 常に日本語で回答してください
+- フレンドリーで簡潔な口調で話してください
+- 絵文字を適度に使ってください
+```
+
+> 📖 **[カスタマイズの詳細はユーザーガイドを参照](docs/user-guide.md#カスタマイズ)**
+
+---
 
 ## トラブルシューティング
 
-### Botがオフラインのまま
-- トークンが正しいか確認（Set Bot Token で再入力）
-- MESSAGE CONTENT Intentが有効か確認
+| 問題 | 解決策 |
+| --- | --- |
+| Bot がオフラインのまま | Token 再入力 / MESSAGE CONTENT Intent を有効化 |
+| Antigravity に接続できない | Antigravity が起動しているか確認 |
+| メッセージが無視される | チャンネル名が `agent-chat` か確認 / `allowedUserIds` を確認 |
+| 長時間応答がない | `responseTimeoutMs` を増やす / `/reset` で強制リセット |
 
-### CDPに接続できない
-- Antigravityが `--remote-debugging-port=9333` で起動しているか確認
-- `http://127.0.0.1:9333/json` にブラウザでアクセスして応答があるか確認
+> 📖 **[トラブルシューティングの詳細はユーザーガイドを参照](docs/user-guide.md#トラブルシューティング)**
 
-### メッセージが無視される
-- チャンネル名が設定の `watchChannels` に含まれているか確認
-- `logs` チャンネルへの入力は仕様上無視されます
-
-### 長時間応答がない
-- `cdpResponseTimeoutMs` を増やす（デフォルト5分）
-- Output Channel「AntiCrow」でログを確認
-
-## アーキテクチャ
-
-```
-extension.ts       全モジュールの配線・VS Codeライフサイクル
-├── discordBot.ts   Discord Gateway接続・チャンネルルーティング
-├── cdpBridge.ts    CDP WebSocket接続・プロンプト送信・回答検出
-├── scheduler.ts    node-cron CRONスケジューラ (JST)
-├── planStore.ts    JSON永続化 (globalStorageUri)
-├── executor.ts     直列実行キュー
-├── planParser.ts   Skill JSON解析・バリデーション
-├── discordFormatter.ts  2000文字分割・ファイル添付
-├── types.ts        共通型定義
-└── logger.ts       OutputChannelロガー
-```
+---
 
 ## ライセンス
 

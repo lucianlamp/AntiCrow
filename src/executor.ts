@@ -11,6 +11,10 @@ import { CdpBridge } from './cdpBridge';
 import { FileIpc } from './fileIpc';
 import { PlanStore } from './planStore';
 import { logInfo, logError, logWarn, logDebug } from './logger';
+import * as vscode from 'vscode';
+import { getMaxRetries } from './configHelper';
+import * as fs from 'fs';
+import * as path from 'path';
 
 
 /** UIウォッチャーの自動クリックルール */
@@ -46,17 +50,30 @@ export class Executor {
     private queue: ExecutionJob[] = [];
     private running = false;
     private processing = false;
+    private currentJob: ExecutionJob | null = null;
+    private currentJobStartTime: number = 0;
     private recentlyExecutedPlanIds = new Set<string>();
     private uiWatcherTimer: ReturnType<typeof setInterval> | null = null;
     private autoClickRules: AutoClickRule[] = [...DEFAULT_AUTO_CLICK_RULES];
+    private extensionPath: string;
+    private promptTemplate: string | null = null;
+    private userGlobalRules: string | null = null;
+    private promptRulesContent: string | null = null;
 
-    constructor(cdp: CdpBridge, fileIpc: FileIpc, planStore: PlanStore, timeoutMs: number, notifyDiscord: NotifyFunc, sendTyping: SendTypingFunc) {
+    constructor(cdp: CdpBridge, fileIpc: FileIpc, planStore: PlanStore, timeoutMs: number, notifyDiscord: NotifyFunc, sendTyping: SendTypingFunc, extensionPath?: string) {
         this.cdp = cdp;
         this.fileIpc = fileIpc;
         this.planStore = planStore;
         this.timeoutMs = timeoutMs;
         this.notifyDiscord = notifyDiscord;
         this.sendTypingToChannel = sendTyping;
+        this.extensionPath = extensionPath || '';
+
+        // 設定・テンプレートを起動時に読み込み
+        this.loadAutoClickRulesFromConfig();
+        this.loadPromptTemplate();
+        this.loadPromptRules();
+        this.loadUserGlobalRules();
     }
 
     /** 自動クリックルールを取得 */
@@ -68,6 +85,64 @@ export class Executor {
     setAutoClickRules(rules: AutoClickRule[]): void {
         this.autoClickRules = [...rules];
         logInfo(`Executor: auto-click rules updated (${rules.length} rules)`);
+    }
+
+    /** 設定画面から自動クリックルールを読み込む */
+    loadAutoClickRulesFromConfig(): void {
+        const config = vscode.workspace.getConfiguration('antiCrow');
+        const rules = config.get<AutoClickRule[]>('autoClickRules');
+        if (Array.isArray(rules) && rules.length > 0) {
+            this.autoClickRules = [...rules];
+            logInfo(`Executor: loaded ${rules.length} auto-click rules from settings`);
+        } else {
+            this.autoClickRules = [...DEFAULT_AUTO_CLICK_RULES];
+            logDebug('Executor: no auto-click rules in settings, using defaults');
+        }
+    }
+
+    /** プロンプトテンプレートを読み込む */
+    private loadPromptTemplate(): void {
+        if (!this.extensionPath) { return; }
+        const filePath = path.join(this.extensionPath, '.anticrow', 'templates', 'execution_prompt.md');
+        try {
+            const content = fs.readFileSync(filePath, 'utf-8');
+            if (content.trim().length > 0) {
+                this.promptTemplate = content;
+                logDebug(`Executor: loaded prompt template (${content.length} chars)`);
+            }
+        } catch (e) {
+            logDebug(`Executor: prompt template not found, using inline: ${e instanceof Error ? e.message : e}`);
+        }
+    }
+
+    /** プロンプトルールを読み込む */
+    private loadPromptRules(): void {
+        if (!this.extensionPath) { return; }
+        const filePath = path.join(this.extensionPath, '.anticrow', 'rules', 'prompt_rules.md');
+        try {
+            const content = fs.readFileSync(filePath, 'utf-8');
+            if (content.trim().length > 0) {
+                this.promptRulesContent = content.trim();
+                logDebug(`Executor: loaded prompt rules (${this.promptRulesContent.length} chars)`);
+            }
+        } catch (e) {
+            logDebug(`Executor: prompt rules not found: ${e instanceof Error ? e.message : e}`);
+        }
+    }
+
+    /** ユーザーグローバルルールを読み込む */
+    private loadUserGlobalRules(): void {
+        const homedir = require('os').homedir();
+        const filePath = path.join(homedir, '.anticrow', 'ANTICROW.md');
+        try {
+            const content = fs.readFileSync(filePath, 'utf-8');
+            if (content.trim().length > 0) {
+                this.userGlobalRules = content.trim();
+                logInfo(`Executor: loaded user global rules from ${filePath} (${this.userGlobalRules.length} chars)`);
+            }
+        } catch {
+            logDebug(`Executor: no user global rules found at ${filePath} (optional)`);
+        }
     }
 
     /** ジョブをキューに追加 */
@@ -104,13 +179,44 @@ export class Executor {
 
         while (this.queue.length > 0) {
             const job = this.queue.shift()!;
-            await this.executeJob(job);
+            this.currentJob = job;
+            this.currentJobStartTime = Date.now();
+
+            const maxRetries = getMaxRetries();
+            let attempt = 0;
+            let success = false;
+
+            while (attempt <= maxRetries && !success) {
+                if (attempt > 0) {
+                    logInfo(`Executor: retrying plan ${job.plan.plan_id} (attempt ${attempt}/${maxRetries})`);
+                    await this.safeNotify(job.plan.notify_channel_id, `🔄 リトライ中... (${attempt}/${maxRetries})`);
+                    // 新しいチャットで再試行
+                    try { await this.cdp.startNewChat(); } catch (e) { logWarn(`Executor: newchat for retry failed: ${e}`); }
+                }
+                try {
+                    await this.executeJob(job);
+                    success = true;
+                } catch (retryErr) {
+                    const errMsg = retryErr instanceof Error ? retryErr.message : String(retryErr);
+                    logWarn(`Executor: plan ${job.plan.plan_id} attempt ${attempt} failed — ${errMsg}`);
+                    if (attempt >= maxRetries) {
+                        // 最終試行も失敗: エラー通知
+                        const errorTemplate = job.plan.discord_templates.run_error || '❌ 実行失敗';
+                        const retryNote = maxRetries > 0 ? `\n(${maxRetries}回リトライ後も失敗)` : '';
+                        await this.safeNotify(job.plan.notify_channel_id, `${errorTemplate}${retryNote}\n\`\`\`\n${errMsg}\n\`\`\``);
+                        this.recordExecution(job.plan, false, Date.now() - this.currentJobStartTime, errMsg);
+                    }
+                    attempt++;
+                }
+            }
+
+            this.currentJob = null;
         }
 
         this.processing = false;
     }
 
-    /** 個別ジョブの実行 */
+    /** 個別ジョブの実行（リトライ時は例外を投げる） */
     private async executeJob(job: ExecutionJob): Promise<void> {
         const { plan } = job;
         const notifyChannel = plan.notify_channel_id;
@@ -176,35 +282,40 @@ export class Executor {
             const dow = dayNames[nowJst.getDay()];
             const hours = String(nowJst.getHours()).padStart(2, '0');
             const minutes = String(nowJst.getMinutes()).padStart(2, '0');
-            const timeContext = `## コンテキスト\n現在時刻(JST): ${year}年${month}月${day}日（${dow}）${hours}:${minutes}\n\n`;
+            const datetimeStr = `${year}年${month}月${day}日（${dow}）${hours}:${minutes}`;
 
-            // プロンプトにファイル書き込み指示と進捗ファイル指示を追加
-            const promptWithFileInstruction = `${timeContext}${plan.prompt}
+            // ルール内容をインライン展開用に準備
+            const rulesInline = this.promptRulesContent || '';
+
+            // プロンプト構築: テンプレートがあれば使用、なければインライン
+            let promptWithFileInstruction: string;
+            if (this.promptTemplate) {
+                promptWithFileInstruction = this.promptTemplate
+                    .replace(/\{\{datetime\}\}/g, datetimeStr)
+                    .replace(/\{\{user_prompt\}\}/g, plan.prompt)
+                    .replace(/\{\{response_path\}\}/g, responsePath)
+                    .replace(/\{\{progress_path\}\}/g, progressPath)
+                    .replace(/\{\{rules_content\}\}/g, rulesInline);
+            } else {
+                promptWithFileInstruction = `## コンテキスト
+
+現在時刻(JST): ${datetimeStr}
+
+${plan.prompt}
 
 ## 重要: 出力方法
+
 結果をすべて以下のファイルパスに write_to_file ツールで書き込んでください。
 チャットにも結果を出力してください。
 ファイルパス: ${responsePath}
 
-## 重要: Discord フォーマット制約
-結果は Discord に送信されます。以下のルールに従ってください。
-- 表形式データには **Markdown テーブル** を使用してください。Bot が自動的に Embed fields に変換します。
-- Markdown テーブルの書式:
-\`\`\`
-| 項目     | 内容       |
-| -------- | ---------- |
-| 天気     | 晴れのち雨 |
-| 最高気温 | 14℃       |
-| 最低気温 | 5℃        |
-\`\`\`
-- 簡単な情報は箇条書き（- や •）で代替しても構いません。
+${rulesInline}
 
+## 進捗通知ファイルパス
 
-## 進捗通知（任意）
-処理が長くなる場合は、以下のファイルに進捗状況を JSON で書き込んでください（write_to_file, Overwrite: true）。
-Discord に進捗がリアルタイム通知されます。書き込みは任意です。
-ファイルパス: ${progressPath}
-フォーマット: {"status": "現在のステータス", "detail": "詳細（任意）", "percent": 50}`;
+進捗通知を送る場合のファイルパス: ${progressPath}`;
+            }
+
 
             // 添付ファイルがある場合、プロンプトに追記
             let finalPrompt = promptWithFileInstruction;
@@ -213,6 +324,11 @@ Discord に進捗がリアルタイム通知されます。書き込みは任意
                 for (const p of plan.attachment_paths) {
                     finalPrompt += `- ${p}\n`;
                 }
+            }
+
+            // ユーザーグローバルルール（~/.anticrow/ANTICROW.md）を注入
+            if (this.userGlobalRules) {
+                finalPrompt += `\n\n## ユーザー設定\n以下はユーザーが設定したグローバルルールです。出力のスタイルや口調に反映してください。\n\n${this.userGlobalRules}`;
             }
 
             // typing indicator 開始（実行中に「入力中...」を表示）
@@ -289,21 +405,13 @@ Discord に進捗がリアルタイム通知されます。書き込みは任意
             logInfo(`Executor: plan ${plan.plan_id} completed successfully`);
         } catch (err) {
             this.running = false;
-            const durationMs = Date.now() - jobStartTime;
-            const errMsg = err instanceof Error ? err.message : String(err);
 
             // 進捗ファイルクリーンアップ（エラー時も確実に削除）
             if (progressPath) { try { await this.fileIpc.cleanupProgress(progressPath); } catch (e) { logDebug(`Executor: progress cleanup failed: ${e}`); } }
 
-            // エラー通知
-            const errorTemplate = plan.discord_templates.run_error || '❌ 実行失敗';
-            logError(`Executor: plan ${plan.plan_id} failed — notifying channel ${notifyChannel}`, err);
-            await this.safeNotify(notifyChannel, `${errorTemplate}\n\`\`\`\n${errMsg}\n\`\`\``);
-
-            // 実行履歴を記録
-            this.recordExecution(plan, false, durationMs, errMsg);
-
             logError(`Executor: plan ${plan.plan_id} failed`, err);
+            // processQueue のリトライループに制御を渡す
+            throw err;
         }
     }
 
@@ -359,6 +467,23 @@ Discord に進捗がリアルタイム通知されます。書き込みは任意
     /** キュー内のジョブ数 */
     queueLength(): number {
         return this.queue.length;
+    }
+
+    /** キュー情報を取得（/queue コマンド用） */
+    getQueueInfo(): { current: { plan: Plan; startTime: number } | null; pending: Plan[] } {
+        return {
+            current: this.currentJob ? { plan: this.currentJob.plan, startTime: this.currentJobStartTime } : null,
+            pending: this.queue.map(j => j.plan),
+        };
+    }
+
+    /** キューからジョブを削除（plan_id 指定） */
+    cancelJob(planId: string): boolean {
+        const idx = this.queue.findIndex(j => j.plan.plan_id === planId);
+        if (idx === -1) { return false; }
+        this.queue.splice(idx, 1);
+        logInfo(`Executor: cancelled queued job for plan ${planId}`);
+        return true;
     }
 
     // -----------------------------------------------------------------------

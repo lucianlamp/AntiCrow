@@ -193,9 +193,12 @@ export class CdpConnection {
         }
 
         const result = await this.send('Runtime.evaluate', params) as {
-            result?: { value?: unknown; description?: string };
+            result?: { type?: string; value?: unknown; description?: string; subtype?: string; className?: string };
             exceptionDetails?: unknown;
         };
+
+        // デバッグ: CDP 生レスポンスをログ出力
+        logDebug(`CDP evaluate raw: type=${result?.result?.type}, subtype=${result?.result?.subtype}, hasValue=${result?.result?.value !== undefined}, keys=${result ? Object.keys(result).join(',') : 'null'}`);
 
         if (result?.exceptionDetails) {
             throw new CdpCommandError(
@@ -203,6 +206,14 @@ export class CdpConnection {
                 'Runtime.evaluate',
             );
         }
+
+        // result.result が存在しない or value が取得できない場合の警告
+        if (!result?.result) {
+            logWarn(`CDP evaluate: result.result is missing. raw=${JSON.stringify(result)}`);
+        } else if (result.result.value === undefined && result.result.type === 'object') {
+            logWarn(`CDP evaluate: object returned but value is undefined (returnByValue may not have worked). type=${result.result.type}, subtype=${result.result.subtype || 'none'}, description=${result.result.description || 'none'}`);
+        }
+
         return result?.result?.value;
     }
 

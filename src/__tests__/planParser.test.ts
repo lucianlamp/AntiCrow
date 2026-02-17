@@ -138,6 +138,51 @@ describe('parseSkillJson', () => {
         expect(result!.discord_templates.run_error).toBe('❌ Failed');
         expect(result!.attachment_paths).toEqual(['/tmp/file.txt']);
     });
+
+    // ----- ack null/省略/空文字対応テスト -----
+
+    it('should parse when ack is null', () => {
+        const raw = JSON.stringify({
+            plan_id: 'ack-null-001',
+            timezone: 'Asia/Tokyo',
+            cron: 'now',
+            prompt: 'test null ack',
+            requires_confirmation: false,
+            discord_templates: { ack: null, run_error: '❌ Error' },
+        });
+        const result = parseSkillJson(raw);
+        expect(result).not.toBeNull();
+        expect(result!.discord_templates.ack).toBeUndefined();
+        expect(result!.discord_templates.run_error).toBe('❌ Error');
+    });
+
+    it('should parse when ack is omitted', () => {
+        const raw = JSON.stringify({
+            plan_id: 'ack-omit-001',
+            timezone: 'Asia/Tokyo',
+            cron: 'now',
+            prompt: 'test omitted ack',
+            requires_confirmation: false,
+            discord_templates: { run_start: '🔨 Starting' },
+        });
+        const result = parseSkillJson(raw);
+        expect(result).not.toBeNull();
+        expect(result!.discord_templates.ack).toBeUndefined();
+    });
+
+    it('should parse when ack is empty string', () => {
+        const raw = JSON.stringify({
+            plan_id: 'ack-empty-001',
+            timezone: 'Asia/Tokyo',
+            cron: 'now',
+            prompt: 'test empty ack',
+            requires_confirmation: false,
+            discord_templates: { ack: '' },
+        });
+        const result = parseSkillJson(raw);
+        expect(result).not.toBeNull();
+        expect(result!.discord_templates.ack).toBe('');
+    });
 });
 
 describe('buildPlan', () => {

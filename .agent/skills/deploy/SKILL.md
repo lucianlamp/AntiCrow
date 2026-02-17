@@ -31,7 +31,7 @@ npm run bundle
 ### 3. VSIX パッケージ作成
 
 ```
-npx -y @vscode/vsce package --no-dependencies --allow-missing-repository --skip-license
+npx -y @vscode/vsce package --no-dependencies --allow-missing-repository --skip-license --baseContentUrl "." --baseImagesUrl "."
 ```
 
 `--no-dependencies` を付けることで、`npm install` を内部で実行しません（バンドル済みのため不要）。

@@ -67,6 +67,24 @@ export async function downloadAttachments(
         }
 
         try {
+            // Content-Length 事前チェック（HEAD リクエスト）
+            try {
+                const headResp = await fetch(attachment.url, { method: 'HEAD' });
+                if (headResp.ok) {
+                    const contentLength = parseInt(headResp.headers.get('content-length') || '0', 10);
+                    if (contentLength > MAX_FILE_SIZE) {
+                        logWarn(`attachmentDownloader: skipping ${attachment.name} — Content-Length ${(contentLength / 1024 / 1024).toFixed(1)}MB exceeds ${MAX_FILE_SIZE / 1024 / 1024}MB limit`);
+                        continue;
+                    }
+                    if (totalSize + contentLength > MAX_TOTAL_SIZE) {
+                        logWarn(`attachmentDownloader: skipping ${attachment.name} — total size would exceed ${MAX_TOTAL_SIZE / 1024 / 1024}MB limit`);
+                        continue;
+                    }
+                }
+            } catch (headErr) {
+                logDebug(`attachmentDownloader: HEAD request failed for ${attachment.name}, proceeding with GET: ${headErr}`);
+            }
+
             const response = await fetch(attachment.url);
             if (!response.ok) {
                 logWarn(`attachmentDownloader: failed to fetch ${attachment.name}: ${response.status}`);

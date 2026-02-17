@@ -1,0 +1,31 @@
+
+[1m[46m RUN [49m[22m [36mv4.0.18 [39m[90mC:/Users/ysk41/dev/anti-crow[39m
+
+ [32m笨・[39m src/__tests__/errors.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+ [32m笨・[39m src/__tests__/logger.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [31m笶ｯ[39m src/__tests__/promptBuilder.test.ts [2m([22m[2m0 test[22m[2m)[22m
+ [32m笨・[39m src/__tests__/discordFormatter.test.ts [2m([22m[2m15 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+ [32m笨・[39m src/__tests__/planParser.test.ts [2m([22m[2m15 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+ [32m笨・[39m src/__tests__/discordUtils.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+
+竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ Failed Suites 1 竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ
+
+ FAIL  src/__tests__/promptBuilder.test.ts [ src/__tests__/promptBuilder.test.ts ]
+Error: Cannot find package 'vscode' imported from 'C:/Users/ysk41/dev/anti-crow/src/logger.ts'
+ 笶ｯ src/logger.ts:5:1
+      3| // -------------------------------------------------------------------窶ｦ
+      4| 
+      5| import * as vscode from 'vscode';
+       | ^
+      6| 
+      7| /** 繝ｭ繧ｰ繝ｬ繝吶Ν螳夂ｾｩ・域焚蛟､縺悟､ｧ縺阪＞縺ｻ縺ｩ驥崎ｦ・ｼ・*/
+ 笶ｯ src/promptBuilder.ts:9:1
+
+竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ[1/1]竡ｯ
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m5 passed[39m[22m[90m (6)[39m
+[2m      Tests [22m [1m[32m47 passed[39m[22m[90m (47)[39m
+[2m   Start at [22m 21:35:28
+[2m   Duration [22m 606ms[2m (transform 795ms, setup 0ms, import 866ms, tests 45ms, environment 2ms)[22m
+

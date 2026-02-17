@@ -59,13 +59,13 @@
         },
         "antiCrow.timezone": {
           "type": "string",
-          "default": "Asia/Tokyo",
-          "description": "CRON実行のタイムゾーン"
+          "default": "",
+          "description": "CRON実行のタイムゾーン（IANA形式）。空の場合はOSの設定から自動取得します。"
         },
-        "antiCrow.cdpResponseTimeoutMs": {
+        "antiCrow.responseTimeoutMs": {
           "type": "number",
-          "default": 300000,
-          "description": "Antigravity応答待ちタイムアウト(ms)。デフォルト5分。"
+          "default": 1800000,
+          "description": "最後の進捗更新からのアイドルタイムアウト（ミリ秒）。進捗報告がある限りリセットされます。デフォルト30分。"
         },
         "antiCrow.autoStart": {
           "type": "boolean",
@@ -76,14 +76,6 @@
           "type": "string",
           "default": "",
           "description": "Discord Application の Client ID（スラッシュコマンド登録に必要）。Developer Portal で確認できます。"
-        },
-        "antiCrow.workspacePaths": {
-          "type": "object",
-          "default": {},
-          "description": "ワークスペース名→フォルダパスの対応表。例: { \"dev\": \"C:\\\\Users\\\\user\\\\dev\" }。Discord カテゴリーからメッセージ送信時、ワークスペースが開いていなければ自動起動します。",
-          "additionalProperties": {
-            "type": "string"
-          }
         },
         "antiCrow.categoryArchiveDays": {
           "type": "number",
@@ -98,10 +90,75 @@
           "default": [],
           "description": "メッセージ処理を許可する Discord ユーザーID一覧。空の場合は全ユーザーを許可。Developer Mode でユーザーIDをコピーできます。"
         },
-        "antiCrow.maxMessageLength": {
+        "antiCrow.autoClickRules": {
+          "type": "array",
+          "default": [
+            {
+              "name": "continue-warning",
+              "text": "Continue",
+              "tag": "button",
+              "inCascade": true
+            },
+            {
+              "name": "allow-tool",
+              "text": "Allow",
+              "tag": "button",
+              "inCascade": true
+            },
+            {
+              "name": "retry-error",
+              "text": "Retry",
+              "tag": "button",
+              "inCascade": true
+            },
+            {
+              "name": "expand-all",
+              "selector": "[aria-label=\"Expand All\"]",
+              "tag": "button",
+              "inCascade": false
+            },
+            {
+              "name": "expand-step-input",
+              "text": "Expand",
+              "tag": "button",
+              "inCascade": true
+            }
+          ],
+          "markdownDescription": "タスク実行中に自動クリックするボタンのルール一覧。確認ダイアログ（Continue, Allow 等）を自動的に承認します。\n\n各ルールのプロパティ:\n- `name`: ルール名（識別用）\n- `text`: ボタンのテキスト（部分一致）\n- `selector`: CSS セレクタ（高度な指定用）\n- `tag`: HTML タグ名（例: `button`）\n- `inCascade`: 実行パネル内に限定するか（デフォルト: true）",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "ルール名（識別用）"
+              },
+              "text": {
+                "type": "string",
+                "description": "ボタンのテキスト（部分一致）"
+              },
+              "selector": {
+                "type": "string",
+                "description": "CSS セレクタ（高度な指定用）"
+              },
+              "tag": {
+                "type": "string",
+                "description": "HTML タグ名（例: button）"
+              },
+              "inCascade": {
+                "type": "boolean",
+                "description": "実行パネル内のボタンに限定するか",
+                "default": true
+              }
+            },
+            "required": [
+              "name"
+            ]
+          }
+        },
+        "antiCrow.maxRetries": {
           "type": "number",
-          "default": 6000,
-          "description": "処理するメッセージの最大文字数。超過メッセージは拒否されます。0で無制限。"
+          "default": 1,
+          "description": "タイムアウトやCDP切断時の自動リトライ回数（0でリトライ無効）。"
         }
       }
     }
@@ -111,7 +168,7 @@
     "watch": "tsc -watch -p ./",
     "typecheck": "tsc -p ./ --noEmit",
     "bundle": "node ./esbuild.js",
-    "package": "npx -y @vscode/vsce package --no-dependencies --allow-missing-repository --skip-license",
+    "package": "npx -y @vscode/vsce package --no-dependencies --allow-missing-repository --skip-license --baseContentUrl \".\" --baseImagesUrl \".\"",
     "deploy": "npm run compile && npm run bundle && npm run package && antigravity --install-extension anti-crow-0.1.0.vsix --force",
     "test": "vitest run",
     "vscode:prepublish": "npm run typecheck && npm run bundle"

@@ -51,87 +51,131 @@ export class FileIpc {
      *   - 最後の進捗報告（または初回送信）から timeoutMs 経過で初めてタイムアウト
      */
     async waitForResponse(responsePath: string, timeoutMs: number): Promise<string> {
-        const pollInterval = 500;
         let lastActivityTime = Date.now();
 
         // 進捗ファイルのパスを responsePath から導出
-        // 例: req_xxx_response.json → req_xxx_progress.json
         const progressPath = responsePath.replace(/_response\.json$/, '_progress.json');
         let lastProgressMtime = 0;
+        const dir = path.dirname(responsePath);
+        const filename = path.basename(responsePath);
+        const progressFilename = path.basename(progressPath);
 
-        logInfo(`FileIpc: waiting for response at ${responsePath} (timeout=${timeoutMs}ms, progress-aware)`);
+        logInfo(`FileIpc: waiting for response at ${responsePath} (timeout=${timeoutMs}ms, fs.watch + polling fallback)`);
 
-        while (Date.now() - lastActivityTime < timeoutMs) {
-            // 1. 進捗ファイルの mtime をチェックしてタイムアウトをリセット
-            try {
-                const progressStat = await fs.promises.stat(progressPath);
-                if (progressStat.mtimeMs > lastProgressMtime) {
-                    if (lastProgressMtime > 0) {
-                        logDebug(`FileIpc: progress file updated, resetting timeout (mtime: ${new Date(progressStat.mtimeMs).toISOString()})`);
-                    }
-                    lastProgressMtime = progressStat.mtimeMs;
-                    lastActivityTime = Date.now();
-                }
-            } catch {
-                // 進捗ファイルがまだ存在しない → 従来通りのタイムアウト動作
-            }
+        return new Promise<string>((resolve, reject) => {
+            let settled = false;
+            let watcher: fs.FSWatcher | null = null;
+            let pollTimer: ReturnType<typeof setInterval> | null = null;
+            let timeoutTimer: ReturnType<typeof setInterval> | null = null;
 
-            // 2. レスポンスファイルの存在をチェック
-            try {
-                await fs.promises.access(responsePath, fs.constants.F_OK);
-                // ファイルが存在する → 少し待ってから読み取り（書き込み完了を待つ）
-                await this.sleep(500);
+            const cleanup = () => {
+                if (watcher) { try { watcher.close(); } catch { /* ignore */ } watcher = null; }
+                if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+                if (timeoutTimer) { clearInterval(timeoutTimer); timeoutTimer = null; }
+            };
 
-                const content = await fs.promises.readFile(responsePath, 'utf-8');
-
-                // セキュリティ: レスポンスサイズ制限（5MB）
-                const MAX_RESPONSE_SIZE = 5 * 1024 * 1024;
-                if (content.length > MAX_RESPONSE_SIZE) {
-                    logError(`FileIpc: response file too large (${content.length} bytes > ${MAX_RESPONSE_SIZE}). Truncating.`);
-                    // クリーンアップして切り詰め版を返す
-                    try { await fs.promises.unlink(responsePath); } catch (e) { logDebug(`FileIpc: failed to unlink truncated response: ${e}`); }
-                    return content.substring(0, MAX_RESPONSE_SIZE);
-                }
-
-                // 空ファイルの場合はまだ書き込み中の可能性
-                if (content.trim().length === 0) {
-                    logDebug('FileIpc: file exists but is empty, waiting...');
-                    await this.sleep(1_000);
-                    continue;
-                }
-
-                logInfo(`FileIpc: response received (${content.length} chars)`);
-
-                // クリーンアップ
+            const tryReadResponse = async (): Promise<boolean> => {
                 try {
-                    await fs.promises.unlink(responsePath);
-                    logDebug('FileIpc: response file cleaned up');
-                } catch {
-                    logWarn('FileIpc: failed to clean up response file');
-                }
+                    await fs.promises.access(responsePath, fs.constants.F_OK);
+                    // ファイルが存在する → 少し待ってから読み取り（書き込み完了を待つ）
+                    await this.sleep(500);
 
-                return content;
-            } catch {
-                // ファイルがまだ存在しない
+                    const content = await fs.promises.readFile(responsePath, 'utf-8');
+
+                    // セキュリティ: レスポンスサイズ制限（5MB）
+                    const MAX_RESPONSE_SIZE = 5 * 1024 * 1024;
+                    if (content.length > MAX_RESPONSE_SIZE) {
+                        logError(`FileIpc: response file too large (${content.length} bytes > ${MAX_RESPONSE_SIZE}). Truncating.`);
+                        try { await fs.promises.unlink(responsePath); } catch (e) { logDebug(`FileIpc: failed to unlink truncated response: ${e}`); }
+                        if (!settled) { settled = true; cleanup(); resolve(content.substring(0, MAX_RESPONSE_SIZE)); }
+                        return true;
+                    }
+
+                    // 空ファイルの場合はまだ書き込み中の可能性
+                    if (content.trim().length === 0) {
+                        logDebug('FileIpc: file exists but is empty, waiting...');
+                        return false;
+                    }
+
+                    logInfo(`FileIpc: response received (${content.length} chars)`);
+
+                    // クリーンアップ
+                    try {
+                        await fs.promises.unlink(responsePath);
+                        logDebug('FileIpc: response file cleaned up');
+                    } catch {
+                        logWarn('FileIpc: failed to clean up response file');
+                    }
+
+                    if (!settled) { settled = true; cleanup(); resolve(content); }
+                    return true;
+                } catch {
+                    // ファイルがまだ存在しない
+                    return false;
+                }
+            };
+
+            const checkProgress = async () => {
+                try {
+                    const progressStat = await fs.promises.stat(progressPath);
+                    if (progressStat.mtimeMs > lastProgressMtime) {
+                        if (lastProgressMtime > 0) {
+                            logDebug(`FileIpc: progress file updated, resetting timeout (mtime: ${new Date(progressStat.mtimeMs).toISOString()})`);
+                        }
+                        lastProgressMtime = progressStat.mtimeMs;
+                        lastActivityTime = Date.now();
+                    }
+                } catch {
+                    // 進捗ファイルがまだ存在しない
+                }
+            };
+
+            // --- fs.watch でディレクトリを監視 ---
+            try {
+                watcher = fs.watch(dir, async (event, changedFile) => {
+                    if (settled) { return; }
+                    if (changedFile === filename) {
+                        await tryReadResponse();
+                    } else if (changedFile === progressFilename) {
+                        await checkProgress();
+                    }
+                });
+                watcher.on('error', (err) => {
+                    logWarn(`FileIpc: fs.watch error, falling back to polling only: ${err.message}`);
+                    if (watcher) { try { watcher.close(); } catch { /* ignore */ } watcher = null; }
+                });
+                logDebug('FileIpc: fs.watch started successfully');
+            } catch (e) {
+                logWarn(`FileIpc: fs.watch failed to start, using polling only: ${e instanceof Error ? e.message : e}`);
             }
 
-            await this.sleep(pollInterval);
-        }
+            // --- フォールバック: ポーリング（1秒間隔） ---
+            pollTimer = setInterval(async () => {
+                if (settled) { return; }
+                await checkProgress();
+                await tryReadResponse();
+            }, 1_000);
 
-        // タイムアウト — 経過時間を計算してログに含める
-        const elapsedSec = Math.round((Date.now() - lastActivityTime) / 1000);
-        const totalElapsed = lastProgressMtime > 0
-            ? `last progress ${Math.round((Date.now() - lastProgressMtime) / 1000)}s ago`
-            : 'no progress received';
+            // --- タイムアウト監視（1秒間隔でチェック） ---
+            timeoutTimer = setInterval(() => {
+                if (settled) { return; }
+                if (Date.now() - lastActivityTime >= timeoutMs) {
+                    const totalElapsed = lastProgressMtime > 0
+                        ? `last progress ${Math.round((Date.now() - lastProgressMtime) / 1000)}s ago`
+                        : 'no progress received';
+                    settled = true;
+                    cleanup();
 
-        // タイムアウトしたレスポンスファイルがあれば削除
-        try {
-            await fs.promises.access(responsePath, fs.constants.F_OK);
-            await fs.promises.unlink(responsePath);
-            logDebug('FileIpc: cleaned up timed-out response file');
-        } catch { /* file doesn't exist, OK */ }
+                    // タイムアウトしたレスポンスファイルがあれば削除
+                    fs.promises.access(responsePath, fs.constants.F_OK)
+                        .then(() => fs.promises.unlink(responsePath))
+                        .then(() => logDebug('FileIpc: cleaned up timed-out response file'))
+                        .catch(() => { /* file doesn't exist, OK */ });
 
-        throw new Error(`FileIpc: response timeout (${timeoutMs}ms, ${totalElapsed}) — file never appeared at ${responsePath}`);
+                    reject(new Error(`FileIpc: response timeout (${timeoutMs}ms, ${totalElapsed}) — file never appeared at ${responsePath}`));
+                }
+            }, 1_000);
+        });
     }
 
     /** 古い IPC ファイルをクリーンアップ（5分以上前のファイル） */
@@ -173,6 +217,11 @@ export class FileIpc {
         try {
             const parsed = JSON.parse(trimmed);
             if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+                // 計画JSON形式: discord_templates.ack を最優先で抽出
+                if (parsed.discord_templates && typeof parsed.discord_templates === 'object' && typeof parsed.discord_templates.ack === 'string') {
+                    return parsed.discord_templates.ack;
+                }
+
                 // 既知のキーを優先順に試行（summary を最優先）
                 const knownKeys = ['summary', 'response', 'result', 'reply', 'content', 'text', 'output', 'message'];
                 let bestValue: string | null = null;

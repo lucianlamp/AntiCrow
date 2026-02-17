@@ -5,9 +5,9 @@
 //   1. Bridge の起動（モジュール初期化、Bot ログイン）
 //   2. Bridge の停止（クリーンアップ）
 //   3. Bot オーナー昇格
-//   4. カテゴリーアーカイブ
-//   5. StatusBar 更新
-//   6. 設定バリデーション
+//   4. StatusBar 更新
+//   5. 設定バリデーション
+// カテゴリーアーカイブ → categoryArchiver.ts
 // ---------------------------------------------------------------------------
 
 import * as vscode from 'vscode';
@@ -20,6 +20,7 @@ import { PlanStore } from './planStore';
 import { Executor } from './executor';
 import { CdpPool } from './cdpPool';
 import { ExecutorPool } from './executorPool';
+import { TemplateStore } from './templateStore';
 import { ChannelIntent, Plan } from './types';
 import { logInfo, logError, logWarn, logDebug } from './logger';
 import { registerGuildCommands } from './slashCommands';
@@ -28,122 +29,15 @@ import { cleanupOldAttachments } from './attachmentDownloader';
 import { acquireLock, releaseLock } from './botLock';
 import { BridgeContext } from './bridgeContext';
 import { enqueueMessage } from './messageHandler';
-import { handleSlashCommand, handleButtonInteraction } from './slashHandler';
+import { handleSlashCommand, handleButtonInteraction, handleAutocomplete, handleModalSubmit } from './slashHandler';
 import { getConfig, getResponseTimeout, getTimezone, getArchiveDays, getWorkspacePaths, getClientId, getCdpPorts } from './configHelper';
-import { snowflakeToTimestamp } from './discordUtils';
-
-// ---------------------------------------------------------------------------
-// ヘルパー
-// ---------------------------------------------------------------------------
-
-// snowflakeToTimestamp は discordUtils.ts からインポート
-
-/**
- * 指定日数以上使用されていないワークスペースカテゴリーを削除する。
- * - カテゴリー内チャンネルの lastMessageId から最終使用日時を判定
- * - アクティブなスケジュール（PlanStore）があるチャンネルを含むカテゴリーは保護
- * @returns 削除したカテゴリー数
- */
-async function archiveOldCategories(
-    guildId: string,
-    botInstance: DiscordBot,
-    archiveDays: number,
-    planStoreInstance?: PlanStore,
-): Promise<number> {
-    const wsCategories = botInstance.discoverWorkspaceCategories(guildId);
-    if (wsCategories.size === 0) { return 0; }
-
-    const guild = botInstance.getFirstGuild();
-    if (!guild) { return 0; }
-
-    const thresholdMs = Date.now() - archiveDays * 24 * 60 * 60 * 1000;
-    let archivedCount = 0;
-
-    // アクティブな plan の channel ID を集める
-    const activeChannelIds = new Set<string>();
-    if (planStoreInstance) {
-        const allPlans = planStoreInstance.getAll();
-        for (const plan of allPlans) {
-            if (plan.channel_id) {
-                activeChannelIds.add(plan.channel_id);
-            }
-        }
-    }
-
-    for (const [wsName, categoryId] of wsCategories) {
-        const category = guild.channels.cache.get(categoryId);
-        if (!category) { continue; }
-
-        // カテゴリー内の子チャンネルを取得
-        const children = guild.channels.cache.filter(c => c.parentId === categoryId);
-
-        // アクティブな plan チャンネルがあればスキップ
-        let hasActivePlan = false;
-        for (const [childId] of children) {
-            if (activeChannelIds.has(childId)) {
-                hasActivePlan = true;
-                break;
-            }
-        }
-        if (hasActivePlan) {
-            logDebug(`archiveOldCategories: skipping "${wsName}" — has active plan channels`);
-            continue;
-        }
-
-        // 最終メッセージ日時を確認
-        let latestTimestamp = 0;
-        for (const [, child] of children) {
-            if ('lastMessageId' in child && child.lastMessageId) {
-                const ts = snowflakeToTimestamp(child.lastMessageId);
-                if (ts > latestTimestamp) { latestTimestamp = ts; }
-            }
-        }
-
-        // メッセージがない場合はカテゴリー作成日時を使用
-        if (latestTimestamp === 0 && category.createdTimestamp) {
-            latestTimestamp = category.createdTimestamp;
-        }
-
-        // 閾値より古い場合は削除
-        if (latestTimestamp > 0 && latestTimestamp < thresholdMs) {
-            const daysAgo = Math.floor((Date.now() - latestTimestamp) / (24 * 60 * 60 * 1000));
-            logInfo(`archiveOldCategories: deleting "${wsName}" (last active ${daysAgo} days ago)`);
-
-            // 子チャンネルを先に削除
-            for (const [, child] of children) {
-                try {
-                    if ('delete' in child && typeof child.delete === 'function') {
-                        await child.delete();
-                    }
-                } catch (e) {
-                    logWarn(`archiveOldCategories: failed to delete channel ${child.id}: ${e instanceof Error ? e.message : e}`);
-                }
-            }
-
-            // カテゴリーを削除
-            try {
-                if ('delete' in category && typeof category.delete === 'function') {
-                    await category.delete();
-                }
-                archivedCount++;
-            } catch (e) {
-                logWarn(`archiveOldCategories: failed to delete category "${wsName}": ${e instanceof Error ? e.message : e}`);
-            }
-        }
-    }
-
-    return archivedCount;
-}
+import { archiveOldCategories } from './categoryArchiver';
 
 // ---------------------------------------------------------------------------
 // 設定バリデーション
 // ---------------------------------------------------------------------------
 
-/**
- * 設定値のバリデーションを行い、問題があれば警告を表示する。
- */
 function validateConfig(): void {
-    // workspacePaths のパス存在チェック
     const wsPaths = getWorkspacePaths();
     const fs = require('fs') as typeof import('fs');
     for (const [wsName, wsPath] of Object.entries(wsPaths)) {
@@ -187,7 +81,6 @@ async function promoteToBotOwner(
             try {
                 const instances = await CdpBridge.discoverInstances(getCdpPorts(context.globalStorageUri.fsPath));
                 for (const inst of instances) {
-                    // 初期画面（ワークスペース未選択）はタイトルにセパレータが無い → スキップ
                     const hasWorkspace = inst.title.includes(' \u2014 ') || inst.title.includes(' - ');
                     if (!hasWorkspace) {
                         logDebug(`Bridge: skipping category creation for initial screen: "${inst.title}"`);
@@ -200,7 +93,7 @@ async function promoteToBotOwner(
                 }
                 logInfo(`Bridge: workspace categories ensured for ${instances.length} instance(s)`);
 
-                // ワークスペースパス自動保存: 現在のワークスペースのパスを workspacePaths に保存
+                // ワークスペースパス自動保存
                 const currentWsFolders = vscode.workspace.workspaceFolders;
                 if (currentWsFolders && currentWsFolders.length > 0 && ctx.cdp) {
                     const wsName = ctx.cdp.getActiveWorkspaceName();
@@ -218,7 +111,7 @@ async function promoteToBotOwner(
                 logWarn(`Bridge: workspace category auto-creation failed: ${e instanceof Error ? e.message : e}`);
             }
 
-            // カテゴリーアーカイブ処理
+            // カテゴリーアーカイブ処理（categoryArchiver.ts に委譲）
             const archiveDays = getArchiveDays();
             if (archiveDays > 0) {
                 try {
@@ -254,6 +147,12 @@ async function promoteToBotOwner(
     ctx.bot.onButton(async (interaction: ButtonInteraction) => {
         await handleButtonInteraction(ctx, interaction);
     });
+    ctx.bot.onAutocomplete(async (interaction) => {
+        await handleAutocomplete(ctx, interaction);
+    });
+    ctx.bot.onModalSubmit(async (interaction) => {
+        await handleModalSubmit(ctx, interaction);
+    });
 
     logInfo('Bridge: Bot started (this workspace is the bot owner)');
 
@@ -261,14 +160,13 @@ async function promoteToBotOwner(
     // 定期 CDP ターゲットスキャン: 新ワークスペースのカテゴリ自動生成
     // -----------------------------------------------------------------
     const knownWorkspaces = new Set<string>();
-    // 起動時に検出済みのワークスペースを記録
     try {
         const initInstances = await CdpBridge.discoverInstances(getCdpPorts(context.globalStorageUri.fsPath));
         for (const inst of initInstances) {
             const wsName = CdpBridge.extractWorkspaceName(inst.title);
             if (wsName) { knownWorkspaces.add(wsName); }
         }
-    } catch (e) { logDebug(`archiveOldCategories: failed to process category: ${e}`); }
+    } catch (e) { logDebug(`promoteToBotOwner: initial instance scan failed: ${e}`); }
 
     ctx.categoryWatchTimer = setInterval(async () => {
         if (!ctx.bot || !ctx.bot.isReady()) { return; }
@@ -283,15 +181,13 @@ async function promoteToBotOwner(
                 const wsName = CdpBridge.extractWorkspaceName(inst.title);
                 if (!wsName || knownWorkspaces.has(wsName)) { continue; }
 
-                // 新しいワークスペースを検出
                 knownWorkspaces.add(wsName);
                 logInfo(`Bridge: new workspace detected: "${wsName}" — creating category...`);
                 await ctx.bot.ensureWorkspaceStructure(guild.id, wsName);
 
-                // ワークスペースパス自動保存
                 const wsPaths = getWorkspacePaths();
                 if (!wsPaths[wsName]) {
-                    logDebug(`Bridge: workspace "${wsName}" path not yet known (will be saved when that window\'s extension starts)`);
+                    logDebug(`Bridge: workspace "${wsName}" path not yet known (will be saved when that window's extension starts)`);
                 }
             }
         } catch (e) {
@@ -308,10 +204,10 @@ export async function startBridge(
     ctx: BridgeContext,
     context: vscode.ExtensionContext,
 ): Promise<void> {
-    // 設定バリデーション
     validateConfig();
 
-    // トークン取得（SecretStorage から）
+    ctx.extensionPath = context.extensionPath;
+
     const token = await context.secrets.get('discord-bot-token');
     if (!token) {
         throw new Error(
@@ -319,11 +215,9 @@ export async function startBridge(
         );
     }
 
-    // チェックボックスを同期（既存トークンがある場合）
     if (!getConfig().get<boolean>('botToken')) {
         await getConfig().update('botToken', true, vscode.ConfigurationTarget.Global);
     }
-
 
     const timezone = getTimezone();
     const responseTimeout = getResponseTimeout();
@@ -339,11 +233,11 @@ export async function startBridge(
     await ctx.fileIpc.cleanupOldFiles();
     cleanupOldAttachments(storageUri.fsPath);
 
-    // CdpBridge 初期化（動的ポート読み取り）
+    // CdpBridge 初期化
     const cdpPorts = getCdpPorts(storageUri.fsPath);
     ctx.cdp = new CdpBridge(responseTimeout, cdpPorts);
 
-    // Executor 初期化（Discord 通知関数は後で差し替え）
+    // Executor 初期化
     ctx.executor = new Executor(ctx.cdp, ctx.fileIpc, ctx.planStore, responseTimeout, async (channelId, msg, color) => {
         if (ctx.bot) {
             await ctx.bot.sendToChannel(channelId, msg, color);
@@ -352,9 +246,9 @@ export async function startBridge(
         if (ctx.bot) {
             await ctx.bot.sendTypingTo(channelId);
         }
-    });
+    }, context.extensionPath);
 
-    // CdpPool 初期化（ワークスペース並列処理対応）
+    // CdpPool 初期化
     ctx.cdpPool = new CdpPool(cdpPorts, storageUri.fsPath);
 
     // ExecutorPool 初期化
@@ -373,11 +267,14 @@ export async function startBridge(
                 await ctx.bot.sendTypingTo(channelId);
             }
         },
+        context.extensionPath,
     );
+
+    // TemplateStore 初期化
+    ctx.templateStore = new TemplateStore(storageUri.fsPath);
 
     // Scheduler 初期化 + 計画復元
     ctx.scheduler = new Scheduler((plan: Plan) => {
-        // ExecutorPool があればワークスペース指定で enqueue、なければ従来の executor
         if (ctx.executorPool) {
             ctx.executorPool.enqueueScheduled(plan.workspace_name || '', plan);
         } else {
@@ -387,7 +284,7 @@ export async function startBridge(
     const restored = ctx.scheduler.restoreAll(ctx.planStore.getAll());
     logInfo(`Restored ${restored} scheduled plans`);
 
-    // CDP 初期接続（アクティブワークスペースの検出）
+    // CDP 初期接続
     try {
         await ctx.cdp.connect();
         logInfo(`Bridge: CDP initial connect — active workspace: "${ctx.cdp.getActiveWorkspaceName()}"`);
@@ -395,9 +292,7 @@ export async function startBridge(
         logWarn(`Bridge: CDP initial connect failed (will retry on first message): ${e instanceof Error ? e.message : e}`);
     }
 
-    // -----------------------------------------------------------------
-    // Bot 起動ロック: 最初のワークスペースだけが Bot を起動する
-    // -----------------------------------------------------------------
+    // Bot 起動ロック
     const storagePath = storageUri.fsPath;
     ctx.globalStoragePath = storagePath;
     ctx.isBotOwner = acquireLock(storagePath);
@@ -406,10 +301,9 @@ export async function startBridge(
         await promoteToBotOwner(ctx, context);
     } else {
         logInfo('Bridge: Bot startup skipped (another workspace owns the bot) — running in standby mode');
-        // ロック監視: Bot オーナーが終了したら自動昇格
 
         ctx.lockWatchTimer = setInterval(async () => {
-            if (ctx.isBotOwner) { return; } // 既に昇格済み
+            if (ctx.isBotOwner) { return; }
             const acquired = acquireLock(ctx.globalStoragePath);
             if (acquired) {
                 logInfo('Bridge: lock became available — auto-promoting to bot owner');
@@ -427,7 +321,17 @@ export async function startBridge(
         }, 5_000);
     }
 
-    // StatusBar 更新
+    // 設定変更リスナー
+    context.subscriptions.push(
+        vscode.workspace.onDidChangeConfiguration(e => {
+            if (e.affectsConfiguration('antiCrow.autoClickRules')) {
+                logInfo('Bridge: autoClickRules changed — reloading...');
+                ctx.executor?.loadAutoClickRulesFromConfig();
+                ctx.executorPool?.reloadAutoClickRules();
+            }
+        })
+    );
+
     updateStatusBar(ctx);
 }
 
@@ -436,19 +340,15 @@ export async function startBridge(
 // ---------------------------------------------------------------------------
 
 export async function stopBridge(ctx: BridgeContext): Promise<void> {
-
-    // ロック監視タイマーをクリーンアップ
     if (ctx.lockWatchTimer) {
         clearInterval(ctx.lockWatchTimer);
         ctx.lockWatchTimer = null;
     }
 
-    // カテゴリ監視タイマーをクリーンアップ
     if (ctx.categoryWatchTimer) {
         clearInterval(ctx.categoryWatchTimer);
         ctx.categoryWatchTimer = null;
     }
-
 
     ctx.scheduler?.stopAll();
     ctx.cdpPool?.disconnectAll();
@@ -456,7 +356,6 @@ export async function stopBridge(ctx: BridgeContext): Promise<void> {
     ctx.executorPool?.clear();
     await ctx.bot?.stop();
 
-    // Bot オーナーならロックを解放
     if (ctx.isBotOwner && ctx.globalStoragePath) {
         releaseLock(ctx.globalStoragePath);
         ctx.isBotOwner = false;
@@ -469,12 +368,9 @@ export async function stopBridge(ctx: BridgeContext): Promise<void> {
     ctx.executor = null;
     ctx.executorPool = null;
 
-    // planStore は残す（データ保持）
-
     ctx.statusBarItem.text = '$(circle-slash) AntiCrow';
     ctx.statusBarItem.tooltip = 'AntiCrow — Stopped';
     ctx.statusBarItem.command = 'anti-crow.start';
-
 
     logInfo('Bridge stopped');
 }
@@ -483,7 +379,6 @@ export async function stopBridge(ctx: BridgeContext): Promise<void> {
 // StatusBar 更新
 // ---------------------------------------------------------------------------
 
-/** StatusBar の表示を更新 */
 export function updateStatusBar(ctx: BridgeContext): void {
     const port = ctx.cdp?.getActiveTargetPort();
     const title = ctx.cdp?.getActiveTargetTitle();

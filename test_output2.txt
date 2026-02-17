@@ -1,0 +1,55 @@
+
+> anti-crow@0.1.0 test
+> vitest run
+
+
+[1m[46m RUN [49m[22m [36mv4.0.18 [39m[90mC:/Users/ysk41/dev/anti-crow[39m
+
+ [32m笨・[39m src/__tests__/logger.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m笨・[39m src/__tests__/errors.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [31m笶ｯ[39m src/__tests__/promptBuilder.test.ts [2m([22m[2m17 tests[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 14[2mms[22m[39m
+     [32m笨・[39m should return [5m] for */5 * * * *[32m 2[2mms[22m[39m
+     [32m笨・[39m should return [10m] for */10 * * * *[32m 0[2mms[22m[39m
+     [32m笨・[39m should return [1h] for 0 * * * *[32m 0[2mms[22m[39m
+     [32m笨・[39m should return [2h] for 0 */2 * * *[32m 0[2mms[22m[39m
+     [32m笨・[39m should return [daily] for 0 0 * * *[32m 0[2mms[22m[39m
+     [32m笨・[39m should return [daily] for specific time 30 9 * * *[32m 0[2mms[22m[39m
+     [32m笨・[39m should return [weekly] for 0 0 * * 1[32m 0[2mms[22m[39m
+     [32m笨・[39m should return [monthly] for 0 0 1 * *[32m 0[2mms[22m[39m
+     [32m笨・[39m should return [cron] for unrecognized patterns[32m 0[2mms[22m[39m
+     [32m笨・[39m should return [cron] for invalid format[32m 0[2mms[22m[39m
+[31m     [31mﾃ・[31m should handle extra whitespace[39m[32m 8[2mms[22m[39m
+     [32m笨・[39m should return 0 for undefined input[32m 0[2mms[22m[39m
+     [32m笨・[39m should return 0 for empty string[32m 0[2mms[22m[39m
+     [32m笨・[39m should count number emojis[32m 0[2mms[22m[39m
+     [32m笨・[39m should count all 10 number emojis[32m 0[2mms[22m[39m
+     [32m笨・[39m should return 0 for text without number emojis[32m 0[2mms[22m[39m
+     [32m笨・[39m should count only present emojis[32m 0[2mms[22m[39m
+ [32m笨・[39m src/__tests__/discordUtils.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m笨・[39m src/__tests__/discordFormatter.test.ts [2m([22m[2m15 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+ [32m笨・[39m src/__tests__/planParser.test.ts [2m([22m[2m15 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+
+竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ Failed Tests 1 竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ
+
+ FAIL  src/__tests__/promptBuilder.test.ts > cronToPrefix > should handle extra whitespace
+AssertionError: expected '[5m]' to be '[cron]' // Object.is equality
+
+Expected: "[cron]"
+Received: "[5m]"
+
+ 笶ｯ src/__tests__/promptBuilder.test.ts:65:53
+     63| 
+     64|     it('should handle extra whitespace', () => {
+     65|         expect(cronToPrefix('  */5  *  *  *  *  ')).toBe('[cron]'); //窶ｦ
+       |                                                     ^
+     66|     });
+     67| });
+
+竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ[1/1]竡ｯ
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m5 passed[39m[22m[90m (6)[39m
+[2m      Tests [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m63 passed[39m[22m[90m (64)[39m
+[2m   Start at [22m 21:43:10
+[2m   Duration [22m 660ms[2m (transform 1.09s, setup 0ms, import 1.32s, tests 53ms, environment 1ms)[22m
+

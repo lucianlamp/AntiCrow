@@ -193,7 +193,7 @@ export function buildScheduleListEmbed(
             const toggleLabel = plan.status === 'active' ? '⏸️ 一時停止' : '▶️ 再開';
             const toggleStyle = plan.status === 'active' ? ButtonStyle.Secondary : ButtonStyle.Success;
 
-            if (components.length < 4) { // ActionRow 上限 5 - リフレッシュ1
+            if (components.length < 5) { // ActionRow 上限 5
                 const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
                     new ButtonBuilder()
                         .setCustomId(`sched_toggle_${plan.plan_id}`)
@@ -209,14 +209,22 @@ export function buildScheduleListEmbed(
         }
     }
 
-    // リフレッシュボタン
-    const refreshRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
-        new ButtonBuilder()
-            .setCustomId('sched_list')
-            .setLabel('🔄 更新')
-            .setStyle(ButtonStyle.Primary),
-    );
-    components.push(refreshRow);
+    // リフレッシュボタン: 空きがあれば独立行、なければ最後の行にマージ
+    const refreshButton = new ButtonBuilder()
+        .setCustomId('sched_list')
+        .setLabel('🔄 更新')
+        .setStyle(ButtonStyle.Primary);
+
+    if (components.length < 5) {
+        const refreshRow = new ActionRowBuilder<ButtonBuilder>().addComponents(refreshButton);
+        components.push(refreshRow);
+    } else if (components.length > 0) {
+        // 最後の ActionRow にリフレッシュボタンを追加（1行あたり最大5ボタン）
+        const lastRow = components[components.length - 1];
+        if (lastRow.components.length < 5) {
+            lastRow.addComponents(refreshButton);
+        }
+    }
 
     return { embeds: [embed], components };
 }
