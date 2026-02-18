@@ -178,7 +178,7 @@ export class FileIpc {
         });
     }
 
-    /** 古い IPC ファイルをクリーンアップ（5分以上前のファイル） */
+    /** 古い IPC ファイルをクリーンアップ（1分以上前のファイル） */
     async cleanupOldFiles(): Promise<void> {
         try {
             const files = await fs.promises.readdir(this.ipcDir);

@@ -85,19 +85,19 @@ export async function handleSlashCommand(
 ): Promise<void> {
     const commandName = interaction.commandName;
 
-    // 管理系コマンド (/status, /schedules) は専用ハンドラ
-    if (intent === 'admin') {
-        await handleManageSlash(ctx, interaction, commandName);
-        return;
-    }
-
     // -----------------------------------------------------------------
-    // セキュリティ: 許可ユーザーID制限
+    // セキュリティ: 全コマンドに対して許可ユーザーID制限を適用
     // -----------------------------------------------------------------
     const authResult = isUserAllowed(interaction.user.id);
     if (!authResult.allowed) {
         logWarn(`handleSlashCommand: user ${interaction.user.tag} (${interaction.user.id}) not allowed — ${authResult.reason}`);
         await interaction.reply({ embeds: [buildEmbed(`🔒 ${authResult.reason}`, EmbedColor.Warning)], ephemeral: true });
+        return;
+    }
+
+    // 管理系コマンド (/status, /schedules) は専用ハンドラ
+    if (intent === 'admin') {
+        await handleManageSlash(ctx, interaction, commandName);
         return;
     }
 
@@ -246,7 +246,6 @@ async function handleManageSlash(
         const isRunning = executor?.isRunning() || false;
 
         const activeTarget = cdp?.getActiveTargetTitle() || '未接続';
-        const activePort = cdp?.getActiveTargetPort();
 
         const statusMsg = [
             '📊 **AntiCrow 状態**',
@@ -510,6 +509,16 @@ export async function handleButtonInteraction(
 ): Promise<void> {
     const customId = interaction.customId;
     logInfo(`handleButtonInteraction: customId=${customId}`);
+
+    // -----------------------------------------------------------------
+    // セキュリティ: ボタン操作にも許可ユーザーID制限を適用
+    // -----------------------------------------------------------------
+    const authResult = isUserAllowed(interaction.user.id);
+    if (!authResult.allowed) {
+        logWarn(`handleButtonInteraction: user ${interaction.user.tag} (${interaction.user.id}) not allowed — ${authResult.reason}`);
+        await interaction.reply({ embeds: [buildEmbed(`🔒 ${authResult.reason}`, EmbedColor.Warning)], ephemeral: true });
+        return;
+    }
 
     // ワークスペース関連ボタンは workspaceHandler に委譲
     const handled = await handleWorkspaceButton(ctx, interaction);

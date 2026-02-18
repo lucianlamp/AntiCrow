@@ -88,7 +88,7 @@
             "type": "string"
           },
           "default": [],
-          "description": "メッセージ処理を許可する Discord ユーザーID一覧。空の場合は全ユーザーを許可。Developer Mode でユーザーIDをコピーできます。"
+          "description": "メッセージ処理を許可する Discord ユーザーID一覧。空の場合は全ユーザーを拒否（セキュリティ保護）。Developer Mode でユーザーIDをコピーできます。"
         },
         "antiCrow.autoOperation": {
           "type": "boolean",
@@ -98,7 +98,7 @@
         "antiCrow.maxRetries": {
           "type": "number",
           "default": 1,
-          "description": "タイムアウトやCDP切断時の自動リトライ回数（0でリトライ無効）。"
+          "description": "タイムアウトや接続断時の自動リトライ回数（0でリトライ無効）。"
         }
       }
     }

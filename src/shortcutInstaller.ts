@@ -24,7 +24,7 @@ export async function checkAndOfferShortcut(context: vscode.ExtensionContext): P
     if (alreadyOffered) { return; }
 
     const answer = await vscode.window.showInformationMessage(
-        'デスクトップに AntiCrow 起動用ショートカットを作成しますか？\n（CDP ポート自動選択で起動します）',
+        'デスクトップに AntiCrow 起動用ショートカットを作成しますか？\n（Antigravity を自動起動します）',
         'はい',
         'いいえ',
     );

@@ -123,7 +123,7 @@ export class CdpConnection {
             const found = await findAntigravityTarget(this.ports);
             if (!found) {
                 throw new CdpConnectionError(
-                    `No Antigravity target found. Is Antigravity running with --remote-debugging-port?`,
+                    `No Antigravity target found. Is Antigravity running?`,
                     0,
                 );
             }
