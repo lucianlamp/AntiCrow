@@ -1,9 +1,12 @@
-src/**
-.vscode/**
-.agent/**
-node_modules/**
-tsconfig.json
-esbuild.js
-vitest.config.ts
-*.map
-.gitignore
+# すべてを除外してから必要なものだけ含める
+**
+
+# 含めるファイル
+!out/extension.js
+!package.json
+!README.md
+!CHANGELOG.md
+!images/**
+!docs/**
+!scripts/**
+!.anticrow/**

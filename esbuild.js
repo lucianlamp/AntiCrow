@@ -8,6 +8,6 @@ esbuild.build({
     format: 'cjs',
     platform: 'node',
     target: 'node18',
-    sourcemap: true,
-    minify: false,
+    sourcemap: false,
+    minify: true,
 }).catch(() => process.exit(1));

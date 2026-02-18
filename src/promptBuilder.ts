@@ -186,8 +186,8 @@ export function buildConfirmMessage(plan: Plan): string {
     }
 
     // プロンプト内容（プレビュー）
-    const promptPreview = plan.prompt.length > 300
-        ? plan.prompt.substring(0, 300) + '…'
+    const promptPreview = plan.prompt.length > 2000
+        ? plan.prompt.substring(0, 2000) + '…'
         : plan.prompt;
     lines.push('');
     lines.push('**実行内容:**');
