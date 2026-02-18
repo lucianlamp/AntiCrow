@@ -285,6 +285,13 @@ export async function handleDiscordMessage(
             }
             logInfo('handleDiscordMessage: prompt sent, waiting for file response...');
 
+            // 伝達完了 → 計画生成中ステータスを送信
+            try {
+                await channel.send({ embeds: [buildEmbed('✅ 伝達完了。計画を練っています...', EmbedColor.Success)] });
+            } catch (ackErr) {
+                logDebug(`handleDiscordMessage: failed to send plan-generation ack: ${ackErr}`);
+            }
+
             // ファイル経由でレスポンスを待機
             const responseTimeout = getResponseTimeout();
             skillResponse = await fileIpc.waitForResponse(responsePath, responseTimeout);

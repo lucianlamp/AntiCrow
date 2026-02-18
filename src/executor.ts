@@ -406,6 +406,9 @@ export class Executor {
                 }
                 logInfo(`Executor: prompt sent, waiting for file response at ${responsePath}`);
 
+                // 伝達完了ステータスを Discord に通知
+                await this.safeNotify(notifyChannel, '✅ 指示を伝達しました。応答を待っています...');
+
                 // ファイル経由でレスポンスを待機
                 // （UIウォッチャーは bridgeLifecycle で常時動作しているため、ここでは起動/停止しない）
                 response = await this.fileIpc.waitForResponse(responsePath, this.timeoutMs);
