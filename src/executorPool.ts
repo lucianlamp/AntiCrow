@@ -160,15 +160,7 @@ export class ExecutorPool {
         logInfo('ExecutorPool: pool cleared');
     }
 
-    /**
-     * 全 Executor の自動クリックルールを設定画面から再読み込みする。
-     */
-    reloadAutoClickRules(): void {
-        for (const [key, executor] of this.pool.entries()) {
-            executor.loadAutoClickRulesFromConfig();
-            logDebug(`ExecutorPool: reloaded auto-click rules for workspace "${key}"`);
-        }
-    }
+
 
     /**
      * いずれかの Executor が実行中かどうか。

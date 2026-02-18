@@ -207,44 +207,10 @@ Antigravity の設定（`Ctrl+,`）で以下の項目を変更できます:
 | `antiCrow.clientId` | string | `""` | Discord Application の Client ID（スラッシュコマンド登録に必要） |
 | `antiCrow.categoryArchiveDays` | number | `7` | ワークスペースカテゴリーの自動アーカイブ日数。0で無効 |
 | `antiCrow.allowedUserIds` | string[] | `[]` | メッセージ処理を許可する Discord ユーザーID一覧。**空=全拒否（必須設定）** |
-| `antiCrow.autoClickRules` | array | *(下記参照)* | タスク実行中に自動クリックするボタンのルール一覧 |
+| `antiCrow.autoOperation` | boolean | `true` | 自動操作（Continue / Allow / 提案承認など）を有効にする |
 | `antiCrow.maxRetries` | number | `1` | タイムアウト時の自動リトライ回数。0でリトライ無効 |
 
-### 自動クリックルール（`autoClickRules`）
-
-タスク実行中に Antigravity が表示する確認ダイアログ（Continue, Allow 等）を自動的に承認するルールです。
-
-デフォルトでは以下のルールが設定されています:
-
-| ルール名 | 対象テキスト | 説明 |
-| --- | --- | --- |
-| continue-warning | Continue | 続行確認ダイアログ |
-| allow-tool | Allow | ツール許可ダイアログ |
-| retry-error | Retry | エラーリトライダイアログ |
-| expand-all | *(セレクタ指定)* | 差分ビューの展開 |
-| expand-step-input | Expand | ステップ入力の展開 |
-
-ルールを追加・削除する場合は、`settings.json` で直接編集できます:
-
-```json
-{
-  "antiCrow.autoClickRules": [
-    { "name": "continue-warning", "text": "Continue", "tag": "button", "inCascade": true },
-    { "name": "allow-tool", "text": "Allow", "tag": "button", "inCascade": true },
-    { "name": "custom-rule", "text": "Accept", "tag": "button", "inCascade": true }
-  ]
-}
-```
-
-各ルールのプロパティ:
-
-| プロパティ | 型 | 説明 |
-| --- | --- | --- |
-| `name` | string | ルール名（識別用、必須） |
-| `text` | string | ボタンのテキスト（部分一致） |
-| `selector` | string | CSS セレクタ（高度な指定用） |
-| `tag` | string | HTML タグ名（例: `button`） |
-| `inCascade` | boolean | 実行パネル内に限定するか（デフォルト: `true`） |
+> 💡 `autoOperation` がオンの場合、Antigravity が表示する確認ダイアログ（Continue, Allow, Retry 等）の自動クリックとエージェント提案の自動承認が常時動作します。オフにするとすべての自動操作が無効になります。
 
 ---
 

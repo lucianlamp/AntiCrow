@@ -54,7 +54,7 @@ export class Executor {
     private currentJobStartTime: number = 0;
     private recentlyExecutedPlanIds = new Set<string>();
     private uiWatcherTimer: ReturnType<typeof setInterval> | null = null;
-    private autoClickRules: AutoClickRule[] = [...DEFAULT_AUTO_CLICK_RULES];
+    private readonly autoClickRules: AutoClickRule[] = [...DEFAULT_AUTO_CLICK_RULES];
     private extensionPath: string;
     private promptTemplate: string | null = null;
     private userGlobalRules: string | null = null;
@@ -69,36 +69,13 @@ export class Executor {
         this.sendTypingToChannel = sendTyping;
         this.extensionPath = extensionPath || '';
 
-        // 設定・テンプレートを起動時に読み込み
-        this.loadAutoClickRulesFromConfig();
+        // テンプレート・ルールを起動時に読み込み
         this.loadPromptTemplate();
         this.loadPromptRules();
         this.loadUserGlobalRules();
     }
 
-    /** 自動クリックルールを取得 */
-    getAutoClickRules(): AutoClickRule[] {
-        return [...this.autoClickRules];
-    }
 
-    /** 自動クリックルールを設定（デフォルトを上書き） */
-    setAutoClickRules(rules: AutoClickRule[]): void {
-        this.autoClickRules = [...rules];
-        logInfo(`Executor: auto-click rules updated (${rules.length} rules)`);
-    }
-
-    /** 設定画面から自動クリックルールを読み込む */
-    loadAutoClickRulesFromConfig(): void {
-        const config = vscode.workspace.getConfiguration('antiCrow');
-        const rules = config.get<AutoClickRule[]>('autoClickRules');
-        if (Array.isArray(rules) && rules.length > 0) {
-            this.autoClickRules = [...rules];
-            logInfo(`Executor: loaded ${rules.length} auto-click rules from settings`);
-        } else {
-            this.autoClickRules = [...DEFAULT_AUTO_CLICK_RULES];
-            logDebug('Executor: no auto-click rules in settings, using defaults');
-        }
-    }
 
     /** プロンプトテンプレートを読み込む */
     private loadPromptTemplate(): void {
@@ -336,12 +313,12 @@ export class Executor {
                     prompt: plan.prompt,
                     output: {
                         response_path: responsePath,
-                        constraint: 'すべての作業が完了してから1回だけ書き込む。途中経過は書き込まない。ファイルに書き込んだ時点でレスポンス完了と見なされ、Discord に結果が送信される。結果には何をしたか・変更内容・影響範囲・注意点などを具体的かつ詳細に記述すること。簡素すぎる報告は避ける。',
+                        constraint: 'すべての作業が完了してから1回だけ書き込む。途中経過は書き込まない。ファイルに書き込んだ時点でレスポンス完了と見なされ、Discord に結果が送信される。結果には何をしたか・変更内容・影響範囲・注意点などを具体的かつ詳細に記述すること。簡素すぎる報告は避ける。変更したファイル名・変更の概要・テスト結果・注意事項をすべて含めること。',
                     },
                     rules: rulesInline || undefined,
                     progress: {
                         path: progressPath,
-                        instruction: '処理が長くなる場合は進捗ファイルに JSON で進捗状況を書き込む（write_to_file, Overwrite: true）。',
+                        instruction: '進捗ファイルに JSON で進捗状況を定期的に書き込むこと（write_to_file, Overwrite: true）。処理の各段階で必ず status を更新。30秒〜1分おきに percent と status を更新する。',
                         format: { status: '現在のステータス', detail: '詳細（任意）', percent: 50 },
                     },
                 };
@@ -369,7 +346,7 @@ export class Executor {
             }, 8_000);
             try { await this.sendTypingToChannel(notifyChannel); } catch (e) { logDebug(`Executor: sendTyping failed: ${e}`); }
 
-            // 進捗監視ループ開始（5秒間隔）
+            // 進捗監視ループ開始（3秒間隔）
             let lastProgressContent = '';
             const progressInterval = setInterval(async () => {
                 try {
@@ -388,7 +365,7 @@ export class Executor {
                 } catch {
                     // 進捗ファイル読み取り失敗は無視
                 }
-            }, 5_000);
+            }, 3_000);
 
             let response: string;
             try {
@@ -396,14 +373,10 @@ export class Executor {
                 await this.cdp.sendPrompt(cdpInstruction);
                 logInfo(`Executor: prompt sent, waiting for file response at ${responsePath}`);
 
-                // UIウォッチャー開始（ダイアログ自動クリック）
-                this.startUIWatcher();
-
                 // ファイル経由でレスポンスを待機
+                // （UIウォッチャーは bridgeLifecycle で常時動作しているため、ここでは起動/停止しない）
                 response = await this.fileIpc.waitForResponse(responsePath, this.timeoutMs);
             } finally {
-                // UIウォッチャー停止（必ず停止させる）
-                this.stopUIWatcher();
                 clearInterval(typingInterval);
                 clearInterval(progressInterval);
                 // 進捗ファイルクリーンアップ
@@ -526,15 +499,21 @@ export class Executor {
 
     /**
      * UIウォッチャーを開始する。
-     * ジョブ実行中（sendPrompt → waitForResponse 間）に
-     * 既知のダイアログ（Continue, Allow, Retry 等）を自動検出してクリックする。
+     * autoOperation が有効な場合、既知のダイアログ（Continue, Allow, Retry 等）を
+     * 自動検出してクリックし、VSCode コマンド経由で提案を自動承認する。
+     * bridgeLifecycle からブリッジ起動時に呼ばれる（常時動作）。
      */
-    private startUIWatcher(): void {
+    startUIWatcher(): void {
         if (this.uiWatcherTimer) { return; } // 既に動作中
 
         logInfo('Executor: UI watcher started');
 
         this.uiWatcherTimer = setInterval(async () => {
+            // autoOperation 設定を毎回チェック（設定変更を動的に反映）
+            const autoEnabled = vscode.workspace.getConfiguration('antiCrow')
+                .get<boolean>('autoOperation') ?? true;
+            if (!autoEnabled) { return; }
+
             // --- DOM ルールベースの自動クリック ---
             for (const rule of this.autoClickRules) {
                 try {
@@ -564,23 +543,19 @@ export class Executor {
                 }
             }
 
-            // --- Pesosz 戦略: VSCode コマンド直接呼び出し ---
-            const autoAcceptEnabled = vscode.workspace.getConfiguration('antiCrow')
-                .get<boolean>('autoAcceptCommands') ?? false;
-            if (autoAcceptEnabled) {
-                try {
-                    await vscode.commands.executeCommand('antigravity.agent.acceptAgentStep');
-                } catch { /* コマンドが存在しない場合は無視 */ }
+            // --- VSCode コマンド直接呼び出しによる自動承認 ---
+            try {
+                await vscode.commands.executeCommand('antigravity.agent.acceptAgentStep');
+            } catch { /* コマンドが存在しない場合は無視 */ }
 
-                try {
-                    await vscode.commands.executeCommand('antigravity.terminal.accept');
-                } catch { /* 同上 */ }
-            }
+            try {
+                await vscode.commands.executeCommand('antigravity.terminal.accept');
+            } catch { /* 同上 */ }
         }, 2_000); // 2秒間隔
     }
 
     /** UIウォッチャーを停止する */
-    private stopUIWatcher(): void {
+    stopUIWatcher(): void {
         if (this.uiWatcherTimer) {
             clearInterval(this.uiWatcherTimer);
             this.uiWatcherTimer = null;

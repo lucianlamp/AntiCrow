@@ -99,11 +99,20 @@ async function promoteToBotOwner(
                     const wsName = ctx.cdp.getActiveWorkspaceName();
                     const wsPath = currentWsFolders[0].uri.fsPath;
                     if (wsName && wsPath) {
-                        const wsPaths = getWorkspacePaths();
-                        if (!wsPaths[wsName] || wsPaths[wsName] !== wsPath) {
-                            wsPaths[wsName] = wsPath;
-                            await getConfig().update('workspacePaths', wsPaths, vscode.ConfigurationTarget.Global);
-                            logInfo(`Bridge: auto-saved workspace path: "${wsName}" → "${wsPath}"`);
+                        // バリデーション: 壊れたワークスペース名の保存を防止
+                        const isInvalidName =
+                            wsName.includes('://') ||           // URL 形式
+                            wsName === 'Antigravity' ||          // 初期状態のタイトル
+                            wsName.includes('workbench.html');   // 内部 URL の一部
+                        if (isInvalidName) {
+                            logWarn(`Bridge: skipping workspace path save — invalid workspace name: "${wsName}"`);
+                        } else {
+                            const wsPaths = getWorkspacePaths();
+                            if (!wsPaths[wsName] || wsPaths[wsName] !== wsPath) {
+                                wsPaths[wsName] = wsPath;
+                                await getConfig().update('workspacePaths', wsPaths, vscode.ConfigurationTarget.Global);
+                                logInfo(`Bridge: auto-saved workspace path: "${wsName}" → "${wsPath}"`);
+                            }
                         }
                     }
                 }
@@ -324,13 +333,27 @@ export async function startBridge(
     // 設定変更リスナー
     context.subscriptions.push(
         vscode.workspace.onDidChangeConfiguration(e => {
-            if (e.affectsConfiguration('antiCrow.autoClickRules')) {
-                logInfo('Bridge: autoClickRules changed — reloading...');
-                ctx.executor?.loadAutoClickRulesFromConfig();
-                ctx.executorPool?.reloadAutoClickRules();
+            if (e.affectsConfiguration('antiCrow.autoOperation')) {
+                const autoOp = vscode.workspace.getConfiguration('antiCrow')
+                    .get<boolean>('autoOperation') ?? true;
+                if (autoOp) {
+                    logInfo('Bridge: autoOperation enabled — starting UI watcher');
+                    ctx.executor?.startUIWatcher();
+                } else {
+                    logInfo('Bridge: autoOperation disabled — stopping UI watcher');
+                    ctx.executor?.stopUIWatcher();
+                }
             }
         })
     );
+
+    // autoOperation が有効ならUIウォッチャーを常時起動
+    const autoOpEnabled = vscode.workspace.getConfiguration('antiCrow')
+        .get<boolean>('autoOperation') ?? true;
+    if (autoOpEnabled) {
+        ctx.executor?.startUIWatcher();
+        logInfo('Bridge: UI watcher started (autoOperation enabled)');
+    }
 
     updateStatusBar(ctx);
 }
@@ -353,6 +376,10 @@ export async function stopBridge(ctx: BridgeContext): Promise<void> {
     ctx.scheduler?.stopAll();
     ctx.cdpPool?.disconnectAll();
     ctx.cdp?.fullDisconnect();
+
+    // UIウォッチャー停止
+    ctx.executor?.stopUIWatcher();
+
     ctx.executorPool?.clear();
     await ctx.bot?.stop();
 

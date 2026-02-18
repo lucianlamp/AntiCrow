@@ -38,6 +38,7 @@ const ctx: BridgeContext = {
 
     lockWatchTimer: null,
     categoryWatchTimer: null,
+    autoOperationWatcherTimer: null,
 };
 
 // =====================================================================
