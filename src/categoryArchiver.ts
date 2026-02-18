@@ -13,6 +13,7 @@ import { snowflakeToTimestamp } from './discordUtils';
  * 指定日数以上使用されていないワークスペースカテゴリーを削除する。
  * - カテゴリー内チャンネルの lastMessageId から最終使用日時を判定
  * - アクティブなスケジュール（PlanStore）があるチャンネルを含むカテゴリーは保護
+ * - 安全対策: 全カテゴリー削除は実行しない
  * @returns 削除したカテゴリー数
  */
 export async function archiveOldCategories(
@@ -41,6 +42,9 @@ export async function archiveOldCategories(
         }
     }
 
+    // 削除候補を先に集計（全削除防止のため）
+    const toDelete: { wsName: string; categoryId: string; daysAgo: number }[] = [];
+
     for (const [wsName, categoryId] of wsCategories) {
         const category = guild.channels.cache.get(categoryId);
         if (!category) { continue; }
@@ -63,43 +67,66 @@ export async function archiveOldCategories(
 
         // 最終メッセージ日時を確認
         let latestTimestamp = 0;
+        let hasAnyMessages = false;
         for (const [, child] of children) {
             if ('lastMessageId' in child && child.lastMessageId) {
+                hasAnyMessages = true;
                 const ts = snowflakeToTimestamp(child.lastMessageId);
                 if (ts > latestTimestamp) { latestTimestamp = ts; }
             }
         }
 
-        // メッセージがない場合はカテゴリー作成日時を使用
-        if (latestTimestamp === 0 && category.createdTimestamp) {
-            latestTimestamp = category.createdTimestamp;
+        // メッセージが1つもないカテゴリーは安全のためスキップ
+        // （Bot 起動直後はキャッシュが不完全で lastMessageId が null になる場合がある）
+        if (!hasAnyMessages) {
+            logDebug(`archiveOldCategories: skipping "${wsName}" — no message history in cache (may be incomplete)`);
+            continue;
         }
 
-        // 閾値より古い場合は削除
+        // 閾値より古い場合は削除候補に追加
         if (latestTimestamp > 0 && latestTimestamp < thresholdMs) {
             const daysAgo = Math.floor((Date.now() - latestTimestamp) / (24 * 60 * 60 * 1000));
-            logInfo(`archiveOldCategories: deleting "${wsName}" (last active ${daysAgo} days ago)`);
+            toDelete.push({ wsName, categoryId, daysAgo });
+        }
+    }
 
-            // 子チャンネルを先に削除
-            for (const [, child] of children) {
-                try {
-                    if ('delete' in child && typeof child.delete === 'function') {
-                        await child.delete();
-                    }
-                } catch (e) {
-                    logWarn(`archiveOldCategories: failed to delete channel ${child.id}: ${e instanceof Error ? e.message : e}`);
-                }
-            }
+    // 安全対策: 全カテゴリーが削除対象の場合は実行しない（キャッシュ異常の可能性）
+    if (toDelete.length > 0 && toDelete.length >= wsCategories.size) {
+        logWarn(
+            `archiveOldCategories: all ${wsCategories.size} categories would be deleted — ` +
+            `aborting to prevent accidental mass deletion (possible cache issue)`,
+        );
+        return 0;
+    }
 
-            // カテゴリーを削除
+    // 削除実行
+    for (const { wsName, categoryId, daysAgo } of toDelete) {
+        const category = guild.channels.cache.get(categoryId);
+        if (!category) { continue; }
+
+        const children = guild.channels.cache.filter(c => c.parentId === categoryId);
+
+        logInfo(`archiveOldCategories: deleting "${wsName}" (last active ${daysAgo} days ago)`);
+
+        // 子チャンネルを先に削除
+        for (const [, child] of children) {
             try {
-                if ('delete' in category && typeof category.delete === 'function') {
-                    await category.delete();
+                if ('delete' in child && typeof child.delete === 'function') {
+                    await child.delete();
                 }
-                archivedCount++;
             } catch (e) {
-                logWarn(`archiveOldCategories: failed to delete category "${wsName}": ${e instanceof Error ? e.message : e}`);
+                logWarn(`archiveOldCategories: failed to delete channel ${child.id}: ${e instanceof Error ? e.message : e}`);
             }
+        }
+
+        // カテゴリーを削除
+        try {
+            if ('delete' in category && typeof category.delete === 'function') {
+                await category.delete();
+            }
+            archivedCount++;
+        } catch (e) {
+            logWarn(`archiveOldCategories: failed to delete category "${wsName}": ${e instanceof Error ? e.message : e}`);
         }
     }
 

@@ -155,6 +155,11 @@
             ]
           }
         },
+        "antiCrow.autoAcceptCommands": {
+          "type": "boolean",
+          "default": false,
+          "description": "タスク実行中にエージェント提案を自動承認するコマンド呼び出しを有効にする。有効にすると、自動クリックルールに加えてコマンド経由でも提案を自動承認します。"
+        },
         "antiCrow.maxRetries": {
           "type": "number",
           "default": 1,

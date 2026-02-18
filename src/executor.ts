@@ -336,7 +336,7 @@ export class Executor {
                     prompt: plan.prompt,
                     output: {
                         response_path: responsePath,
-                        constraint: 'すべての作業が完了してから1回だけ書き込む。途中経過は書き込まない。ファイルに書き込んだ時点でレスポンス完了と見なされ、Discord に結果が送信される。',
+                        constraint: 'すべての作業が完了してから1回だけ書き込む。途中経過は書き込まない。ファイルに書き込んだ時点でレスポンス完了と見なされ、Discord に結果が送信される。結果には何をしたか・変更内容・影響範囲・注意点などを具体的かつ詳細に記述すること。簡素すぎる報告は避ける。',
                     },
                     rules: rulesInline || undefined,
                     progress: {
@@ -535,6 +535,7 @@ export class Executor {
         logInfo('Executor: UI watcher started');
 
         this.uiWatcherTimer = setInterval(async () => {
+            // --- DOM ルールベースの自動クリック ---
             for (const rule of this.autoClickRules) {
                 try {
                     // まず存在チェック（クリックせずに確認）
@@ -561,6 +562,19 @@ export class Executor {
                 } catch (e) {
                     logDebug(`Executor: UI watcher rule "${rule.name}" scan error: ${e instanceof Error ? e.message : e}`);
                 }
+            }
+
+            // --- Pesosz 戦略: VSCode コマンド直接呼び出し ---
+            const autoAcceptEnabled = vscode.workspace.getConfiguration('antiCrow')
+                .get<boolean>('autoAcceptCommands') ?? false;
+            if (autoAcceptEnabled) {
+                try {
+                    await vscode.commands.executeCommand('antigravity.agent.acceptAgentStep');
+                } catch { /* コマンドが存在しない場合は無視 */ }
+
+                try {
+                    await vscode.commands.executeCommand('antigravity.terminal.accept');
+                } catch { /* 同上 */ }
             }
         }, 2_000); // 2秒間隔
     }

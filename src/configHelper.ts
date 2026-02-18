@@ -175,7 +175,7 @@ export function getAllowedUserIds(): string[] {
 export function isUserAllowed(userId: string): { allowed: boolean; reason?: string } {
     const allowedIds = getAllowedUserIds();
     if (allowedIds.length === 0) {
-        return { allowed: false, reason: '許可ユーザーIDが設定されていません。VSCode の設定で `antiCrow.allowedUserIds` にあなたの Discord ユーザーIDを追加してください。' };
+        return { allowed: false, reason: '許可ユーザーIDが設定されていません。Antigravity の設定で `antiCrow.allowedUserIds` にあなたの Discord ユーザーIDを追加してください。' };
     }
     if (!allowedIds.includes(userId)) {
         return { allowed: false, reason: 'このユーザーは操作を許可されていません。' };

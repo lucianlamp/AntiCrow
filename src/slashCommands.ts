@@ -57,6 +57,7 @@ export const slashCommandDefinitions = [
     new SlashCommandBuilder()
         .setName('mode')
         .setDescription('AI モード切替（Planning / Fast）'),
+
 ];
 
 // -----------------------------------------------------------------------

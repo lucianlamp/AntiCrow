@@ -34,6 +34,8 @@ import { BridgeContext } from './bridgeContext';
 import { buildSkillPrompt, cronToPrefix, resetProcessingFlag } from './messageHandler';
 import { getResponseTimeout, getTimezone, isUserAllowed } from './configHelper';
 import { buildWorkspaceListEmbed, getRunningWsNames, handleWorkspaceButton } from './workspaceHandler';
+import { fetchQuota } from './quotaProvider';
+
 import { TemplateStore } from './templateStore';
 
 // ---------------------------------------------------------------------------
@@ -422,7 +424,14 @@ async function handleManageSlash(
                 return;
             }
 
-            const { embeds, components } = buildModelListEmbed(models, current);
+            const quotaData = await fetchQuota();
+            if (quotaData) {
+                logInfo(`handleManageSlash: /models — quota fetched: ${quotaData.models.length} models, account=${quotaData.accountLevel}`);
+            } else {
+                logWarn('handleManageSlash: /models — fetchQuota returned null (process detection or API call failed)');
+            }
+
+            const { embeds, components } = buildModelListEmbed(models, current, quotaData?.models);
             await interaction.editReply({ embeds, components: components as any });
         } catch (e) {
             const errMsg = e instanceof Error ? e.message : String(e);
@@ -435,6 +444,7 @@ async function handleManageSlash(
     // -----------------------------------------------------------------------
     // /mode — モード一覧 + 切替ボタン
     // -----------------------------------------------------------------------
+
     if (commandName === 'mode') {
         await interaction.deferReply();
         try {
@@ -626,7 +636,7 @@ export async function handleButtonInteraction(
                 // 切替後にリストを更新
                 await cdp.ops.sleep(500);
                 const { models, current } = await getAvailableModels(cdp.ops);
-                const { embeds, components } = buildModelListEmbed(models, current);
+                const { embeds, components } = buildModelListEmbed(models, current, (await fetchQuota())?.models);
                 await interaction.editReply({ embeds, components: components as any });
             } else {
                 await interaction.followUp({ embeds: [resultEmbed], ephemeral: true });
@@ -644,7 +654,7 @@ export async function handleButtonInteraction(
             }
 
             const { models, current } = await getAvailableModels(cdp.ops);
-            const { embeds, components } = buildModelListEmbed(models, current);
+            const { embeds, components } = buildModelListEmbed(models, current, (await fetchQuota())?.models);
             await interaction.editReply({ embeds, components: components as any });
             return;
         }
@@ -691,6 +701,11 @@ export async function handleButtonInteraction(
             await interaction.editReply({ embeds, components: components as any });
             return;
         }
+
+        // -------------------------------------------------------------------
+        // クォータ更新ボタン
+        // -------------------------------------------------------------------
+
 
         // ----- テンプレート関連ボタン -----
         if (customId.startsWith('tpl_')) {

@@ -115,7 +115,7 @@ async function promoteToBotOwner(
             const archiveDays = getArchiveDays();
             if (archiveDays > 0) {
                 try {
-                    const archived = await archiveOldCategories(guild.id, ctx.bot, archiveDays);
+                    const archived = await archiveOldCategories(guild.id, ctx.bot, archiveDays, ctx.planStore ?? undefined);
                     if (archived > 0) {
                         logInfo(`Bridge: archived ${archived} old workspace categories (>${archiveDays} days)`);
                     }

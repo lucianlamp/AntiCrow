@@ -8,6 +8,41 @@ import {
     ButtonBuilder,
     ButtonStyle,
 } from 'discord.js';
+import { ModelQuota } from './quotaProvider';
+
+// -----------------------------------------------------------------------
+// クォータヘルパー
+// -----------------------------------------------------------------------
+
+function quotaEmoji(percentage: number): string {
+    if (percentage <= 0) return '🔴';
+    if (percentage <= 20) return '🟠';
+    if (percentage <= 50) return '🟡';
+    return '🟢';
+}
+
+function findQuota(modelName: string, quotas?: ModelQuota[]): ModelQuota | undefined {
+    if (!quotas || quotas.length === 0) { return undefined; }
+    const lower = modelName.toLowerCase();
+    // 1. 完全一致
+    const exact = quotas.find(q =>
+        q.displayName.toLowerCase() === lower ||
+        q.name.toLowerCase() === lower,
+    );
+    if (exact) { return exact; }
+    // 2. 部分一致（モデル名がクォータ名に含まれる or その逆）
+    return quotas.find(q => {
+        const dn = q.displayName.toLowerCase();
+        const n = q.name.toLowerCase();
+        return dn.includes(lower) || lower.includes(dn) ||
+            n.includes(lower) || lower.includes(n);
+    });
+}
+
+function formatResetTime(q: ModelQuota): string {
+    if (!q.timeUntilResetFormatted || q.timeUntilResetFormatted === 'N/A') return '';
+    return ` ⏳${q.timeUntilResetFormatted}`;
+}
 
 // -----------------------------------------------------------------------
 // モデル一覧 Embed + 切替ボタン
@@ -16,6 +51,7 @@ import {
 export function buildModelListEmbed(
     models: string[],
     currentModel: string | null,
+    quotas?: ModelQuota[],
 ): { embeds: EmbedBuilder[]; components: ActionRowBuilder<ButtonBuilder>[] } {
     const embed = new EmbedBuilder()
         .setTitle('🤖 モデル管理')
@@ -32,13 +68,17 @@ export function buildModelListEmbed(
 
     // 現在のモデル
     const currentDisplay = currentModel || '不明';
-    embed.setDescription(`**現在のモデル:** ${currentDisplay}`);
+    const currentQuota = currentModel ? findQuota(currentModel, quotas) : undefined;
+    const currentExtra = currentQuota ? ` (${quotaEmoji(currentQuota.remainingPercentage)} ${currentQuota.remainingPercentage}%${formatResetTime(currentQuota)})` : '';
+    embed.setDescription(`**現在のモデル:** ${currentDisplay}${currentExtra}`);
 
     // モデル一覧をフィールドに追加
     if (models.length > 0) {
-        const modelList = models.map((m, i) => {
+        const modelList = models.map((m) => {
             const isCurrent = currentModel && m.toLowerCase().includes(currentModel.toLowerCase());
-            return `${isCurrent ? '✅' : '⬜'} ${m}`;
+            const q = findQuota(m, quotas);
+            const quotaStr = q ? ` ${quotaEmoji(q.remainingPercentage)} ${q.remainingPercentage}%${formatResetTime(q)}` : '';
+            return `${isCurrent ? '✅' : '⬜'} ${m}${quotaStr}`;
         }).join('\n');
 
         embed.addFields({
