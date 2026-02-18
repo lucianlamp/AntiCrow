@@ -32,7 +32,7 @@ import { buildModeListEmbed, buildModeSwitchResultEmbed } from './modeButtons';
 import { getCurrentMode, getAvailableModes, selectMode } from './cdpModes';
 import { BridgeContext } from './bridgeContext';
 import { buildSkillPrompt, cronToPrefix, resetProcessingFlag } from './messageHandler';
-import { getResponseTimeout, getTimezone } from './configHelper';
+import { getResponseTimeout, getTimezone, isUserAllowed } from './configHelper';
 import { buildWorkspaceListEmbed, getRunningWsNames, handleWorkspaceButton } from './workspaceHandler';
 import { TemplateStore } from './templateStore';
 
@@ -86,6 +86,16 @@ export async function handleSlashCommand(
     // 管理系コマンド (/status, /schedules) は専用ハンドラ
     if (intent === 'admin') {
         await handleManageSlash(ctx, interaction, commandName);
+        return;
+    }
+
+    // -----------------------------------------------------------------
+    // セキュリティ: 許可ユーザーID制限
+    // -----------------------------------------------------------------
+    const authResult = isUserAllowed(interaction.user.id);
+    if (!authResult.allowed) {
+        logWarn(`handleSlashCommand: user ${interaction.user.tag} (${interaction.user.id}) not allowed — ${authResult.reason}`);
+        await interaction.reply({ embeds: [buildEmbed(`🔒 ${authResult.reason}`, EmbedColor.Warning)], ephemeral: true });
         return;
     }
 

@@ -206,7 +206,7 @@ Antigravity の設定（`Ctrl+,`）で以下の項目を変更できます:
 | `antiCrow.autoStart` | boolean | `true` | Antigravity 起動時に自動でブリッジ開始 |
 | `antiCrow.clientId` | string | `""` | Discord Application の Client ID（スラッシュコマンド登録に必要） |
 | `antiCrow.categoryArchiveDays` | number | `7` | ワークスペースカテゴリーの自動アーカイブ日数。0で無効 |
-| `antiCrow.allowedUserIds` | string[] | `[]` | メッセージ処理を許可する Discord ユーザーID一覧。空=全員許可 |
+| `antiCrow.allowedUserIds` | string[] | `[]` | メッセージ処理を許可する Discord ユーザーID一覧。**空=全拒否（必須設定）** |
 | `antiCrow.autoClickRules` | array | *(下記参照)* | タスク実行中に自動クリックするボタンのルール一覧 |
 | `antiCrow.maxRetries` | number | `1` | タイムアウト時の自動リトライ回数。0でリトライ無効 |
 
@@ -360,21 +360,43 @@ Windows: C:\Users\<ユーザー名>\.anticrow\ANTICROW.md
 - Git リポジトリにコミットしないでください
 - Token が漏洩した場合は、すぐに Developer Portal で **Reset Token** を実行
 
-### 🛡️ アクセス制限の設定（強く推奨）
+### 🛡️ アクセス制限の設定（必須）
 
-`antiCrow.allowedUserIds` を設定して、Bot にメッセージを処理させるユーザーを制限してください:
+> ⚠️ **重要:** `allowedUserIds` が空の場合、セキュリティのため **誰もBotを操作できません**。必ず自分のユーザーIDを設定してください。
 
-1. Discord の設定 → 詳細設定 → **開発者モード** を有効化
-2. 自分のアイコンを右クリック → **ユーザーIDをコピー**
-3. 設定に追加:
+#### ステップ 1: Discord の開発者モードを有効化する
+
+1. Discord を開く（デスクトップ版またはモバイル版）
+2. **ユーザー設定**（⚙️ アイコン）を開く
+3. **アプリの設定** → **詳細設定** を選択
+4. **開発者モード** をオンにする
+
+#### ステップ 2: Discord ユーザーIDを取得する
+
+1. Discord で自分のアイコンまたはユーザー名を **右クリック**（モバイルの場合は長押し）
+2. 表示されたメニューから **「ユーザーIDをコピー」** を選択
+3. 18桁程度の数字がクリップボードにコピーされます（例: `123456789012345678`）
+
+#### ステップ 3: Antigravity の設定に追加する
+
+1. Antigravity でコマンドパレット（`Ctrl+Shift+P`）→ **Preferences: Open Settings (JSON)** を実行
+2. 以下を追加:
 
 ```json
 {
-  "antiCrow.allowedUserIds": ["123456789012345678"]
+  "antiCrow.allowedUserIds": ["ここにコピーしたユーザーIDを貼り付け"]
 }
 ```
 
-> ⚠️ `allowedUserIds` が空の場合、**サーバーに参加している全員** が Bot にメッセージを処理させることができます。個人利用の場合でも、自分の ID を設定することを強く推奨します。
+複数ユーザーを許可する場合はカンマ区切りで追加できます:
+
+```json
+{
+  "antiCrow.allowedUserIds": ["123456789012345678", "987654321098765432"]
+}
+```
+
+> 💡 設定を保存すると即座に反映されます。Bot の再起動は不要です。
 
 ---
 

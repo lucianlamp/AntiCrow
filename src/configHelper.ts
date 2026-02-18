@@ -163,9 +163,24 @@ export function getClientId(): string {
     return getConfig().get<string>('clientId') || '';
 }
 
-/** 許可ユーザーID一覧を取得する（空=全員許可） */
+/** 許可ユーザーID一覧を取得する（空=全拒否） */
 export function getAllowedUserIds(): string[] {
     return getConfig().get<string[]>('allowedUserIds') || [];
+}
+
+/**
+ * 指定ユーザーが操作を許可されているか判定する。
+ * allowedUserIds が空の場合は「誰も操作できない（全拒否）」として false を返す。
+ */
+export function isUserAllowed(userId: string): { allowed: boolean; reason?: string } {
+    const allowedIds = getAllowedUserIds();
+    if (allowedIds.length === 0) {
+        return { allowed: false, reason: '許可ユーザーIDが設定されていません。VSCode の設定で `antiCrow.allowedUserIds` にあなたの Discord ユーザーIDを追加してください。' };
+    }
+    if (!allowedIds.includes(userId)) {
+        return { allowed: false, reason: 'このユーザーは操作を許可されていません。' };
+    }
+    return { allowed: true };
 }
 
 /** メッセージ最大文字数を取得する（0=無制限、デフォルト: 4000） */

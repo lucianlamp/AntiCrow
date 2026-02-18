@@ -21,7 +21,7 @@ import { buildEmbed, EmbedColor } from './embedHelper';
 import { DiscordBot } from './discordBot';
 import { downloadAttachments } from './attachmentDownloader';
 import { BridgeContext } from './bridgeContext';
-import { getResponseTimeout, getAllowedUserIds, getMaxMessageLength } from './configHelper';
+import { getResponseTimeout, isUserAllowed, getMaxMessageLength } from './configHelper';
 import { getCurrentModel } from './cdpModels';
 import { getCurrentMode } from './cdpModes';
 
@@ -114,11 +114,10 @@ export async function handleDiscordMessage(
     // -----------------------------------------------------------------
     // セキュリティ: 許可ユーザーID制限
     // -----------------------------------------------------------------
-    const allowedIds = getAllowedUserIds();
-    if (allowedIds.length === 0) {
-        logDebug('handleDiscordMessage: allowedUserIds is empty — all users are permitted');
-    } else if (!allowedIds.includes(message.author.id)) {
-        logWarn(`handleDiscordMessage: unauthorized user ${message.author.tag} (${message.author.id}) — message ignored`);
+    const authResult = isUserAllowed(message.author.id);
+    if (!authResult.allowed) {
+        logWarn(`handleDiscordMessage: user ${message.author.tag} (${message.author.id}) not allowed — ${authResult.reason}`);
+        await channel.send({ embeds: [buildEmbed(`🔒 ${authResult.reason}`, EmbedColor.Warning)] });
         return;
     }
 
