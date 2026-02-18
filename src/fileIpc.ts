@@ -4,6 +4,7 @@
  * Antigravity にプロンプトで「結果をファイルに書き込め」と指示し、
  * Extension 側はファイルの出現を監視して応答を取得する。
  */
+import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
@@ -48,7 +49,7 @@ export class FileIpc {
 
     /** リクエスト ID を生成し、レスポンスファイルのパスを返す */
     createRequestId(): { requestId: string; responsePath: string } {
-        const requestId = `req_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+        const requestId = `req_${Date.now()}_${crypto.randomUUID().replace(/-/g, '').substring(0, 12)}`;
         const responsePath = path.join(this.ipcDir, `${requestId}_response.json`);
         return { requestId, responsePath };
     }

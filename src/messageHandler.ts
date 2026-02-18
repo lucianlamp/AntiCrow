@@ -17,7 +17,7 @@ import { CascadePanelError } from './errors';
 import { parseSkillJson, buildPlan } from './planParser';
 import { ChannelIntent, Plan } from './types';
 import { logInfo, logError, logWarn, logDebug } from './logger';
-import { buildEmbed, EmbedColor } from './embedHelper';
+import { buildEmbed, EmbedColor, sanitizeErrorForDiscord } from './embedHelper';
 import { DiscordBot } from './discordBot';
 import { downloadAttachments } from './attachmentDownloader';
 import { BridgeContext } from './bridgeContext';
@@ -202,7 +202,7 @@ export async function handleDiscordMessage(
                 logInfo(`handleDiscordMessage: acquired CdpBridge from pool for workspace "${wsNameFromCategory || 'default'}"`);
             } catch (e) {
                 logError(`handleDiscordMessage: failed to acquire CdpBridge for workspace "${wsNameFromCategory}"`, e);
-                await channel.send({ embeds: [buildEmbed(`⚠️ ワークスペース "${wsNameFromCategory}" への接続に失敗しました: ${e instanceof Error ? e.message : e}`, EmbedColor.Warning)] });
+                await channel.send({ embeds: [buildEmbed(`⚠️ ワークスペース "${wsNameFromCategory}" への接続に失敗しました: ${sanitizeErrorForDiscord(e instanceof Error ? e.message : String(e))}`, EmbedColor.Warning)] });
                 return;
             }
         } else {
@@ -414,6 +414,6 @@ export async function handleDiscordMessage(
     } catch (e) {
         const errMsg = e instanceof Error ? e.message : String(e);
         logError('handleDiscordMessage failed', e);
-        await channel.send({ embeds: [buildEmbed(`❌ エラー: ${errMsg}`, EmbedColor.Error)] });
+        await channel.send({ embeds: [buildEmbed(`❌ エラー: ${sanitizeErrorForDiscord(errMsg)}`, EmbedColor.Error)] });
     }
 }

@@ -30,3 +30,24 @@ export function buildEmbed(
         .setDescription(description || '\u200b')
         .setColor(color);
 }
+
+/**
+ * エラーメッセージから内部実装の詳細を除去し、Discord 表示用にサニタイズする。
+ * ファイルパス・ポート番号・WebSocket URL 等が含まれる場合は汎用メッセージに置換。
+ */
+export function sanitizeErrorForDiscord(rawMessage: string): string {
+    const sensitivePatterns = [
+        /[A-Z]:\\[^\s]+/gi,               // Windows パス (C:\Users\...)
+        /\/(?:home|usr|tmp|var|etc)\b[^\s]*/g, // Unix パス
+        /:\d{4,5}\b/g,                     // ポート番号 (:9222, :12345)
+        /wss?:\/\/[^\s]+/gi,               // WebSocket URL
+        /https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0)[^\s]*/gi, // ローカルURL
+        /(?:CDP|Chrome DevTools Protocol)/gi, // CDP 言及
+    ];
+    for (const pattern of sensitivePatterns) {
+        if (pattern.test(rawMessage)) {
+            return '内部エラーが発生しました。詳細はログを確認してください。';
+        }
+    }
+    return rawMessage;
+}

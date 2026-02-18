@@ -21,7 +21,7 @@ import {
 import { parseSkillJson, buildPlan } from './planParser';
 import { ChannelIntent } from './types';
 import { logInfo, logError, logWarn } from './logger';
-import { buildEmbed, EmbedColor } from './embedHelper';
+import { buildEmbed, EmbedColor, sanitizeErrorForDiscord } from './embedHelper';
 import { buildScheduleListEmbed, buildDeleteConfirmEmbed } from './scheduleButtons';
 import { buildModelListEmbed, buildModelSwitchResultEmbed } from './modelButtons';
 import { getAvailableModels, selectModel } from './cdpModels';
@@ -223,7 +223,7 @@ export async function handleSlashCommand(
         const errMsg = e instanceof Error ? e.message : String(e);
         logError('handleSlashCommand failed', e);
         if (interaction.deferred || interaction.replied) {
-            await interaction.editReply({ embeds: [buildEmbed(`❌ エラー: ${errMsg}`, EmbedColor.Error)] }).catch(() => { });
+            await interaction.editReply({ embeds: [buildEmbed(`❌ エラー: ${sanitizeErrorForDiscord(errMsg)}`, EmbedColor.Error)] }).catch(() => { });
         }
     }
 }
@@ -458,7 +458,7 @@ export async function handleButtonInteraction(
         logError(`handleButtonInteraction failed for ${customId}`, e);
         const errMsg = e instanceof Error ? e.message : String(e);
         if (!interaction.replied && !interaction.deferred) {
-            await interaction.reply({ embeds: [buildEmbed(`❌ エラー: ${errMsg}`, EmbedColor.Error)], ephemeral: true });
+            await interaction.reply({ embeds: [buildEmbed(`❌ エラー: ${sanitizeErrorForDiscord(errMsg)}`, EmbedColor.Error)], ephemeral: true });
         }
     }
 }

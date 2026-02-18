@@ -49,7 +49,27 @@ export function acquireLock(storagePath: string): boolean {
         fs.mkdirSync(path.dirname(fp), { recursive: true });
     } catch { /* already exists */ }
 
-    // 既存ロックをチェック
+    const lockData: LockData = {
+        pid: process.pid,
+        timestamp: new Date().toISOString(),
+    };
+
+    // 1) 原子的にロックファイルを作成（O_CREAT | O_EXCL）
+    try {
+        const fd = fs.openSync(fp, 'wx');
+        fs.writeFileSync(fd, JSON.stringify(lockData, null, 2), 'utf-8');
+        fs.closeSync(fd);
+        logInfo(`BotLock: acquired lock (PID=${process.pid})`);
+        return true;
+    } catch (e: unknown) {
+        if (e instanceof Error && 'code' in e && (e as NodeJS.ErrnoException).code !== 'EEXIST') {
+            logWarn(`BotLock: failed to create lock file: ${e.message}`);
+            return false;
+        }
+        // EEXIST → 既存ロックの stale チェックへ
+    }
+
+    // 2) 既存ロックの stale チェック
     try {
         const raw = fs.readFileSync(fp, 'utf-8');
         const data: LockData = JSON.parse(raw);
@@ -59,24 +79,23 @@ export function acquireLock(storagePath: string): boolean {
             return false;
         }
 
-        // ステイルロック — 上書き
+        // stale ロック — 削除して再試行
         logWarn(`BotLock: stale lock from PID ${data.pid} (dead) — overriding`);
+        fs.unlinkSync(fp);
     } catch {
-        // ファイルが無い or 壊れている → 新規取得
+        // ファイルが壊れている or 読み取り中に消えた → 削除試行
+        try { fs.unlinkSync(fp); } catch { /* ignore */ }
     }
 
-    // ロック取得
-    const lockData: LockData = {
-        pid: process.pid,
-        timestamp: new Date().toISOString(),
-    };
-
+    // 3) 再度原子的に作成（他プロセスとの競合を防ぐ）
     try {
-        fs.writeFileSync(fp, JSON.stringify(lockData, null, 2), 'utf-8');
-        logInfo(`BotLock: acquired lock (PID=${process.pid})`);
+        const fd = fs.openSync(fp, 'wx');
+        fs.writeFileSync(fd, JSON.stringify(lockData, null, 2), 'utf-8');
+        fs.closeSync(fd);
+        logInfo(`BotLock: acquired lock after stale cleanup (PID=${process.pid})`);
         return true;
-    } catch (e) {
-        logWarn(`BotLock: failed to write lock file: ${e instanceof Error ? e.message : e}`);
+    } catch {
+        logWarn('BotLock: lost race after stale cleanup — another process won');
         return false;
     }
 }

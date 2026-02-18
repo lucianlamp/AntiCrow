@@ -16,6 +16,24 @@
 
 ---
 
+## 🔧 仕組み
+
+AntiCrow は Discord と Antigravity の間のブリッジとして機能します。
+
+```
+📱 Discord（スマホ/PC）
+    ↕ メッセージ送受信
+🐦‍⬛ AntiCrow 拡張機能（あなたの PC）
+    ↕ タスク連携
+🤖 Antigravity AI（あなたの PC）
+```
+
+> 🔒 **すべての処理はあなたの PC 上で完結します。** 外部サーバーへのデータ送信は一切ありません。Discord API との通信のみを行います。テレメトリや使用統計の収集も行いません。
+
+詳細は [SECURITY.md](SECURITY.md) と [PRIVACY.md](PRIVACY.md) をご覧ください。
+
+---
+
 ## 前提条件
 
 | 項目 | 要件 |
@@ -256,6 +274,20 @@ Windows: C:\Users\<ユーザー名>\.anticrow\ANTICROW.md
 - ESLint のルールに従ってください
 ```
 
+### 🎛️ ユーザーコントロール
+
+AntiCrow はユーザーが完全にコントロールできるように設計されています：
+
+| 設定 | あなたがコントロールできること |
+|---|---|
+| `allowedUserIds` | 誰が Bot を操作できるかを決定（ホワイトリスト方式） |
+| `~/.anticrow/ANTICROW.md` | AI に送られるカスタム指示を自分で確認・編集 |
+| `autoOperation` | 自動操作のオン/オフの切り替え |
+| `workspacePaths` | AI がアクセスするフォルダの指定 |
+| `responseTimeoutMs` | タイムアウト時間の設定 |
+
+> 💡 `ANTICROW.md` は平文の Markdown ファイルです。AI に送信されるカスタム指示の内容をいつでも確認でき、不要なら削除するだけで無効化できます。
+
 ---
 
 ## トラブルシューティング
@@ -363,6 +395,17 @@ Windows: C:\Users\<ユーザー名>\.anticrow\ANTICROW.md
 ```
 
 > 💡 設定を保存すると即座に反映されます。Bot の再起動は不要です。
+
+---
+
+## 開発者について
+
+AntiCrow は [@lucianlampdefi](https://x.com/lucianlampdefi) が開発・メンテナンスしています。
+
+フィードバック・質問・バグ報告はお気軽にどうぞ 💬
+
+- **X (Twitter):** [@lucianlampdefi](https://x.com/lucianlampdefi)
+- **セキュリティに関する報告:** [SECURITY.md](SECURITY.md) をご覧ください
 
 ---
 
