@@ -32,6 +32,7 @@ import { enqueueMessage } from './messageHandler';
 import { handleSlashCommand, handleButtonInteraction, handleAutocomplete, handleModalSubmit } from './slashHandler';
 import { getConfig, getResponseTimeout, getTimezone, getArchiveDays, getWorkspacePaths, getClientId, getCdpPorts } from './configHelper';
 import { archiveOldCategories } from './categoryArchiver';
+import * as fs from 'fs';
 
 // ---------------------------------------------------------------------------
 // 設定バリデーション
@@ -39,7 +40,6 @@ import { archiveOldCategories } from './categoryArchiver';
 
 function validateConfig(): void {
     const wsPaths = getWorkspacePaths();
-    const fs = require('fs') as typeof import('fs');
     for (const [wsName, wsPath] of Object.entries(wsPaths)) {
         if (!fs.existsSync(wsPath)) {
             logWarn(`validateConfig: workspacePaths["${wsName}"] のパスが存在しません: "${wsPath}"`);
@@ -335,7 +335,7 @@ export async function startBridge(
         vscode.workspace.onDidChangeConfiguration(e => {
             if (e.affectsConfiguration('antiCrow.autoOperation')) {
                 const autoOp = vscode.workspace.getConfiguration('antiCrow')
-                    .get<boolean>('autoOperation') ?? true;
+                    .get<boolean>('autoOperation') ?? false;
                 if (autoOp) {
                     logInfo('Bridge: autoOperation enabled — starting UI watcher');
                     ctx.executor?.startUIWatcher();
@@ -349,11 +349,30 @@ export async function startBridge(
 
     // autoOperation が有効ならUIウォッチャーを常時起動
     const autoOpEnabled = vscode.workspace.getConfiguration('antiCrow')
-        .get<boolean>('autoOperation') ?? true;
+        .get<boolean>('autoOperation') ?? false;
     if (autoOpEnabled) {
         ctx.executor?.startUIWatcher();
         logInfo('Bridge: UI watcher started (autoOperation enabled)');
     }
+
+    // CDP ヘルスチェック（60秒間隔で接続状態を監視）
+    ctx.healthCheckTimer = setInterval(async () => {
+        if (!ctx.cdp) { return; }
+        try {
+            const ok = await ctx.cdp.testConnection();
+            if (!ok) {
+                logWarn('Bridge: health check failed — attempting reconnect');
+                try {
+                    await ctx.cdp.ensureConnected();
+                    logInfo('Bridge: health check reconnect succeeded');
+                } catch (e) {
+                    logWarn(`Bridge: health check reconnect failed — ${e instanceof Error ? e.message : e}`);
+                }
+            }
+        } catch (e) {
+            logDebug(`Bridge: health check error — ${e instanceof Error ? e.message : e}`);
+        }
+    }, 60_000);
 
     updateStatusBar(ctx);
 }
@@ -371,6 +390,11 @@ export async function stopBridge(ctx: BridgeContext): Promise<void> {
     if (ctx.categoryWatchTimer) {
         clearInterval(ctx.categoryWatchTimer);
         ctx.categoryWatchTimer = null;
+    }
+
+    if (ctx.healthCheckTimer) {
+        clearInterval(ctx.healthCheckTimer);
+        ctx.healthCheckTimer = null;
     }
 
     ctx.scheduler?.stopAll();

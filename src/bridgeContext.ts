@@ -33,6 +33,7 @@ export interface BridgeContext {
     lockWatchTimer: NodeJS.Timeout | null;
     categoryWatchTimer: NodeJS.Timeout | null;
     autoOperationWatcherTimer: NodeJS.Timeout | null;
+    healthCheckTimer: NodeJS.Timeout | null;
 }
 
 /** startBridge 完了後の状態。主要フィールドが non-null であることを型レベルで保証 */

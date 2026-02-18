@@ -4,9 +4,12 @@
 // messageHandler.ts から分離。プロンプト生成・確認UI生成を集約。
 // ---------------------------------------------------------------------------
 
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
 import { Plan } from './types';
 import { ChannelIntent } from './types';
-import { logWarn, logInfo } from './logger';
+import { logWarn, logInfo, logDebug } from './logger';
 import { markdownToJson } from './mdToJson';
 
 // ---------------------------------------------------------------------------
@@ -28,8 +31,6 @@ export function buildSkillPrompt(
     extensionPath?: string,
     ipcDir?: string,
 ): SkillPromptResult {
-    const fs = require('fs');
-    const pathMod = require('path');
     const now = new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' });
     const tempFiles: string[] = [];
 
@@ -41,25 +42,25 @@ export function buildSkillPrompt(
     let rulesInline: unknown = null;
     if (extensionPath && ipcDir) {
         try {
-            const rulesPath = pathMod.join(extensionPath, '.anticrow', 'rules', 'prompt_rules.md');
+            const rulesPath = path.join(extensionPath, '.anticrow', 'rules', 'prompt_rules.md');
             const mdContent = fs.readFileSync(rulesPath, 'utf-8').trim();
             const jsonRules = markdownToJson(mdContent);
-            const tmpRulesPath = pathMod.join(ipcDir, `tmp_rules_${tmpId}.json`);
+            const tmpRulesPath = path.join(ipcDir, `tmp_rules_${tmpId}.json`);
             fs.writeFileSync(tmpRulesPath, JSON.stringify(jsonRules, null, 2), 'utf-8');
             tempFiles.push(tmpRulesPath);
             rulesFilePath = tmpRulesPath;
             logInfo(`promptBuilder: rules written to temp file: ${tmpRulesPath}`);
-        } catch {
-            // ルールファイルが見つからない場合はスキップ
+        } catch (e) {
+            logDebug(`promptBuilder: rules file not found or unreadable (ipcDir mode): ${e instanceof Error ? e.message : e}`);
         }
     } else if (extensionPath) {
         // ipcDir が渡されなかった場合は従来のインライン方式にフォールバック
         try {
-            const rulesPath = pathMod.join(extensionPath, '.anticrow', 'rules', 'prompt_rules.md');
+            const rulesPath = path.join(extensionPath, '.anticrow', 'rules', 'prompt_rules.md');
             const mdContent = fs.readFileSync(rulesPath, 'utf-8').trim();
             rulesInline = markdownToJson(mdContent);
-        } catch {
-            // ルールファイルが見つからない場合はスキップ
+        } catch (e) {
+            logDebug(`promptBuilder: rules file not found or unreadable (inline mode): ${e instanceof Error ? e.message : e}`);
         }
     }
 
@@ -112,13 +113,12 @@ export function buildSkillPrompt(
 
     // ユーザーグローバルルール（~/.anticrow/ANTICROW.md）を Markdown → JSON 変換して一時ファイルに保存
     try {
-        const os = require('os');
-        const globalRulesPath = pathMod.join(os.homedir(), '.anticrow', 'ANTICROW.md');
+        const globalRulesPath = path.join(os.homedir(), '.anticrow', 'ANTICROW.md');
         const globalRulesMd = fs.readFileSync(globalRulesPath, 'utf-8').trim();
         if (globalRulesMd.length > 0) {
             const globalRulesJson = markdownToJson(globalRulesMd);
             if (ipcDir) {
-                const tmpGlobalPath = pathMod.join(ipcDir, `tmp_global_${tmpId}.json`);
+                const tmpGlobalPath = path.join(ipcDir, `tmp_global_${tmpId}.json`);
                 fs.writeFileSync(tmpGlobalPath, JSON.stringify(globalRulesJson, null, 2), 'utf-8');
                 tempFiles.push(tmpGlobalPath);
                 promptObj.user_rules_file = tmpGlobalPath;
@@ -130,14 +130,14 @@ export function buildSkillPrompt(
                 promptObj.user_rules_instruction = '出力のスタイルや口調に反映してください。';
             }
         }
-    } catch {
-        // ファイルが存在しない場合はスキップ
+    } catch (e) {
+        logDebug(`promptBuilder: global rules file (~/.anticrow/ANTICROW.md) not found: ${e instanceof Error ? e.message : e}`);
     }
 
     // プロンプトを一時ファイルに書き出し、CDP には view_file 指示のみ返す
     const promptJson = JSON.stringify(promptObj, null, 2);
     if (ipcDir) {
-        const tmpPromptPath = pathMod.join(ipcDir, `tmp_prompt_${tmpId}.json`);
+        const tmpPromptPath = path.join(ipcDir, `tmp_prompt_${tmpId}.json`);
         fs.writeFileSync(tmpPromptPath, promptJson, 'utf-8');
         tempFiles.push(tmpPromptPath);
         logInfo(`promptBuilder: prompt written to temp file: ${tmpPromptPath}`);

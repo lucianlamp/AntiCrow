@@ -92,8 +92,8 @@
         },
         "antiCrow.autoOperation": {
           "type": "boolean",
-          "default": true,
-          "description": "自動操作（Continue / Allow / 提案承認など）を有効にする。オンにすると、確認ダイアログの自動クリックとエージェント提案の自動承認が常時動作します。"
+          "default": false,
+          "description": "自動操作（Continue / Allow / 提案承認など）を有効にする。ANTICROW 経由のジョブ実行中のみ動作します。手動操作時は自動承認されません。"
         },
         "antiCrow.maxRetries": {
           "type": "number",

@@ -18,6 +18,9 @@ import {
     findAntigravityTarget,
 } from './cdpTargets';
 
+/** CDP コマンド個別タイムアウト (30秒) */
+const CDP_COMMAND_TIMEOUT_MS = 30_000;
+
 /** CDP コマンドのコールバック */
 interface PendingCallback {
     resolve: (val: unknown) => void;
@@ -84,6 +87,16 @@ export class CdpConnection {
             this.ws.on('close', () => {
                 logWarn('CDP: WebSocket closed');
                 this.ws = null;
+                // 切断時に未完了のコールバックをすべて reject（デッドロック防止）
+                if (this.pendingCallbacks.size > 0) {
+                    const count = this.pendingCallbacks.size;
+                    const err = new CdpConnectionError('CDP WebSocket closed unexpectedly', this.activeTargetPort ?? 0);
+                    for (const [id, cb] of this.pendingCallbacks) {
+                        cb.reject(err);
+                    }
+                    this.pendingCallbacks.clear();
+                    logWarn(`CDP: rejected ${count} pending callbacks due to close`);
+                }
             });
 
             this.ws.on('error', (err) => {
@@ -171,13 +184,13 @@ export class CdpConnection {
             const msg = JSON.stringify({ id, method, params });
             this.ws.send(msg);
 
-            // 個別コマンドタイムアウト (30秒)
+            // 個別コマンドタイムアウト
             setTimeout(() => {
                 if (this.pendingCallbacks.has(id)) {
                     this.pendingCallbacks.delete(id);
                     reject(new CdpCommandError(`CDP command timeout: ${method}`, method));
                 }
-            }, 30_000);
+            }, CDP_COMMAND_TIMEOUT_MS);
         });
     }
 

@@ -10,6 +10,17 @@ import * as vscode from 'vscode';
 import { ProgressUpdate } from './types';
 import { logInfo, logDebug, logWarn, logError } from './logger';
 
+// ---------------------------------------------------------------------------
+// 定数
+// ---------------------------------------------------------------------------
+
+/** レスポンスファイルの最大サイズ（バイト） */
+const MAX_RESPONSE_SIZE_BYTES = 5 * 1024 * 1024;
+/** ファイル出現後の書き込み安定待機（ms） */
+const WRITE_SETTLE_MS = 500;
+/** ポーリング間隔（ms） */
+const POLL_INTERVAL_MS = 1_000;
+
 export class FileIpc {
     private readonly ipcDir: string;
     private readonly storagePath: string;
@@ -78,12 +89,12 @@ export class FileIpc {
                 try {
                     await fs.promises.access(responsePath, fs.constants.F_OK);
                     // ファイルが存在する → 少し待ってから読み取り（書き込み完了を待つ）
-                    await this.sleep(500);
+                    await this.sleep(WRITE_SETTLE_MS);
 
                     const content = await fs.promises.readFile(responsePath, 'utf-8');
 
                     // セキュリティ: レスポンスサイズ制限（5MB）
-                    const MAX_RESPONSE_SIZE = 5 * 1024 * 1024;
+                    const MAX_RESPONSE_SIZE = MAX_RESPONSE_SIZE_BYTES;
                     if (content.length > MAX_RESPONSE_SIZE) {
                         logError(`FileIpc: response file too large (${content.length} bytes > ${MAX_RESPONSE_SIZE}). Truncating.`);
                         try { await fs.promises.unlink(responsePath); } catch (e) { logDebug(`FileIpc: failed to unlink truncated response: ${e}`); }
@@ -154,7 +165,7 @@ export class FileIpc {
                 if (settled) { return; }
                 await checkProgress();
                 await tryReadResponse();
-            }, 1_000);
+            }, POLL_INTERVAL_MS);
 
             // --- タイムアウト監視（1秒間隔でチェック） ---
             timeoutTimer = setInterval(() => {
@@ -174,7 +185,7 @@ export class FileIpc {
 
                     reject(new Error(`FileIpc: response timeout (${timeoutMs}ms, ${totalElapsed}) — file never appeared at ${responsePath}`));
                 }
-            }, 1_000);
+            }, POLL_INTERVAL_MS);
         });
     }
 

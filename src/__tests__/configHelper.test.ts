@@ -26,6 +26,7 @@ import {
     getArchiveDays,
     getAllowedUserIds,
     getMaxMessageLength,
+    isUserAllowed,
     DEFAULT_RESPONSE_TIMEOUT_MS,
     DEFAULT_TIMEZONE,
     DEFAULT_ARCHIVE_DAYS,
@@ -141,7 +142,7 @@ describe('configHelper', () => {
         });
     });
 
-    // ----- getMaxMessageLength -----
+    // ----- isUserAllowed -----\r\n\r\n    describe('isUserAllowed', () => {\r\n        it('should deny all users when allowedUserIds is empty', () => {\r\n            mockGet.mockImplementation((key: string) => {\r\n                if (key === 'allowedUserIds') { return []; }\r\n                return undefined;\r\n            });\r\n            const result = isUserAllowed('123456');\r\n            expect(result.allowed).toBe(false);\r\n            expect(result.reason).toContain('設定されていません');\r\n        });\r\n\r\n        it('should deny all users when allowedUserIds is not configured', () => {\r\n            mockGet.mockReturnValue(undefined);\r\n            const result = isUserAllowed('123456');\r\n            expect(result.allowed).toBe(false);\r\n        });\r\n\r\n        it('should allow user in the allowed list', () => {\r\n            mockGet.mockImplementation((key: string) => {\r\n                if (key === 'allowedUserIds') { return ['111', '222', '333']; }\r\n                return undefined;\r\n            });\r\n            const result = isUserAllowed('222');\r\n            expect(result.allowed).toBe(true);\r\n            expect(result.reason).toBeUndefined();\r\n        });\r\n\r\n        it('should deny user not in the allowed list', () => {\r\n            mockGet.mockImplementation((key: string) => {\r\n                if (key === 'allowedUserIds') { return ['111', '222']; }\r\n                return undefined;\r\n            });\r\n            const result = isUserAllowed('999');\r\n            expect(result.allowed).toBe(false);\r\n            expect(result.reason).toContain('許可されていません');\r\n        });\r\n\r\n        it('should allow the only configured user', () => {\r\n            mockGet.mockImplementation((key: string) => {\r\n                if (key === 'allowedUserIds') { return ['SOLE_USER']; }\r\n                return undefined;\r\n            });\r\n            expect(isUserAllowed('SOLE_USER').allowed).toBe(true);\r\n            expect(isUserAllowed('OTHER').allowed).toBe(false);\r\n        });\r\n\r\n        it('should be case-sensitive for user IDs', () => {\r\n            mockGet.mockImplementation((key: string) => {\r\n                if (key === 'allowedUserIds') { return ['Abc123']; }\r\n                return undefined;\r\n            });\r\n            expect(isUserAllowed('Abc123').allowed).toBe(true);\r\n            expect(isUserAllowed('abc123').allowed).toBe(false);\r\n            expect(isUserAllowed('ABC123').allowed).toBe(false);\r\n        });\r\n\r\n        it('should handle empty string user ID', () => {\r\n            mockGet.mockImplementation((key: string) => {\r\n                if (key === 'allowedUserIds') { return ['123']; }\r\n                return undefined;\r\n            });\r\n            expect(isUserAllowed('').allowed).toBe(false);\r\n        });\r\n    });\r\n\r\n    // ----- getMaxMessageLength -----
 
     describe('getMaxMessageLength', () => {
         it('should return configured max length', () => {

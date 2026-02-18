@@ -11,10 +11,25 @@ import { CdpBridge } from './cdpBridge';
 import { FileIpc } from './fileIpc';
 import { PlanStore } from './planStore';
 import { logInfo, logError, logWarn, logDebug } from './logger';
+import { CdpConnectionError } from './errors';
 import * as vscode from 'vscode';
 import { getMaxRetries } from './configHelper';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as os from 'os';
+
+// ---------------------------------------------------------------------------
+// 定数
+// ---------------------------------------------------------------------------
+
+/** UIウォッチャーのポーリング間隔（ms） */
+const UI_WATCHER_INTERVAL_MS = 2_000;
+/** 進捗ファイル監視のポーリング間隔（ms） */
+const PROGRESS_POLL_INTERVAL_MS = 3_000;
+/** リトライ時の待機時間（ms） */
+const RETRY_DELAY_MS = 8_000;
+/** 重複実行防止: 最近の実行 ID を保持する期間（ms） */
+const RECENT_EXECUTION_TTL_MS = 5 * 60 * 1000;
 
 
 /** UIウォッチャーの自動クリックルール */
@@ -115,7 +130,7 @@ export class Executor {
 
     /** ユーザーグローバルルールを読み込む */
     private loadUserGlobalRules(): void {
-        const homedir = require('os').homedir();
+        const homedir = os.homedir();
         const filePath = path.join(homedir, '.anticrow', 'ANTICROW.md');
         try {
             const content = fs.readFileSync(filePath, 'utf-8');
@@ -343,7 +358,7 @@ export class Executor {
             // typing indicator 開始（実行中に「入力中...」を表示）
             const typingInterval = setInterval(async () => {
                 try { await this.sendTypingToChannel(notifyChannel); } catch (e) { logDebug(`Executor: sendTyping failed: ${e}`); }
-            }, 8_000);
+            }, RETRY_DELAY_MS);
             try { await this.sendTypingToChannel(notifyChannel); } catch (e) { logDebug(`Executor: sendTyping failed: ${e}`); }
 
             // 進捗監視ループ開始（3秒間隔）
@@ -365,12 +380,30 @@ export class Executor {
                 } catch {
                     // 進捗ファイル読み取り失敗は無視
                 }
-            }, 3_000);
+            }, PROGRESS_POLL_INTERVAL_MS);
 
             let response: string;
             try {
                 // CDP 経由で Antigravity にプロンプト送信（1行 view_file 指示のみ）
-                await this.cdp.sendPrompt(cdpInstruction);
+                // 接続エラー時は再接続を1回試みてリトライ
+                try {
+                    await this.cdp.sendPrompt(cdpInstruction);
+                } catch (sendErr) {
+                    if (sendErr instanceof CdpConnectionError) {
+                        logWarn(`Executor: sendPrompt failed due to connection error, attempting reconnect — ${sendErr.message}`);
+                        await this.safeNotify(notifyChannel, '🔌 接続断を検出しました。再接続中...');
+                        try {
+                            await this.cdp.ensureConnected();
+                            logInfo('Executor: reconnected successfully, retrying sendPrompt');
+                            await this.cdp.sendPrompt(cdpInstruction);
+                        } catch (reconnectErr) {
+                            logError('Executor: reconnect + retry failed', reconnectErr);
+                            throw reconnectErr; // processQueue のリトライループに委譲
+                        }
+                    } else {
+                        throw sendErr;
+                    }
+                }
                 logInfo(`Executor: prompt sent, waiting for file response at ${responsePath}`);
 
                 // ファイル経由でレスポンスを待機
@@ -406,7 +439,7 @@ export class Executor {
             // 即時実行の重複防止
             if (!plan.cron) {
                 this.recentlyExecutedPlanIds.add(plan.plan_id);
-                setTimeout(() => this.recentlyExecutedPlanIds.delete(plan.plan_id), 5 * 60 * 1000);
+                setTimeout(() => this.recentlyExecutedPlanIds.delete(plan.plan_id), RECENT_EXECUTION_TTL_MS);
             }
 
             logInfo(`Executor: plan ${plan.plan_id} completed successfully`);
@@ -511,8 +544,11 @@ export class Executor {
         this.uiWatcherTimer = setInterval(async () => {
             // autoOperation 設定を毎回チェック（設定変更を動的に反映）
             const autoEnabled = vscode.workspace.getConfiguration('antiCrow')
-                .get<boolean>('autoOperation') ?? true;
+                .get<boolean>('autoOperation') ?? false;
             if (!autoEnabled) { return; }
+
+            // ANTICROW 経由のジョブ実行中のみ自動承認を行う
+            if (!this.processing) { return; }
 
             // --- DOM ルールベースの自動クリック ---
             for (const rule of this.autoClickRules) {
@@ -551,7 +587,7 @@ export class Executor {
             try {
                 await vscode.commands.executeCommand('antigravity.terminal.accept');
             } catch { /* 同上 */ }
-        }, 2_000); // 2秒間隔
+        }, UI_WATCHER_INTERVAL_MS);
     }
 
     /** UIウォッチャーを停止する */
