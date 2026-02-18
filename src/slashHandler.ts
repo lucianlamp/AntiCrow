@@ -6,6 +6,7 @@
 //   2. ボタンインタラクション処理（スケジュール管理・テンプレート管理）
 //   3. ワークスペース関連は workspaceHandler.ts に委譲
 // ---------------------------------------------------------------------------
+import * as fs from 'fs';
 
 import {
     ChatInputCommandInteraction,
@@ -113,16 +114,24 @@ export async function handleSlashCommand(
         logInfo(`handleSlashCommand: /${commandName} (intent=${intent}) text: "${userText.substring(0, 80)}"`);
 
         const { responsePath } = fileIpc.createRequestId();
-        const skillPrompt = buildSkillPrompt(userText, intent, channelName, responsePath);
+        const ipcDir = fileIpc.getIpcDir();
+        const { prompt: skillPrompt, tempFiles } = buildSkillPrompt(userText, intent, channelName, responsePath, undefined, undefined, ipcDir);
         logInfo('handleSlashCommand: sending skill prompt via CDP...');
 
         let skillResponse: string;
-        await cdp.sendPrompt(skillPrompt);
-        logInfo('handleSlashCommand: prompt sent, waiting for file response...');
+        try {
+            await cdp.sendPrompt(skillPrompt);
+            logInfo('handleSlashCommand: prompt sent, waiting for file response...');
 
-        const responseTimeout = getResponseTimeout();
-        skillResponse = await fileIpc.waitForResponse(responsePath, responseTimeout);
-        logInfo(`handleSlashCommand: skill response received (${skillResponse.length} chars)`);
+            const responseTimeout = getResponseTimeout();
+            skillResponse = await fileIpc.waitForResponse(responsePath, responseTimeout);
+            logInfo(`handleSlashCommand: skill response received (${skillResponse.length} chars)`);
+        } finally {
+            // 一時ファイルのクリーンアップ
+            for (const f of tempFiles) {
+                try { fs.unlinkSync(f); } catch { /* ignore */ }
+            }
+        }
 
         const skillOutput = parseSkillJson(skillResponse);
         if (!skillOutput) {
@@ -880,12 +889,12 @@ async function handleTemplateButton(
 
         await interaction.update({ embeds: [buildEmbed(`⏳ テンプレート「${name}」を実行中...`, EmbedColor.Info)], components: [] });
 
+        const tplIpcDir = fileIpc.getIpcDir();
+        const expandedPrompt = TemplateStore.expandVariables(template.prompt);
+        const { responsePath } = fileIpc.createRequestId();
+        const { prompt: tplSkillPrompt, tempFiles: tplTempFiles } = buildSkillPrompt(expandedPrompt, 'agent-chat', 'template-run', responsePath, undefined, undefined, tplIpcDir);
         try {
-            const expandedPrompt = TemplateStore.expandVariables(template.prompt);
-            const { responsePath } = fileIpc.createRequestId();
-            const skillPrompt = buildSkillPrompt(expandedPrompt, 'agent-chat', 'template-run', responsePath);
-
-            await cdp.sendPrompt(skillPrompt);
+            await cdp.sendPrompt(tplSkillPrompt);
             const responseTimeout = getResponseTimeout();
             const skillResponse = await fileIpc.waitForResponse(responsePath, responseTimeout);
 
@@ -909,6 +918,11 @@ async function handleTemplateButton(
             const errMsg = e instanceof Error ? e.message : String(e);
             logError('handleTemplateButton: tpl_confirm_run failed', e);
             await interaction.editReply({ embeds: [buildEmbed(`❌ テンプレート実行エラー: ${errMsg}`, EmbedColor.Error)] }).catch(() => { });
+        } finally {
+            // 一時ファイルのクリーンアップ
+            for (const f of tplTempFiles) {
+                try { fs.unlinkSync(f); } catch { /* ignore */ }
+            }
         }
         return;
     }

@@ -103,16 +103,22 @@ export class Executor {
     /** プロンプトテンプレートを読み込む */
     private loadPromptTemplate(): void {
         if (!this.extensionPath) { return; }
-        const filePath = path.join(this.extensionPath, '.anticrow', 'templates', 'execution_prompt.md');
-        try {
-            const content = fs.readFileSync(filePath, 'utf-8');
-            if (content.trim().length > 0) {
-                this.promptTemplate = content;
-                logDebug(`Executor: loaded prompt template (${content.length} chars)`);
+        // JSON テンプレートを優先、フォールバックとして .md も試行
+        const jsonPath = path.join(this.extensionPath, '.anticrow', 'templates', 'execution_prompt.json');
+        const mdPath = path.join(this.extensionPath, '.anticrow', 'templates', 'execution_prompt.md');
+        for (const filePath of [jsonPath, mdPath]) {
+            try {
+                const content = fs.readFileSync(filePath, 'utf-8');
+                if (content.trim().length > 0) {
+                    this.promptTemplate = content;
+                    logDebug(`Executor: loaded prompt template from ${path.basename(filePath)} (${content.length} chars)`);
+                    return;
+                }
+            } catch {
+                // ファイルが見つからない場合は次を試行
             }
-        } catch (e) {
-            logDebug(`Executor: prompt template not found, using inline: ${e instanceof Error ? e.message : e}`);
         }
+        logDebug('Executor: no prompt template found, using inline');
     }
 
     /** プロンプトルールを読み込む */
@@ -287,49 +293,75 @@ export class Executor {
             // ルール内容をインライン展開用に準備
             const rulesInline = this.promptRulesContent || '';
 
-            // プロンプト構築: テンプレートがあれば使用、なければインライン
-            let promptWithFileInstruction: string;
+            // プロンプト構築: JSON オブジェクト形式
+            let finalPrompt: string;
             if (this.promptTemplate) {
-                promptWithFileInstruction = this.promptTemplate
+                // テンプレート内のプレースホルダーを置換
+                let expanded = this.promptTemplate
                     .replace(/\{\{datetime\}\}/g, datetimeStr)
                     .replace(/\{\{user_prompt\}\}/g, plan.prompt)
                     .replace(/\{\{response_path\}\}/g, responsePath)
                     .replace(/\{\{progress_path\}\}/g, progressPath)
                     .replace(/\{\{rules_content\}\}/g, rulesInline);
-            } else {
-                promptWithFileInstruction = `## コンテキスト
-
-現在時刻(JST): ${datetimeStr}
-
-${plan.prompt}
-
-## 重要: 出力方法
-
-結果をすべて以下のファイルパスに write_to_file ツールで書き込んでください。
-チャットにも結果を出力してください。
-ファイルパス: ${responsePath}
-
-${rulesInline}
-
-## 進捗通知ファイルパス
-
-進捗通知を送る場合のファイルパス: ${progressPath}`;
-            }
-
-
-            // 添付ファイルがある場合、プロンプトに追記
-            let finalPrompt = promptWithFileInstruction;
-            if (plan.attachment_paths && plan.attachment_paths.length > 0) {
-                finalPrompt += `\n\n## 添付ファイル\n以下のファイルが Discord メッセージに添付されています。view_file ツールで内容を確認してください。\n\n`;
-                for (const p of plan.attachment_paths) {
-                    finalPrompt += `- ${p}\n`;
+                // テンプレートが JSON の場合、追加プロパティを注入
+                try {
+                    const tplObj = JSON.parse(expanded);
+                    if (plan.attachment_paths && plan.attachment_paths.length > 0) {
+                        tplObj.attachments = plan.attachment_paths;
+                        tplObj.attachments_instruction = '添付ファイルを view_file ツールで確認してください。';
+                    }
+                    if (this.userGlobalRules) {
+                        tplObj.user_rules = this.userGlobalRules;
+                        tplObj.user_rules_instruction = '出力のスタイルや口調に反映してください。';
+                    }
+                    finalPrompt = JSON.stringify(tplObj, null, 2);
+                } catch {
+                    // JSON パース失敗時はテキストとしてそのまま使用（旧 .md 互換）
+                    finalPrompt = expanded;
+                    if (plan.attachment_paths && plan.attachment_paths.length > 0) {
+                        finalPrompt += `\n\n## 添付ファイル\n以下のファイルが Discord メッセージに添付されています。view_file ツールで内容を確認してください。\n\n`;
+                        for (const p of plan.attachment_paths) {
+                            finalPrompt += `- ${p}\n`;
+                        }
+                    }
+                    if (this.userGlobalRules) {
+                        finalPrompt += `\n\n## ユーザー設定\n${this.userGlobalRules}`;
+                    }
                 }
+            } else {
+                // インラインフォールバック: JSON オブジェクト
+                const promptObj: Record<string, unknown> = {
+                    task: 'execution',
+                    context: { datetime_jst: datetimeStr },
+                    prompt: plan.prompt,
+                    output: {
+                        response_path: responsePath,
+                        constraint: 'すべての作業が完了してから1回だけ書き込む。途中経過は書き込まない。ファイルに書き込んだ時点でレスポンス完了と見なされ、Discord に結果が送信される。',
+                    },
+                    rules: rulesInline || undefined,
+                    progress: {
+                        path: progressPath,
+                        instruction: '処理が長くなる場合は進捗ファイルに JSON で進捗状況を書き込む（write_to_file, Overwrite: true）。',
+                        format: { status: '現在のステータス', detail: '詳細（任意）', percent: 50 },
+                    },
+                };
+                if (plan.attachment_paths && plan.attachment_paths.length > 0) {
+                    promptObj.attachments = plan.attachment_paths;
+                    promptObj.attachments_instruction = '添付ファイルを view_file ツールで確認してください。';
+                }
+                if (this.userGlobalRules) {
+                    promptObj.user_rules = this.userGlobalRules;
+                    promptObj.user_rules_instruction = '出力のスタイルや口調に反映してください。';
+                }
+                finalPrompt = JSON.stringify(promptObj, null, 2);
             }
 
-            // ユーザーグローバルルール（~/.anticrow/ANTICROW.md）を注入
-            if (this.userGlobalRules) {
-                finalPrompt += `\n\n## ユーザー設定\n以下はユーザーが設定したグローバルルールです。出力のスタイルや口調に反映してください。\n\n${this.userGlobalRules}`;
-            }
+            // プロンプトを一時ファイルに書き出し、CDP には view_file 指示のみ送る
+            const ipcDir = path.dirname(responsePath);
+            const tmpExecPath = path.join(ipcDir, `tmp_exec_${requestId}.json`);
+            fs.writeFileSync(tmpExecPath, finalPrompt, 'utf-8');
+            logInfo(`Executor: prompt written to temp file: ${tmpExecPath}`);
+            const cdpInstruction = `以下のファイルを view_file ツールで読み込み、その指示に従ってください。ファイルパス: ${tmpExecPath}`;
 
             // typing indicator 開始（実行中に「入力中...」を表示）
             const typingInterval = setInterval(async () => {
@@ -360,8 +392,8 @@ ${rulesInline}
 
             let response: string;
             try {
-                // CDP 経由で Antigravity にプロンプト送信（送信のみ）
-                await this.cdp.sendPrompt(finalPrompt);
+                // CDP 経由で Antigravity にプロンプト送信（1行 view_file 指示のみ）
+                await this.cdp.sendPrompt(cdpInstruction);
                 logInfo(`Executor: prompt sent, waiting for file response at ${responsePath}`);
 
                 // UIウォッチャー開始（ダイアログ自動クリック）
@@ -376,6 +408,8 @@ ${rulesInline}
                 clearInterval(progressInterval);
                 // 進捗ファイルクリーンアップ
                 await this.fileIpc.cleanupProgress(progressPath);
+                // 一時プロンプトファイル削除
+                try { fs.unlinkSync(tmpExecPath); } catch { /* ignore */ }
             }
 
             this.running = false;

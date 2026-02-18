@@ -1,0 +1,21 @@
+{
+    "task": "execution",
+    "context": {
+        "datetime_jst": "{{datetime}}"
+    },
+    "prompt": "{{user_prompt}}",
+    "output": {
+        "response_path": "{{response_path}}",
+        "constraint": "すべての作業が完了してから1回だけ書き込む。途中経過・中間報告は書き込まない。ファイルに書き込んだ時点でレスポンス完了と見なされ、Discord に結果が送信される。"
+    },
+    "rules": "{{rules_content}}",
+    "progress": {
+        "path": "{{progress_path}}",
+        "instruction": "処理が長くなる場合は、進捗ファイルに進捗状況を JSON で書き込む（write_to_file, Overwrite: true）。Discord にリアルタイム通知される。",
+        "format": {
+            "status": "現在のステータス",
+            "detail": "詳細（任意）",
+            "percent": 50
+        }
+    }
+}

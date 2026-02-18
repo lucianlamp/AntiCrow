@@ -380,23 +380,12 @@ export async function stopBridge(ctx: BridgeContext): Promise<void> {
 // ---------------------------------------------------------------------------
 
 export function updateStatusBar(ctx: BridgeContext): void {
-    const port = ctx.cdp?.getActiveTargetPort();
-    const title = ctx.cdp?.getActiveTargetTitle();
-
     if (ctx.isBotOwner) {
         ctx.statusBarItem.text = '$(check) AntiCrow';
-        const tooltipLines = ['AntiCrow — Active (メッセージを処理中)'];
-        if (title) {
-            tooltipLines.push(`Target: ${title}${port ? ` (port ${port})` : ''}`);
-        }
-        ctx.statusBarItem.tooltip = tooltipLines.join('\n');
+        ctx.statusBarItem.tooltip = 'AntiCrow — Active (メッセージを処理中)';
     } else {
         ctx.statusBarItem.text = '$(eye) AntiCrow (Standby)';
-        const tooltipLines = ['AntiCrow — Standby (別ワークスペースが Bot 管理中)'];
-        if (title) {
-            tooltipLines.push(`CDP Target: ${title}${port ? ` (port ${port})` : ''}`);
-        }
-        ctx.statusBarItem.tooltip = tooltipLines.join('\n');
+        ctx.statusBarItem.tooltip = 'AntiCrow — Standby (別ワークスペースが Bot 管理中)';
     }
     ctx.statusBarItem.command = 'anti-crow.stop';
 }

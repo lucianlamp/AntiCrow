@@ -73,6 +73,14 @@ export function activate(context: vscode.ExtensionContext) {
                 await vscode.workspace.getConfiguration('antiCrow').update('botToken', true, vscode.ConfigurationTarget.Global);
                 vscode.window.showInformationMessage('🔐 Bot Token を SecretStorage に保存しました。');
                 logInfo('Token saved to SecretStorage');
+
+                // autoStart 有効かつ未起動なら自動的に Bridge を開始
+                const cfg = vscode.workspace.getConfiguration('antiCrow');
+                if (cfg.get<boolean>('autoStart') && (!ctx.bot || !ctx.bot.isReady())) {
+                    startBridge(ctx, context).catch(e => {
+                        logError('Auto-start after token set failed', e);
+                    });
+                }
             }
         })
     );

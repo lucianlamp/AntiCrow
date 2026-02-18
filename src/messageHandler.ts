@@ -1,6 +1,8 @@
 // ---------------------------------------------------------------------------
 // messageHandler.ts — Discord メッセージハンドラ
 // ---------------------------------------------------------------------------
+import * as fs from 'fs';
+// ---------------------------------------------------------------------------
 // 責務:
 //   1. メッセージキュー管理（ワークスペース毎の排他制御）
 //   2. Discord メッセージの受信・処理・Plan 生成・実行
@@ -20,8 +22,8 @@ import { DiscordBot } from './discordBot';
 import { downloadAttachments } from './attachmentDownloader';
 import { BridgeContext } from './bridgeContext';
 import { getResponseTimeout, getAllowedUserIds, getMaxMessageLength } from './configHelper';
-import { getCurrentModel, getAvailableModels, selectModel } from './cdpModels';
-import { getCurrentMode, getAvailableModes, selectMode } from './cdpModes';
+import { getCurrentModel } from './cdpModels';
+import { getCurrentMode } from './cdpModes';
 
 // 委譲先モジュール
 import { buildSkillPrompt, buildConfirmMessage, countChoiceItems, cronToPrefix } from './promptBuilder';
@@ -92,301 +94,7 @@ export async function enqueueMessage(
     return task;
 }
 
-// ---------------------------------------------------------------------------
-// モデル変更ショートカット検出
-// ---------------------------------------------------------------------------
 
-/** モデル変更リクエストの検出結果 */
-interface ModelChangeRequest {
-    targetModel: string;
-}
-
-// 日本語パターン: 「モデルを〇〇に変えて」「〇〇に切り替えて」「モデル変更して〇〇」等
-const MODEL_CHANGE_PATTERNS_JA = [
-    /モデル(?:を)?\s*(.+?)\s*(?:に|へ)\s*(?:変え|切り替え|変更|チェンジ|スイッチ)/i,
-    /(.+?)\s*(?:に|へ)\s*(?:モデル(?:を)?)?\s*(?:変え|切り替え|変更|チェンジ|スイッチ)/i,
-    /モデル\s*(?:変更|切替|切り替え|チェンジ|スイッチ)\s*[:：]?\s*(.+)/i,
-];
-
-// 英語パターン
-const MODEL_CHANGE_PATTERNS_EN = [
-    /(?:switch|change|set)\s+(?:the\s+)?model\s+(?:to\s+)?(.+)/i,
-    /(?:use|select)\s+(?:the\s+)?(?:model\s+)?(.+?)\s*(?:model)?$/i,
-];
-
-/**
- * メッセージがモデル変更リクエストかどうかを検出する。
- * マッチした場合はターゲットモデル名を返す。
- */
-export function detectModelChangeRequest(text: string): ModelChangeRequest | null {
-    const trimmed = text.trim();
-    // 長すぎるメッセージはモデル変更リクエストではない
-    if (trimmed.length > 100) { return null; }
-
-    for (const pattern of [...MODEL_CHANGE_PATTERNS_JA, ...MODEL_CHANGE_PATTERNS_EN]) {
-        const match = trimmed.match(pattern);
-        if (match && match[1]) {
-            const target = match[1].trim().replace(/[。、！!？?\s]+$/g, '');
-            if (target.length > 0 && target.length <= 80) {
-                return { targetModel: target };
-            }
-        }
-    }
-    return null;
-}
-
-// ---------------------------------------------------------------------------
-// モード変更ショートカット検出
-// ---------------------------------------------------------------------------
-
-/** モード変更リクエストの検出結果 */
-interface ModeChangeRequest {
-    targetMode: string;
-}
-
-// 日本語パターン: 「モードをPlanningに変えて」「Fastモードにして」等
-const MODE_CHANGE_PATTERNS_JA = [
-    /モード(?:を)?\s*(.+?)\s*(?:に|へ)\s*(?:変え|切り替え|変更|チェンジ|スイッチ|して)/i,
-    /(.+?)\s*モード\s*(?:に|へ)\s*(?:変え|切り替え|変更|チェンジ|スイッチ|して)/i,
-    /モード\s*(?:変更|切替|切り替え|チェンジ|スイッチ)\s*[:：]?\s*(.+)/i,
-];
-
-// 英語パターン
-const MODE_CHANGE_PATTERNS_EN = [
-    /(?:switch|change|set)\s+(?:the\s+)?mode\s+(?:to\s+)?(.+)/i,
-    /(?:use)\s+(?:the\s+)?(.+?)\s*mode$/i,
-];
-
-/**
- * メッセージがモード変更リクエストかどうかを検出する。
- * マッチした場合はターゲットモード名を返す。
- */
-export function detectModeChangeRequest(text: string): ModeChangeRequest | null {
-    const trimmed = text.trim();
-    // 長すぎるメッセージはモード変更リクエストではない
-    if (trimmed.length > 100) { return null; }
-
-    for (const pattern of [...MODE_CHANGE_PATTERNS_JA, ...MODE_CHANGE_PATTERNS_EN]) {
-        const match = trimmed.match(pattern);
-        if (match && match[1]) {
-            const target = match[1].trim().replace(/[。、！!？?\s]+$/g, '');
-            if (target.length > 0 && target.length <= 80) {
-                return { targetMode: target };
-            }
-        }
-    }
-    return null;
-}
-
-// ---------------------------------------------------------------------------
-// モデル変更処理
-// ---------------------------------------------------------------------------
-
-async function handleModelChange(
-    ctx: BridgeContext,
-    channel: import('discord.js').TextChannel,
-    targetModel: string,
-    wsNameFromCategory: string | null,
-): Promise<void> {
-    const { cdp, cdpPool } = ctx;
-    const useCdpPool = !!cdpPool;
-
-    // CDP 接続の取得
-    let activeCdp: CdpBridge;
-    if (useCdpPool && cdpPool) {
-        try {
-            activeCdp = await cdpPool.acquire(wsNameFromCategory || '');
-        } catch (e) {
-            logError('handleModelChange: failed to acquire CdpBridge', e);
-            await channel.send({ embeds: [buildEmbed('⚠️ 接続に失敗しました。', EmbedColor.Warning)] });
-            return;
-        }
-    } else if (cdp) {
-        activeCdp = cdp;
-    } else {
-        await channel.send({ embeds: [buildEmbed('⚠️ 接続が初期化されていません。', EmbedColor.Warning)] });
-        return;
-    }
-
-    try {
-        await channel.sendTyping();
-
-        // 利用可能なモデル一覧を取得
-        const { models, current } = await getAvailableModels(activeCdp.ops);
-        if (models.length === 0) {
-            await channel.send({ embeds: [buildEmbed('⚠️ 利用可能なモデルが見つかりません。', EmbedColor.Warning)] });
-            return;
-        }
-
-        // ファジーマッチ: ターゲット名に最も近いモデルを探す
-        const targetLower = targetModel.toLowerCase();
-        let bestMatch: string | null = null;
-
-        // 完全一致
-        bestMatch = models.find(m => m.toLowerCase() === targetLower) || null;
-
-        // 部分一致（含む）
-        if (!bestMatch) {
-            bestMatch = models.find(m => m.toLowerCase().includes(targetLower)) || null;
-        }
-
-        // 逆方向部分一致（ターゲットがモデル名を含む）
-        if (!bestMatch) {
-            bestMatch = models.find(m => targetLower.includes(m.toLowerCase())) || null;
-        }
-
-        if (!bestMatch) {
-            const modelList = models.map(m => `• ${m}`).join('\n');
-            await channel.send({
-                embeds: [buildEmbed(
-                    `⚠️ "${targetModel}" に一致するモデルが見つかりません。\n\n**利用可能なモデル:**\n${modelList}`,
-                    EmbedColor.Warning
-                )]
-            });
-            return;
-        }
-
-        // すでに同じモデルか
-        if (current && bestMatch.toLowerCase() === current.toLowerCase()) {
-            await channel.send({
-                embeds: [buildEmbed(
-                    `ℹ️ すでに **${bestMatch}** を使用中です。`,
-                    EmbedColor.Info
-                )]
-            });
-            return;
-        }
-
-        // モデル切替実行
-        logInfo(`handleModelChange: switching from "${current}" to "${bestMatch}"`);
-        const success = await selectModel(activeCdp.ops, bestMatch);
-
-        if (success) {
-            await channel.send({
-                embeds: [buildEmbed(
-                    `✅ モデルを **${bestMatch}** に切り替えました。`,
-                    EmbedColor.Success
-                )]
-            });
-        } else {
-            await channel.send({
-                embeds: [buildEmbed(
-                    `❌ **${bestMatch}** への切り替えに失敗しました。`,
-                    EmbedColor.Error
-                )]
-            });
-        }
-    } catch (e) {
-        logError('handleModelChange failed', e);
-        const errMsg = e instanceof Error ? e.message : String(e);
-        await channel.send({ embeds: [buildEmbed(`❌ モデル変更エラー: ${errMsg}`, EmbedColor.Error)] });
-    }
-}
-
-// ---------------------------------------------------------------------------
-// モード変更処理
-// ---------------------------------------------------------------------------
-
-async function handleModeChange(
-    ctx: BridgeContext,
-    channel: import('discord.js').TextChannel,
-    targetMode: string,
-    wsNameFromCategory: string | null,
-): Promise<void> {
-    const { cdp, cdpPool } = ctx;
-    const useCdpPool = !!cdpPool;
-
-    // CDP 接続の取得
-    let activeCdp: CdpBridge;
-    if (useCdpPool && cdpPool) {
-        try {
-            activeCdp = await cdpPool.acquire(wsNameFromCategory || '');
-        } catch (e) {
-            logError('handleModeChange: failed to acquire CdpBridge', e);
-            await channel.send({ embeds: [buildEmbed('⚠️ 接続に失敗しました。', EmbedColor.Warning)] });
-            return;
-        }
-    } else if (cdp) {
-        activeCdp = cdp;
-    } else {
-        await channel.send({ embeds: [buildEmbed('⚠️ 接続が初期化されていません。', EmbedColor.Warning)] });
-        return;
-    }
-
-    try {
-        await channel.sendTyping();
-
-        // 利用可能なモード一覧を取得
-        const { modes, current } = await getAvailableModes(activeCdp.ops);
-        if (modes.length === 0) {
-            await channel.send({ embeds: [buildEmbed('⚠️ 利用可能なモードが見つかりません。', EmbedColor.Warning)] });
-            return;
-        }
-
-        // ファジーマッチ
-        const targetLower = targetMode.toLowerCase();
-        let bestMatch: string | null = null;
-
-        // 完全一致
-        bestMatch = modes.find(m => m.toLowerCase() === targetLower) || null;
-
-        // 部分一致（含む）
-        if (!bestMatch) {
-            bestMatch = modes.find(m => m.toLowerCase().includes(targetLower)) || null;
-        }
-
-        // 逆方向部分一致
-        if (!bestMatch) {
-            bestMatch = modes.find(m => targetLower.includes(m.toLowerCase())) || null;
-        }
-
-        if (!bestMatch) {
-            const modeList = modes.map(m => `• ${m}`).join('\n');
-            await channel.send({
-                embeds: [buildEmbed(
-                    `⚠️ "${targetMode}" に一致するモードが見つかりません。\n\n**利用可能なモード:**\n${modeList}`,
-                    EmbedColor.Warning
-                )]
-            });
-            return;
-        }
-
-        // すでに同じモードか
-        if (current && bestMatch.toLowerCase() === current.toLowerCase()) {
-            await channel.send({
-                embeds: [buildEmbed(
-                    `ℹ️ すでに **${bestMatch}** モードを使用中です。`,
-                    EmbedColor.Info
-                )]
-            });
-            return;
-        }
-
-        // モード切替実行
-        logInfo(`handleModeChange: switching from "${current}" to "${bestMatch}"`);
-        const success = await selectMode(activeCdp.ops, bestMatch);
-
-        if (success) {
-            await channel.send({
-                embeds: [buildEmbed(
-                    `✅ モードを **${bestMatch}** に切り替えました。`,
-                    EmbedColor.Success
-                )]
-            });
-        } else {
-            await channel.send({
-                embeds: [buildEmbed(
-                    `❌ **${bestMatch}** への切り替えに失敗しました。`,
-                    EmbedColor.Error
-                )]
-            });
-        }
-    } catch (e) {
-        logError('handleModeChange failed', e);
-        const errMsg = e instanceof Error ? e.message : String(e);
-        await channel.send({ embeds: [buildEmbed(`❌ モード変更エラー: ${errMsg}`, EmbedColor.Error)] });
-    }
-}
 
 // ---------------------------------------------------------------------------
 // メッセージハンドラ
@@ -424,27 +132,6 @@ export async function handleDiscordMessage(
         return;
     }
 
-    // -----------------------------------------------------------------
-    // モデル変更ショートカット: Plan 生成前にインターセプト
-    // -----------------------------------------------------------------
-    const modelChangeReq = detectModelChangeRequest(text);
-    if (modelChangeReq) {
-        const wsName = DiscordBot.resolveWorkspaceFromChannel(channel);
-        logInfo(`handleDiscordMessage: model change shortcut detected — target="${modelChangeReq.targetModel}"`);
-        await handleModelChange(ctx, channel, modelChangeReq.targetModel, wsName);
-        return;
-    }
-
-    // -----------------------------------------------------------------
-    // モード変更ショートカット: Plan 生成前にインターセプト
-    // -----------------------------------------------------------------
-    const modeChangeReq = detectModeChangeRequest(text);
-    if (modeChangeReq) {
-        const wsName = DiscordBot.resolveWorkspaceFromChannel(channel);
-        logInfo(`handleDiscordMessage: mode change shortcut detected — target="${modeChangeReq.targetMode}"`);
-        await handleModeChange(ctx, channel, modeChangeReq.targetMode, wsName);
-        return;
-    }
 
     // -----------------------------------------------------------------
     // 返信コンテキスト: リプライ先メッセージの内容を取得してプロンプトに付加
@@ -546,7 +233,7 @@ export async function handleDiscordMessage(
             ]);
             const parts = [currentMode, currentModel].filter(Boolean);
             const ackPrefix = parts.length > 0 ? `[${parts.join(' - ')}]` : '';
-            await channel.send({ embeds: [buildEmbed(`🔄 ${ackPrefix}計画を生成中...`, EmbedColor.Info)] });
+            await channel.send({ embeds: [buildEmbed(`🔄 ${ackPrefix} 伝達中...`, EmbedColor.Info)] });
         } catch (sendErr) {
             logError('handleDiscordMessage: failed to send acknowledgement', sendErr);
         }
@@ -567,7 +254,8 @@ export async function handleDiscordMessage(
         }
 
         // Skill プロンプト生成
-        const skillPrompt = buildSkillPrompt(text || '（添付ファイルを確認してください）', intent, channelName, responsePath, attachmentPaths, ctx.extensionPath);
+        const ipcDir = fileIpc.getIpcDir();
+        const { prompt: skillPrompt, tempFiles } = buildSkillPrompt(text || '（添付ファイルを確認してください）', intent, channelName, responsePath, attachmentPaths, ctx.extensionPath, ipcDir);
         logInfo('handleDiscordMessage: sending skill prompt via CDP...');
 
         // typing indicator 開始
@@ -603,6 +291,10 @@ export async function handleDiscordMessage(
             skillResponse = await fileIpc.waitForResponse(responsePath, responseTimeout);
         } finally {
             clearInterval(typingInterval);
+            // 一時ファイルのクリーンアップ
+            for (const f of tempFiles) {
+                try { fs.unlinkSync(f); logInfo(`handleDiscordMessage: cleaned up temp file: ${f}`); } catch { /* ignore */ }
+            }
         }
         logInfo(`handleDiscordMessage: skill response received(${skillResponse.length} chars)`);
 
