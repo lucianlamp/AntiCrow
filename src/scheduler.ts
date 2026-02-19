@@ -11,6 +11,7 @@
 import * as cron from 'node-cron';
 import { Plan } from './types';
 import { logInfo, logWarn, logError } from './logger';
+import { getTimezone } from './configHelper';
 
 type ScheduleCallback = (plan: Plan) => void;
 
@@ -24,7 +25,7 @@ export class Scheduler {
     private callback: ScheduleCallback;
     private timezone: string;
 
-    constructor(callback: ScheduleCallback, timezone: string = 'Asia/Tokyo') {
+    constructor(callback: ScheduleCallback, timezone: string = getTimezone()) {
         this.callback = callback;
         this.timezone = timezone;
     }

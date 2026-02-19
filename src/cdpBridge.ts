@@ -54,6 +54,13 @@ export class CdpBridge {
     private cascadeContextId: number | null = null;
     private ports: number[];
 
+    /** ランチガード: 起動中の Promise を共有して重複起動を防止 */
+    private static launchInFlight: Promise<void> | null = null;
+    /** 最後にランチが完了した時刻（クールダウン用） */
+    private static lastLaunchTime = 0;
+    /** ランチ完了後のクールダウン期間（ms） */
+    private static readonly LAUNCH_COOLDOWN_MS = 10_000;
+
     constructor(timeoutMs: number = 300_000, ports?: number[]) {
         this.ports = ports ?? [];
         this.conn = new CdpConnection(this.ports);
@@ -180,6 +187,28 @@ export class CdpBridge {
     }
 
     async launchAntigravity(folderPath?: string): Promise<void> {
+        // ランチガード: 既に起動中なら既存の Promise を共有して待機
+        if (CdpBridge.launchInFlight) {
+            logInfo('CDP: launchAntigravity — already in flight, waiting for existing launch');
+            return CdpBridge.launchInFlight;
+        }
+
+        // クールダウン: 直前の起動から一定時間はスキップ
+        const elapsed = Date.now() - CdpBridge.lastLaunchTime;
+        if (elapsed < CdpBridge.LAUNCH_COOLDOWN_MS) {
+            logInfo(`CDP: launchAntigravity — skipped (cooldown: ${Math.ceil((CdpBridge.LAUNCH_COOLDOWN_MS - elapsed) / 1000)}s remaining)`);
+            return;
+        }
+
+        CdpBridge.launchInFlight = this.doLaunchAntigravity(folderPath)
+            .finally(() => {
+                CdpBridge.launchInFlight = null;
+                CdpBridge.lastLaunchTime = Date.now();
+            });
+        return CdpBridge.launchInFlight;
+    }
+
+    private async doLaunchAntigravity(folderPath?: string): Promise<void> {
         // VS Code Terminal API 経由で起動
         // Extension Host から直接 spawn/exec した子プロセスは GUI ウィンドウを作成できないため、
         // Terminal (pty) コンテキストで launch-antigravity.ps1 スクリプトを実行する
@@ -315,6 +344,17 @@ export class CdpBridge {
     // -----------------------------------------------------------------------
 
     async startNewChat(): Promise<void> {
+        // 優先: VSCode コマンド（UI変更に強い）
+        try {
+            await vscode.commands.executeCommand('antigravity.startNewConversation');
+            logInfo('CDP: startNewChat — used VSCode command (antigravity.startNewConversation)');
+            this.cascadeContextId = null;
+            return;
+        } catch (e) {
+            logDebug(`CDP: startNewChat — VSCode command failed, falling back to key injection: ${e instanceof Error ? e.message : e}`);
+        }
+
+        // フォールバック: CDP でキー注入 (Ctrl+Shift+L)
         await this.conn.connect();
 
         await this.conn.send('Input.dispatchKeyEvent', {
@@ -333,7 +373,7 @@ export class CdpBridge {
             key: 'L',
         });
 
-        logInfo('CDP: startNewChat — sent Ctrl+Shift+L');
+        logInfo('CDP: startNewChat — fell back to Ctrl+Shift+L key injection');
         await this.sleep(1500);
         this.cascadeContextId = null;
     }
@@ -344,6 +384,15 @@ export class CdpBridge {
      * 見つからない場合は Escape キーを送信してフォールバック。
      */
     async clickStopButton(): Promise<void> {
+        // 0. 優先: VSCode コマンド（UI変更に強い）
+        try {
+            await vscode.commands.executeCommand('antigravity.cancelCurrentTask');
+            logInfo('CDP: clickStopButton — used VSCode command (antigravity.cancelCurrentTask)');
+            return;
+        } catch {
+            logDebug('CDP: clickStopButton — VSCode command not available, trying CDP');
+        }
+
         await this.conn.connect();
 
         // 1. Cascade iframe 内のストップボタンを探してクリック

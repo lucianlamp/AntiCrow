@@ -11,18 +11,6 @@ import { logInfo, logError } from './logger';
 
 export const slashCommandDefinitions = [
     new SlashCommandBuilder()
-        .setName('schedule')
-        .setDescription('定期実行を登録')
-        .addStringOption(opt =>
-            opt.setName('cron')
-                .setDescription('cron 式 (例: */5 * * * *)')
-                .setRequired(true))
-        .addStringOption(opt =>
-            opt.setName('prompt')
-                .setDescription('実行するプロンプト')
-                .setRequired(true)),
-
-    new SlashCommandBuilder()
         .setName('status')
         .setDescription('Bridge の状態を表示'),
 

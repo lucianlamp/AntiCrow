@@ -183,7 +183,7 @@ export function isUserAllowed(userId: string): { allowed: boolean; reason?: stri
     return { allowed: true };
 }
 
-/** メッセージ最大文字数を取得する（0=無制限、デフォルト: 4000） */
+/** メッセージ最大文字数を取得する（0=無制限、デフォルト: 6000） */
 export function getMaxMessageLength(): number {
     return getConfig().get<number>('maxMessageLength') ?? 6000;
 }

@@ -102,8 +102,8 @@
         },
         "antiCrow.maxRetries": {
           "type": "number",
-          "default": 1,
-          "description": "タイムアウトや接続断時の自動リトライ回数（0でリトライ無効）。"
+          "default": 0,
+          "description": "タイムアウトや接続断時の自動リトライ回数（0でリトライ無効、デフォルト: 0）。"
         }
       }
     }

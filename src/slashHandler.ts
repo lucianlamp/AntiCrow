@@ -2,11 +2,10 @@
 // slashHandler.ts — スラッシュコマンド・ボタンインタラクションハンドラ
 // ---------------------------------------------------------------------------
 // 責務:
-//   1. /schedule コマンド処理
-//   2. ボタンインタラクションのルーティング
-//   3. 管理系コマンドは adminHandler.ts, テンプレートは templateHandler.ts に委譲
+//   1. ボタンインタラクションのルーティング
+//   2. 管理系コマンドは adminHandler.ts, テンプレートは templateHandler.ts に委譲
 // ---------------------------------------------------------------------------
-import * as fs from 'fs';
+
 
 import {
     ChatInputCommandInteraction,
@@ -18,7 +17,7 @@ import {
     ButtonBuilder,
     ButtonStyle,
 } from 'discord.js';
-import { parseSkillJson, buildPlan } from './planParser';
+
 import { ChannelIntent } from './types';
 import { logInfo, logError, logWarn } from './logger';
 import { buildEmbed, EmbedColor, sanitizeErrorForDiscord } from './embedHelper';
@@ -28,8 +27,8 @@ import { getAvailableModels, selectModel } from './cdpModels';
 import { buildModeListEmbed, buildModeSwitchResultEmbed } from './modeButtons';
 import { getAvailableModes, selectMode } from './cdpModes';
 import { BridgeContext } from './bridgeContext';
-import { buildSkillPrompt, cronToPrefix, resetProcessingFlag } from './messageHandler';
-import { getResponseTimeout, getTimezone, isUserAllowed } from './configHelper';
+
+import { getTimezone, isUserAllowed } from './configHelper';
 import { handleWorkspaceButton, getRunningWsNames } from './workspaceHandler';
 import { fetchQuota } from './quotaProvider';
 import { handleManageSlash } from './adminHandler';
@@ -102,130 +101,8 @@ export async function handleSlashCommand(
         return;
     }
 
-    const { cdp, fileIpc, planStore, executor, scheduler, bot } = ctx;
-    if (!cdp || !fileIpc || !planStore || !executor || !scheduler || !bot) {
-        await interaction.reply({ embeds: [buildEmbed('⚠️ Bridge の内部モジュールが初期化されていません。', EmbedColor.Warning)], ephemeral: true });
-        return;
-    }
-
-    // ユーザー入力を取得
-    let userText: string;
-    const channelName = commandName;
-
-    if (commandName === 'schedule') {
-        const cron = interaction.options.getString('cron', true);
-        const prompt = interaction.options.getString('prompt', true);
-        userText = `cron: ${cron} で ${prompt} を定期実行して`;
-    } else {
-        await interaction.reply({ embeds: [buildEmbed(`⚠️ 未対応のコマンド: /${commandName}`, EmbedColor.Warning)], ephemeral: true });
-        return;
-    }
-
-    await interaction.deferReply();
-
-    try {
-        logInfo(`handleSlashCommand: /${commandName} (intent=${intent}) text: "${userText.substring(0, 80)}"`);
-
-        const { responsePath } = fileIpc.createRequestId();
-        const ipcDir = fileIpc.getIpcDir();
-        const { prompt: skillPrompt, tempFiles } = buildSkillPrompt(userText, intent, channelName, responsePath, undefined, undefined, ipcDir);
-        logInfo('handleSlashCommand: sending skill prompt via CDP...');
-
-        let skillResponse: string;
-        try {
-            await cdp.sendPrompt(skillPrompt);
-            logInfo('handleSlashCommand: prompt sent, waiting for file response...');
-
-            const responseTimeout = getResponseTimeout();
-            skillResponse = await fileIpc.waitForResponse(responsePath, responseTimeout);
-            logInfo(`handleSlashCommand: skill response received (${skillResponse.length} chars)`);
-        } finally {
-            // 一時ファイルのクリーンアップ
-            for (const f of tempFiles) {
-                try { fs.unlinkSync(f); } catch { /* ignore */ }
-            }
-        }
-
-        const skillOutput = parseSkillJson(skillResponse);
-        if (!skillOutput) {
-            logError('handleSlashCommand: skill JSON parse failed');
-            await interaction.editReply({
-                embeds: [buildEmbed(
-                    '⚠️ Antigravity からの応答を解析できませんでした。\n' +
-                    '応答:\n```\n' + skillResponse.substring(0, 1000) + '\n```',
-                    EmbedColor.Warning
-                )]
-            });
-            return;
-        }
-        logInfo(`handleSlashCommand: plan parsed — plan_id=${skillOutput.plan_id}, cron=${skillOutput.cron}`);
-
-        const channelId = interaction.channelId;
-        const notifyTarget = channelId;
-        const plan = buildPlan(skillOutput, channelId, notifyTarget);
-
-        if (plan.discord_templates.ack) {
-            await interaction.editReply({ embeds: [buildEmbed(plan.discord_templates.ack, EmbedColor.Info)] });
-        }
-
-        if (plan.requires_confirmation) {
-            const confirmLines: string[] = [];
-            confirmLines.push('📋 **実行確認**');
-            if (plan.human_summary) { confirmLines.push(`**概要:** ${plan.human_summary}`); }
-            if (plan.discord_templates.confirm) { confirmLines.push('', plan.discord_templates.confirm); }
-            confirmLines.push('', '✅ で承認、❌ で却下');
-            const confirmMsg = confirmLines.join('\n');
-
-            const sentMsg = await interaction.followUp({ embeds: [buildEmbed(confirmMsg, EmbedColor.Warning)] });
-            const channel = interaction.channel;
-            if (channel && 'messages' in channel) {
-                const fetchedMsg = await (channel as TextChannel).messages.fetch(sentMsg.id);
-                const confirmed = await bot.waitForConfirmation(fetchedMsg);
-                if (!confirmed) {
-                    await interaction.followUp({ embeds: [buildEmbed('❌ 却下しました。', EmbedColor.Error)] });
-                    return;
-                }
-            }
-            plan.status = 'active';
-        } else {
-            const summary = plan.human_summary || plan.prompt.substring(0, 100);
-            await interaction.followUp({ embeds: [buildEmbed(`📋 **実行予定:** ${summary}`, EmbedColor.Info)] });
-        }
-
-        if (plan.cron === null) {
-            logInfo(`handleSlashCommand: enqueueing immediate execution for plan ${plan.plan_id} (not persisted)`);
-            await executor.enqueueImmediate(plan);
-        } else {
-            logInfo(`handleSlashCommand: registering scheduled plan ${plan.plan_id} with cron=${plan.cron}`);
-
-            const wsName = cdp?.getActiveWorkspaceName() || undefined;
-            if (wsName) { plan.workspace_name = wsName; }
-
-            if (interaction.guildId && bot) {
-                const prefix = cronToPrefix(plan.cron!);
-                const baseName = plan.human_summary || plan.plan_id;
-                const chName = `${prefix} ${baseName}`;
-                const planChannelId = await bot.createPlanChannel(interaction.guildId, chName, wsName);
-                if (planChannelId) {
-                    plan.channel_id = planChannelId;
-                    plan.notify_channel_id = planChannelId;
-                    logInfo(`handleSlashCommand: created plan channel ${planChannelId} for plan ${plan.plan_id} (workspace=${wsName || 'default'})`);
-                }
-            }
-
-            planStore.add(plan);
-            scheduler.register(plan);
-            const channelMention = plan.channel_id ? `<#${plan.channel_id}>` : '#schedule';
-            await interaction.followUp({ embeds: [buildEmbed(`📅 定期実行を登録しました: \`${plan.cron}\` (${plan.timezone})\n結果は ${channelMention} チャンネルに通知されます。`, EmbedColor.Success)] });
-        }
-
-    } catch (e) {
-        const errMsg = e instanceof Error ? e.message : String(e);
-        logError('handleSlashCommand failed', e);
-        if (interaction.deferred || interaction.replied) {
-            await interaction.editReply({ embeds: [buildEmbed(`❌ エラー: ${sanitizeErrorForDiscord(errMsg)}`, EmbedColor.Error)] }).catch(() => { });
-        }
-    }
+    // /schedule コマンドは廃止済み — 未対応コマンドとして応答
+    await interaction.reply({ embeds: [buildEmbed(`⚠️ 未対応のコマンド: /${commandName}`, EmbedColor.Warning)], ephemeral: true });
 }
 
 // ---------------------------------------------------------------------------

@@ -19,7 +19,7 @@ Markdown や自然文で書かないでください。
 \`\`\`json
 {
   "plan_id": "string (UUID形式)",
-  "timezone": "Asia/Tokyo",
+  "timezone": "{{TIMEZONE}}",
   "cron": "string (cron式 or 'now')",
   "prompt": "string",
   "requires_confirmation": boolean,
@@ -45,7 +45,7 @@ Markdown や自然文で書かないでください。
 
 ## ルール
 
-1. timezone は必ず "Asia/Tokyo"
+1. timezone は設定されたタイムゾーン（現在: {{TIMEZONE}}）を使用
 2. cron は5項目標準（即時実行なら "now"）
 3. メッセージ内容から即時実行か定期登録かを判断してください
 4. 曖昧な場合は requires_confirmation: true
@@ -93,6 +93,13 @@ Discord にリアルタイム通知されます。
 - **影響範囲**: 変更が影響する箇所
 - **テスト結果**: typecheck / test の結果
 - **注意点**: 破壊的変更・必要な追加設定など（該当する場合）`;
+
+/**
+ * タイムゾーンプレースホルダーを実際の値で置換したプロンプトルールを返す。
+ */
+export function getPromptRulesMd(timezone: string): string {
+    return PROMPT_RULES_MD.replace(/\{\{TIMEZONE\}\}/g, timezone);
+}
 
 /** 実行プロンプトテンプレート（旧 .anticrow/templates/execution_prompt.json） */
 export const EXECUTION_PROMPT_TEMPLATE = JSON.stringify({

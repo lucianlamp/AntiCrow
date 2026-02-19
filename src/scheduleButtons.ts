@@ -10,6 +10,7 @@ import {
 } from 'discord.js';
 import { Plan } from './types';
 import { DateTime } from 'luxon';
+import { getTimezone } from './configHelper';
 
 // -----------------------------------------------------------------------
 // 次回実行時刻の簡易算出
@@ -19,7 +20,7 @@ import { DateTime } from 'luxon';
  * cron 式から次回実行時刻の表示用文字列を返す。
  * node-cron は nextDate() を持たないため、luxon で簡易推定する。
  */
-export function getNextRunDisplay(cron: string, timezone: string = 'Asia/Tokyo'): string {
+export function getNextRunDisplay(cron: string, timezone: string = getTimezone()): string {
     try {
         const parts = cron.split(/\s+/);
         if (parts.length !== 5) { return '—'; }
@@ -126,7 +127,7 @@ function statusBadge(status: string, wsName?: string, runningWsNames?: Set<strin
 
 export function buildScheduleListEmbed(
     plans: Plan[],
-    timezone: string = 'Asia/Tokyo',
+    timezone: string = getTimezone(),
     runningWsNames?: Set<string>,
 ): { embeds: EmbedBuilder[]; components: ActionRowBuilder<ButtonBuilder>[] } {
     const scheduledPlans = plans.filter(p => p.cron);
