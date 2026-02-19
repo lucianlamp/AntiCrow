@@ -361,9 +361,9 @@ export async function startBridge(
         try {
             const ok = await ctx.cdp.testConnection();
             if (!ok) {
-                logWarn('Bridge: health check failed — attempting reconnect');
+                logWarn('Bridge: health check failed — attempting reconnect (connect only, no auto-launch)');
                 try {
-                    await ctx.cdp.ensureConnected();
+                    await ctx.cdp.connect();
                     logInfo('Bridge: health check reconnect succeeded');
                 } catch (e) {
                     logWarn(`Bridge: health check reconnect failed — ${e instanceof Error ? e.message : e}`);

@@ -5,6 +5,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { logInfo, logDebug, logError } from './logger';
+import { getTimezone } from './configHelper';
 
 export interface PromptTemplate {
     name: string;
@@ -56,7 +57,7 @@ export class TemplateStore {
     /** プロンプト内の変数を置換 */
     static expandVariables(prompt: string): string {
         const now = new Date();
-        const jst = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Tokyo' }));
+        const jst = new Date(now.toLocaleString('en-US', { timeZone: getTimezone() }));
         const year = jst.getFullYear();
         const month = String(jst.getMonth() + 1).padStart(2, '0');
         const day = String(jst.getDate()).padStart(2, '0');

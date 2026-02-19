@@ -4,6 +4,7 @@
 
 import { Plan, SkillOutput, DiscordTemplates, PlanStatus, ChoiceMode } from './types';
 import { logWarn } from './logger';
+import { getTimezone } from './configHelper';
 
 /**
  * Skill が返した JSON 文字列をパースし、バリデーションする。
@@ -100,7 +101,7 @@ export function buildPlan(
 
     return {
         plan_id: skill.plan_id,
-        timezone: skill.timezone || 'Asia/Tokyo',
+        timezone: skill.timezone || getTimezone(),
         cron: isImmediate ? null : skill.cron,
         prompt: skill.prompt,
         requires_confirmation: skill.requires_confirmation,

@@ -13,9 +13,9 @@ import { PlanStore } from './planStore';
 import { logInfo, logError, logWarn, logDebug } from './logger';
 import { CdpConnectionError, IpcTimeoutError } from './errors';
 import { updateAnticrowMd, getAnticrowMdPath } from './anticrowCustomizer';
-import { PROMPT_RULES_MD, EXECUTION_PROMPT_TEMPLATE } from './embeddedRules';
+import { getPromptRulesMd, EXECUTION_PROMPT_TEMPLATE } from './embeddedRules';
 import * as vscode from 'vscode';
-import { getMaxRetries } from './configHelper';
+import { getMaxRetries, getTimezone } from './configHelper';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -43,20 +43,23 @@ export interface AutoClickRule {
     inCascade?: boolean;     // cascade-panel 内（デフォルト: true）
 }
 
-/** デフォルトの自動クリックルール（外部から参照・オーバーライド可能） */
+/**
+ * デフォルトの自動クリックルール（CDP DOM 操作用）。
+ * Accept / Allow / Run 等の承認系はVSCodeコマンドで処理するため、
+ * ここには VSCode コマンドでカバーできない UI 操作のみを残す。
+ */
 export const DEFAULT_AUTO_CLICK_RULES: AutoClickRule[] = [
+    // Continue: 警告ダイアログの続行ボタン（VSCode コマンド代替なし）
     { name: 'continue-warning', text: 'Continue', tag: 'button', inCascade: true },
-    { name: 'allow-tool', text: 'Allow', tag: 'button', inCascade: true },
+    // Retry: エラー時のリトライボタン（VSCode コマンド代替なし）
     { name: 'retry-error', text: 'Retry', tag: 'button', inCascade: true },
-    // Run: 「1 Step Requires Input」展開後の実行ボタン
-    { name: 'run-command', text: 'Run', tag: 'button', inCascade: true },
-    // Always run: 常時許可ボタン（Run の横にある）
+    // Always run: 常時許可ボタン（VSCode コマンド代替なし）
     { name: 'always-run', text: 'Always run', inCascade: true },
-    // Expand All: 差分ビューの折りたたみ展開ボタン（aria-label で検索）
+    // Expand All: 差分ビューの折りたたみ展開ボタン
     { name: 'expand-all', selector: '[aria-label="Expand All"]', tag: 'button', inCascade: false },
-    // Expand: 「N Step Requires Input」表示時の展開ボタン（cascade 内テキストマッチ）
+    // Expand: 「N Step Requires Input」表示時の展開ボタン
     { name: 'expand-step-input', text: 'Expand', tag: 'button', inCascade: true },
-    // ScrollDown: 出力が長い場合の下矢印スクロールボタン（cascade 内、複数セレクタ対応）
+    // ScrollDown: 出力が長い場合の下矢印スクロールボタン
     { name: 'scroll-down-arrow', selector: '.codicon-arrow-down', tag: 'button', inCascade: true },
     { name: 'scroll-down-arrow-text', text: '↓', tag: 'button', inCascade: true },
 ];
@@ -110,9 +113,9 @@ export class Executor {
         logDebug(`Executor: loaded embedded prompt template (${this.promptTemplate.length} chars)`);
     }
 
-    /** プロンプトルールを読み込む */
+    /** プロンプトルールを読み込む（タイムゾーンを動的に埋め込む） */
     private loadPromptRules(): void {
-        this.promptRulesContent = PROMPT_RULES_MD;
+        this.promptRulesContent = getPromptRulesMd(getTimezone());
         logDebug(`Executor: loaded embedded prompt rules (${this.promptRulesContent.length} chars)`);
     }
 
@@ -293,7 +296,7 @@ export class Executor {
 
             // 現在時刻(JST)と曜日をコンテキストとして生成
             const dayNames = ['日', '月', '火', '水', '木', '金', '土'];
-            const nowJst = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Tokyo' }));
+            const nowJst = new Date(new Date().toLocaleString('en-US', { timeZone: getTimezone() }));
             const year = nowJst.getFullYear();
             const month = nowJst.getMonth() + 1;
             const day = nowJst.getDate();
@@ -588,7 +591,7 @@ export class Executor {
     startUIWatcher(): void {
         if (this.uiWatcherTimer) { return; } // 既に動作中
 
-        logInfo('Executor: UI watcher started');
+        logInfo('Executor: UI watcher started (command-first hybrid mode)');
 
         this.uiWatcherTimer = setInterval(async () => {
             // autoOperation 設定を毎回チェック（設定変更を動的に反映）
@@ -599,9 +602,27 @@ export class Executor {
             // ANTICROW 経由のジョブ実行中のみ自動承認を行う
             if (!this.processing) { return; }
 
-            // --- DOM ルールベースの自動クリック（直接クリック方式） ---
-            // checkElementExists を省略し clickElement を直接呼ぶことで、
-            // コンテキストID無効化による失敗リスクを半減させる。
+            // =================================================================
+            // 第1層: VSCode コマンドによる自動承認（UI変更に強い）
+            // =================================================================
+            // Accept / Allow / Run 等のボタンクリックを VSCode コマンドで処理。
+            // これにより Antigravity の UI が変わっても自動承認が壊れにくくなる。
+            const commandApprovals = [
+                'antigravity.agent.acceptAgentStep',    // Agent ステップ承認
+                'antigravity.terminalCommand.accept',   // ターミナルコマンド承認
+                'antigravity.command.accept',            // コマンド承認
+            ];
+            for (const cmd of commandApprovals) {
+                try {
+                    await vscode.commands.executeCommand(cmd);
+                } catch { /* コマンドが存在しない/対象なしは無視 */ }
+            }
+
+            // =================================================================
+            // 第2層: CDP DOM ルールベースの自動クリック（フォールバック）
+            // =================================================================
+            // VSCode コマンドでカバーできない UI 操作（Continue, Retry,
+            // Expand, Scroll 等）を CDP DOM 操作で処理。
             for (const rule of this.autoClickRules) {
                 try {
                     const result = await this.cdp.clickElement({
@@ -620,15 +641,6 @@ export class Executor {
                     logDebug(`Executor: UI watcher rule "${rule.name}" error (context reset): ${e instanceof Error ? e.message : e}`);
                 }
             }
-
-            // --- VSCode コマンド直接呼び出しによる自動承認 ---
-            try {
-                await vscode.commands.executeCommand('antigravity.agent.acceptAgentStep');
-            } catch { /* コマンドが存在しない場合は無視 */ }
-
-            try {
-                await vscode.commands.executeCommand('antigravity.terminal.accept');
-            } catch { /* 同上 */ }
         }, UI_WATCHER_INTERVAL_MS);
     }
 

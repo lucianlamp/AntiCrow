@@ -12,9 +12,15 @@ vi.mock('vscode', () => ({
             dispose: () => { },
         }),
     },
+    workspace: {
+        getConfiguration: () => ({
+            get: () => undefined,
+        }),
+    },
 }));
 
 import { parseSkillJson, buildPlan } from '../planParser';
+import { getTimezone } from '../configHelper';
 
 describe('parseSkillJson', () => {
     it('should parse valid JSON', () => {
@@ -230,9 +236,9 @@ describe('buildPlan', () => {
         expect(plan.cron).toBeNull();
     });
 
-    it('should default timezone to Asia/Tokyo', () => {
+    it('should default timezone to getTimezone() when empty', () => {
         const noTz = { ...baseSkill, timezone: '' };
         const plan = buildPlan(noTz, 'ch-src', 'ch-notify');
-        expect(plan.timezone).toBe('Asia/Tokyo');
+        expect(plan.timezone).toBe(getTimezone());
     });
 });

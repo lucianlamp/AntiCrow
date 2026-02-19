@@ -131,9 +131,7 @@ export class CdpPool {
                     await cdp.connect();  // launchAntigravity のために接続が必要
                     await cdp.launchAntigravity(folderPath);
 
-                    // UI 初期化待ち: Antigravity が起動してチャットパネルが準備完了するまで待機
-                    logInfo(`CdpPool: waiting 10s for Antigravity UI initialization...`);
-                    await new Promise(r => setTimeout(r, 10_000));
+                    // ターゲット発見ポーリングへ（固定待ちなし）
 
                     // ポーリングで新インスタンスを待機
                     const maxWaitMs = 30_000;
@@ -204,6 +202,37 @@ export class CdpPool {
             }
 
             await cdp.switchTarget(target.id);
+
+            // Cascade パネル iframe がチャット入力欄を読み込むまでポーリング待機
+            {
+                const panelMaxWaitMs = 30_000;
+                const panelPollMs = 2_000;
+                const panelDeadline = Date.now() + panelMaxWaitMs;
+                let panelReady = false;
+                let panelPollCount = 0;
+
+                logInfo(`CdpPool: waiting for Cascade panel iframe to be ready (max ${panelMaxWaitMs / 1000}s)...`);
+
+                while (Date.now() < panelDeadline) {
+                    try {
+                        const ok = await cdp.testConnection();
+                        panelPollCount++;
+                        if (ok) {
+                            logInfo(`CdpPool: Cascade panel ready after ${panelPollCount} poll(s)`);
+                            panelReady = true;
+                            break;
+                        }
+                    } catch {
+                        panelPollCount++;
+                        logDebug(`CdpPool: Cascade panel not ready yet (poll ${panelPollCount})`);
+                    }
+                    await new Promise(r => setTimeout(r, panelPollMs));
+                }
+
+                if (!panelReady) {
+                    logWarn(`CdpPool: Cascade panel iframe not ready after ${panelMaxWaitMs / 1000}s — proceeding anyway (sendPrompt may fail)`);
+                }
+            }
         }
 
         const entry: PoolEntry = {

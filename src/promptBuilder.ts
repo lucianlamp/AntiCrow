@@ -11,7 +11,8 @@ import { Plan } from './types';
 import { ChannelIntent } from './types';
 import { logWarn, logInfo, logDebug } from './logger';
 import { markdownToJson } from './mdToJson';
-import { PROMPT_RULES_MD } from './embeddedRules';
+import { getPromptRulesMd } from './embeddedRules';
+import { getTimezone } from './configHelper';
 
 // ---------------------------------------------------------------------------
 // Skill プロンプト生成
@@ -32,7 +33,7 @@ export function buildSkillPrompt(
     extensionPath?: string,
     ipcDir?: string,
 ): SkillPromptResult {
-    const now = new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' });
+    const now = new Date().toLocaleString('ja-JP', { timeZone: getTimezone() });
     const tempFiles: string[] = [];
 
     // 一時ファイル用 ID 生成（タイムスタンプ + ランダム）
@@ -41,7 +42,7 @@ export function buildSkillPrompt(
     // ルール内容を埋め込み定数から Markdown → JSON 変換して一時ファイルに保存
     let rulesFilePath = '';
     let rulesInline: unknown = null;
-    const jsonRules = markdownToJson(PROMPT_RULES_MD);
+    const jsonRules = markdownToJson(getPromptRulesMd(getTimezone()));
     if (ipcDir) {
         try {
             const tmpRulesPath = path.join(ipcDir, `tmp_rules_${tmpId}.json`);

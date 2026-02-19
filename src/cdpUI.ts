@@ -44,6 +44,8 @@ export async function clickElement(
     }
 
     function clickEl(el) {
+        // 画面外の要素をビューポート内にスクロールしてからクリック
+        try { el.scrollIntoView({ block: 'center', behavior: 'instant' }); } catch(e) {}
         var rect = el.getBoundingClientRect();
         var cx = rect.left + rect.width / 2;
         var cy = rect.top + rect.height / 2;
