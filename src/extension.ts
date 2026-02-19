@@ -132,9 +132,8 @@ export function activate(context: vscode.ExtensionContext) {
                 await startBridge(ctx, context);
                 vscode.window.showInformationMessage('✅ AntiCrow を開始しました。');
             } catch (e) {
-                const msg = e instanceof Error ? e.message : String(e);
-                vscode.window.showErrorMessage(`起動失敗: ${msg}`);
                 logError('Start failed', e);
+                vscode.window.showErrorMessage('起動に失敗しました。Output パネルでログを確認してください。');
             }
         })
     );
@@ -230,9 +229,8 @@ export function activate(context: vscode.ExtensionContext) {
                 createDesktopShortcut(context.extensionPath);
                 vscode.window.showInformationMessage('✅ デスクトップにショートカットを作成しました。');
             } catch (e) {
-                const msg = e instanceof Error ? e.message : String(e);
-                vscode.window.showErrorMessage(`ショートカット作成に失敗: ${msg}`);
                 logError('createShortcut command failed', e);
+                vscode.window.showErrorMessage('ショートカット作成に失敗しました。Output パネルでログを確認してください。');
             }
         })
     );

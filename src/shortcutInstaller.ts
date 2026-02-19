@@ -35,7 +35,7 @@ export async function checkAndOfferShortcut(context: vscode.ExtensionContext): P
             vscode.window.showInformationMessage('✅ デスクトップにショートカットを作成しました。');
         } catch (e) {
             logError('shortcutInstaller: failed to create shortcut', e);
-            vscode.window.showErrorMessage(`ショートカット作成に失敗: ${e instanceof Error ? e.message : e}`);
+            vscode.window.showErrorMessage('ショートカット作成に失敗しました。Output パネルでログを確認してください。');
         }
     }
 

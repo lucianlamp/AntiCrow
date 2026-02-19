@@ -10,4 +10,5 @@ esbuild.build({
     target: 'node18',
     sourcemap: false,
     minify: true,
+    treeShaking: true,
 }).catch(() => process.exit(1));
