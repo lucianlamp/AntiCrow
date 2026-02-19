@@ -194,7 +194,7 @@ export async function handleSlashCommand(
 
         if (plan.cron === null) {
             logInfo(`handleSlashCommand: enqueueing immediate execution for plan ${plan.plan_id} (not persisted)`);
-            executor.enqueueImmediate(plan);
+            await executor.enqueueImmediate(plan);
         } else {
             logInfo(`handleSlashCommand: registering scheduled plan ${plan.plan_id} with cron=${plan.cron}`);
 

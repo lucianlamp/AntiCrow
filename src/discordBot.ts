@@ -206,7 +206,7 @@ export class DiscordBot {
             case 'schedule': return 'agent-chat';
             case 'status': return 'admin';
             case 'schedules': return 'admin';
-            case 'reset': return 'admin';
+            case 'cancel': return 'admin';
             case 'newchat': return 'admin';
             case 'workspaces': return 'admin';
             case 'history': return 'admin';
@@ -355,12 +355,12 @@ export class DiscordBot {
     // -----------------------------------------------------------------------
 
     /** メッセージにリアクション待ちして確認を取る */
-    async waitForConfirmation(message: Message, timeoutMs: number = 120_000): Promise<boolean> {
+    async waitForConfirmation(message: Message, timeoutMs: number = 300_000): Promise<boolean> {
         return reactions.waitForConfirmation(message, this.client.user?.id, timeoutMs);
     }
 
     /** 番号付き絵文字リアクションで選択を待つ（1️⃣~🔟 + ❌） */
-    async waitForChoice(message: Message, choiceCount: number, timeoutMs: number = 120_000): Promise<number> {
+    async waitForChoice(message: Message, choiceCount: number, timeoutMs: number = 300_000): Promise<number> {
         return reactions.waitForChoice(message, this.client.user?.id, choiceCount, timeoutMs);
     }
 
@@ -368,7 +368,7 @@ export class DiscordBot {
      * 複数選択待ち: 1️⃣~🔟 で複数選択 → ☑️ で確定、✅ で全選択、❌ で却下。
      * @returns 選択された番号の配列（1-indexed）。空配列 = 却下/タイムアウト。[-1] = 全選択。
      */
-    async waitForMultiChoice(message: Message, choiceCount: number, timeoutMs: number = 120_000): Promise<number[]> {
+    async waitForMultiChoice(message: Message, choiceCount: number, timeoutMs: number = 300_000): Promise<number[]> {
         return reactions.waitForMultiChoice(message, this.client.user?.id, choiceCount, timeoutMs);
     }
 

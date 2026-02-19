@@ -11,7 +11,9 @@ import { CdpBridge } from './cdpBridge';
 import { FileIpc } from './fileIpc';
 import { PlanStore } from './planStore';
 import { logInfo, logError, logWarn, logDebug } from './logger';
-import { CdpConnectionError } from './errors';
+import { CdpConnectionError, IpcTimeoutError } from './errors';
+import { updateAnticrowMd, getAnticrowMdPath } from './anticrowCustomizer';
+import { PROMPT_RULES_MD, EXECUTION_PROMPT_TEMPLATE } from './embeddedRules';
 import * as vscode from 'vscode';
 import { getMaxRetries } from './configHelper';
 import * as fs from 'fs';
@@ -23,7 +25,7 @@ import * as os from 'os';
 // ---------------------------------------------------------------------------
 
 /** UIウォッチャーのポーリング間隔（ms） */
-const UI_WATCHER_INTERVAL_MS = 2_000;
+const UI_WATCHER_INTERVAL_MS = 1_000;
 /** 進捗ファイル監視のポーリング間隔（ms） */
 const PROGRESS_POLL_INTERVAL_MS = 3_000;
 /** リトライ時の待機時間（ms） */
@@ -46,10 +48,17 @@ export const DEFAULT_AUTO_CLICK_RULES: AutoClickRule[] = [
     { name: 'continue-warning', text: 'Continue', tag: 'button', inCascade: true },
     { name: 'allow-tool', text: 'Allow', tag: 'button', inCascade: true },
     { name: 'retry-error', text: 'Retry', tag: 'button', inCascade: true },
+    // Run: 「1 Step Requires Input」展開後の実行ボタン
+    { name: 'run-command', text: 'Run', tag: 'button', inCascade: true },
+    // Always run: 常時許可ボタン（Run の横にある）
+    { name: 'always-run', text: 'Always run', inCascade: true },
     // Expand All: 差分ビューの折りたたみ展開ボタン（aria-label で検索）
     { name: 'expand-all', selector: '[aria-label="Expand All"]', tag: 'button', inCascade: false },
     // Expand: 「N Step Requires Input」表示時の展開ボタン（cascade 内テキストマッチ）
     { name: 'expand-step-input', text: 'Expand', tag: 'button', inCascade: true },
+    // ScrollDown: 出力が長い場合の下矢印スクロールボタン（cascade 内、複数セレクタ対応）
+    { name: 'scroll-down-arrow', selector: '.codicon-arrow-down', tag: 'button', inCascade: true },
+    { name: 'scroll-down-arrow-text', text: '↓', tag: 'button', inCascade: true },
 ];
 
 export type NotifyFunc = (channelId: string, message: string, color?: number) => Promise<void>;
@@ -63,8 +72,11 @@ export class Executor {
     private notifyDiscord: NotifyFunc;
     private sendTypingToChannel: SendTypingFunc;
     private queue: ExecutionJob[] = [];
+    private jobCompletionResolvers = new Map<string, () => void>();
     private running = false;
     private processing = false;
+    private aborted = false;
+    private abortController: AbortController | null = null;
     private currentJob: ExecutionJob | null = null;
     private currentJobStartTime: number = 0;
     private recentlyExecutedPlanIds = new Set<string>();
@@ -94,38 +106,14 @@ export class Executor {
 
     /** プロンプトテンプレートを読み込む */
     private loadPromptTemplate(): void {
-        if (!this.extensionPath) { return; }
-        // JSON テンプレートを優先、フォールバックとして .md も試行
-        const jsonPath = path.join(this.extensionPath, '.anticrow', 'templates', 'execution_prompt.json');
-        const mdPath = path.join(this.extensionPath, '.anticrow', 'templates', 'execution_prompt.md');
-        for (const filePath of [jsonPath, mdPath]) {
-            try {
-                const content = fs.readFileSync(filePath, 'utf-8');
-                if (content.trim().length > 0) {
-                    this.promptTemplate = content;
-                    logDebug(`Executor: loaded prompt template from ${path.basename(filePath)} (${content.length} chars)`);
-                    return;
-                }
-            } catch {
-                // ファイルが見つからない場合は次を試行
-            }
-        }
-        logDebug('Executor: no prompt template found, using inline');
+        this.promptTemplate = EXECUTION_PROMPT_TEMPLATE;
+        logDebug(`Executor: loaded embedded prompt template (${this.promptTemplate.length} chars)`);
     }
 
     /** プロンプトルールを読み込む */
     private loadPromptRules(): void {
-        if (!this.extensionPath) { return; }
-        const filePath = path.join(this.extensionPath, '.anticrow', 'rules', 'prompt_rules.md');
-        try {
-            const content = fs.readFileSync(filePath, 'utf-8');
-            if (content.trim().length > 0) {
-                this.promptRulesContent = content.trim();
-                logDebug(`Executor: loaded prompt rules (${this.promptRulesContent.length} chars)`);
-            }
-        } catch (e) {
-            logDebug(`Executor: prompt rules not found: ${e instanceof Error ? e.message : e}`);
-        }
+        this.promptRulesContent = PROMPT_RULES_MD;
+        logDebug(`Executor: loaded embedded prompt rules (${this.promptRulesContent.length} chars)`);
     }
 
     /** ユーザーグローバルルールを読み込む */
@@ -143,26 +131,29 @@ export class Executor {
         }
     }
 
-    /** ジョブをキューに追加 */
-    enqueue(job: ExecutionJob): void {
+    /** ジョブをキューに追加（完了を待つ Promise を返す） */
+    enqueue(job: ExecutionJob): Promise<void> {
         // 重複防止: 最近実行済みの plan_id はスキップ
         if (this.recentlyExecutedPlanIds.has(job.plan.plan_id)) {
             logWarn(`Executor: skipping duplicate job for plan ${job.plan.plan_id} (recently executed)`);
-            return;
+            return Promise.resolve();
         }
         // 重複防止: 同じ plan_id が既にキューにある場合はスキップ
         if (this.queue.some(j => j.plan.plan_id === job.plan.plan_id)) {
             logWarn(`Executor: skipping duplicate job for plan ${job.plan.plan_id} (already in queue)`);
-            return;
+            return Promise.resolve();
         }
-        this.queue.push(job);
-        logInfo(`Executor: enqueued job for plan ${job.plan.plan_id} (trigger: ${job.triggerType})`);
-        this.processQueue();
+        return new Promise<void>((resolve) => {
+            this.jobCompletionResolvers.set(job.plan.plan_id, resolve);
+            this.queue.push(job);
+            logInfo(`Executor: enqueued job for plan ${job.plan.plan_id} (trigger: ${job.triggerType})`);
+            this.processQueue();
+        });
     }
 
-    /** 即時実行用ヘルパー */
-    enqueueImmediate(plan: Plan): void {
-        this.enqueue({ plan, triggerType: 'immediate' });
+    /** 即時実行用ヘルパー（完了を待つ Promise を返す） */
+    enqueueImmediate(plan: Plan): Promise<void> {
+        return this.enqueue({ plan, triggerType: 'immediate' });
     }
 
     /** スケジュール実行用ヘルパー */
@@ -174,8 +165,9 @@ export class Executor {
     private async processQueue(): Promise<void> {
         if (this.processing) { return; } // 既に処理中
         this.processing = true;
+        this.aborted = false;
 
-        while (this.queue.length > 0) {
+        while (this.queue.length > 0 && this.processing) {
             const job = this.queue.shift()!;
             this.currentJob = job;
             this.currentJobStartTime = Date.now();
@@ -184,17 +176,32 @@ export class Executor {
             let attempt = 0;
             let success = false;
 
-            while (attempt <= maxRetries && !success) {
+            while (attempt <= maxRetries && !success && !this.aborted) {
                 if (attempt > 0) {
                     logInfo(`Executor: retrying plan ${job.plan.plan_id} (attempt ${attempt}/${maxRetries})`);
                     await this.safeNotify(job.plan.notify_channel_id, `🔄 リトライ中... (${attempt}/${maxRetries})`);
-                    // 新しいチャットで再試行
-                    try { await this.cdp.startNewChat(); } catch (e) { logWarn(`Executor: newchat for retry failed: ${e}`); }
                 }
                 try {
                     await this.executeJob(job);
                     success = true;
                 } catch (retryErr) {
+                    // aborted の場合はリトライせず即座に終了
+                    if (this.aborted) {
+                        logInfo(`Executor: plan ${job.plan.plan_id} aborted, skipping retry`);
+                        await this.safeNotify(job.plan.notify_channel_id, '⏹️ 停止しました');
+                        break;
+                    }
+
+                    // IPC タイムアウト: 処理は進行中の可能性があるためリトライしない
+                    if (retryErr instanceof IpcTimeoutError) {
+                        const errMsg = retryErr.message;
+                        logWarn(`Executor: plan ${job.plan.plan_id} timed out — skipping retry (task may still be in progress)`);
+                        await this.safeNotify(job.plan.notify_channel_id,
+                            `⏱️ タイムアウトしました。処理は進行中の可能性があります。\n\`\`\`\n${errMsg}\n\`\`\``);
+                        this.recordExecution(job.plan, false, Date.now() - this.currentJobStartTime, errMsg);
+                        break;
+                    }
+
                     const errMsg = retryErr instanceof Error ? retryErr.message : String(retryErr);
                     logWarn(`Executor: plan ${job.plan.plan_id} attempt ${attempt} failed — ${errMsg}`);
                     if (attempt >= maxRetries) {
@@ -208,6 +215,12 @@ export class Executor {
                 }
             }
 
+            // ジョブ完了を通知
+            const resolver = this.jobCompletionResolvers.get(job.plan.plan_id);
+            if (resolver) {
+                this.jobCompletionResolvers.delete(job.plan.plan_id);
+                resolver();
+            }
             this.currentJob = null;
         }
 
@@ -264,11 +277,18 @@ export class Executor {
             logInfo(`Executor: sending start notification to channel ${notifyChannel}`);
             await this.safeNotify(notifyChannel, startMsg);
 
+            // 実行前にユーザーグローバルルールを再読み込み（ANTICROW.md 更新反映）
+            this.loadUserGlobalRules();
+
             logInfo(`Executor: executing plan ${plan.plan_id} — sending prompt via CDP (${plan.prompt.length} chars)`);
             this.running = true;
 
-            // ファイルベース IPC: レスポンスパスと進捗パスを生成
-            const { requestId, responsePath } = this.fileIpc.createRequestId();
+            // AbortController を生成（forceStop でキャンセル可能にする）
+            this.abortController = new AbortController();
+            const { signal } = this.abortController;
+
+            // ファイルベース IPC: レスポンスパス（Markdown形式）と進捗パスを生成
+            const { requestId, responsePath } = this.fileIpc.createMarkdownRequestId();
             progressPath = this.fileIpc.createProgressPath(requestId);
 
             // 現在時刻(JST)と曜日をコンテキストとして生成
@@ -328,7 +348,8 @@ export class Executor {
                     prompt: plan.prompt,
                     output: {
                         response_path: responsePath,
-                        constraint: 'すべての作業が完了してから1回だけ書き込む。途中経過は書き込まない。ファイルに書き込んだ時点でレスポンス完了と見なされ、Discord に結果が送信される。結果には何をしたか・変更内容・影響範囲・注意点などを具体的かつ詳細に記述すること。簡素すぎる報告は避ける。変更したファイル名・変更の概要・テスト結果・注意事項をすべて含めること。',
+                        format: 'markdown',
+                        constraint: 'すべての作業が完了してから write_to_file で Markdown 形式のレスポンスを1回だけ書き込む。途中経過は書き込まない。ファイルに書き込んだ時点でレスポンス完了と見なされ、内容がそのまま Discord に送信される。Discord の Markdown 記法に準拠すること（**太字**, - 箇条書き, `コード` 等）。結果には何をしたか・変更内容・影響範囲・注意点などを具体的かつ詳細に記述すること。簡素すぎる報告は避ける。変更したファイル名・変更の概要・テスト結果・注意事項をすべて含めること。',
                     },
                     rules: rulesInline || undefined,
                     progress: {
@@ -409,9 +430,9 @@ export class Executor {
                 // 伝達完了ステータスを Discord に通知
                 await this.safeNotify(notifyChannel, '✅ 指示を伝達しました。応答を待っています...');
 
-                // ファイル経由でレスポンスを待機
+                // ファイル経由でレスポンスを待機（AbortSignal 付き）
                 // （UIウォッチャーは bridgeLifecycle で常時動作しているため、ここでは起動/停止しない）
-                response = await this.fileIpc.waitForResponse(responsePath, this.timeoutMs);
+                response = await this.fileIpc.waitForResponse(responsePath, this.timeoutMs, signal);
             } finally {
                 clearInterval(typingInterval);
                 clearInterval(progressInterval);
@@ -422,22 +443,26 @@ export class Executor {
             }
 
             this.running = false;
+            this.abortController = null;
             const durationMs = Date.now() - jobStartTime;
             logInfo(`Executor: plan ${plan.plan_id} — response received (${response.length} chars)`);
 
+            // Markdown レスポンスはそのまま Discord に送信（JSON の場合はフォールバック展開）
+            const isMarkdown = responsePath.endsWith('.md');
+            const content = isMarkdown ? response.trim() : FileIpc.extractResult(response);
+
             // 成功通知（重複タイトル防止: レスポンスが prefix と同等の内容で始まる場合はスキップ）
             const prefix = plan.discord_templates.run_success_prefix || '✅ 実行完了';
-            const extracted = FileIpc.extractResult(response);
             // prefix のテキスト部分（絵文字・太字マーカーを除去）を取り出し、レスポンス先頭と比較
             const prefixCore = prefix.replace(/[\s*]/g, '').replace(/^[^\p{L}\p{N}]+/u, '');
-            const extractedStart = extracted.substring(0, 100).replace(/[\s*]/g, '').replace(/^[^\p{L}\p{N}]+/u, '');
-            const isDuplicate = prefixCore.length > 0 && extractedStart.startsWith(prefixCore);
-            const resultMsg = isDuplicate ? extracted : `${prefix}\n${extracted}`;
-            logInfo(`Executor: sending success notification to channel ${notifyChannel} (${resultMsg.length} chars, prefixSkipped=${isDuplicate})`);
+            const contentStart = content.substring(0, 100).replace(/[\s*]/g, '').replace(/^[^\p{L}\p{N}]+/u, '');
+            const isDuplicate = prefixCore.length > 0 && contentStart.startsWith(prefixCore);
+            const resultMsg = isDuplicate ? content : `${prefix}\n${content}`;
+            logInfo(`Executor: sending success notification to channel ${notifyChannel} (${resultMsg.length} chars, prefixSkipped=${isDuplicate}, markdown=${isMarkdown})`);
             await this.safeNotify(notifyChannel, resultMsg, 0x00CED1);
 
             // 実行履歴を記録
-            this.recordExecution(plan, true, durationMs, extracted);
+            this.recordExecution(plan, true, durationMs, content);
 
             // 即時実行の重複防止
             if (!plan.cron) {
@@ -448,6 +473,7 @@ export class Executor {
             logInfo(`Executor: plan ${plan.plan_id} completed successfully`);
         } catch (err) {
             this.running = false;
+            this.abortController = null;
 
             // 進捗ファイルクリーンアップ（エラー時も確実に削除）
             if (progressPath) { try { await this.fileIpc.cleanupProgress(progressPath); } catch (e) { logDebug(`Executor: progress cleanup failed: ${e}`); } }
@@ -498,8 +524,28 @@ export class Executor {
     forceReset(): void {
         this.running = false;
         this.processing = false;
+        this.aborted = true;
         this.queue = [];
-        logInfo('Executor: force reset — running/processing flags cleared, queue emptied');
+        if (this.abortController) {
+            this.abortController.abort();
+            this.abortController = null;
+        }
+        logInfo('Executor: force reset — running/processing/aborted flags set, queue emptied');
+    }
+
+    /** 強制停止: 現在実行中のジョブのみ停止する（キューは保持） */
+    forceStop(): void {
+        this.running = false;
+        this.processing = false;
+        this.aborted = true;
+        this.currentJob = null;
+        // AbortController で実行中の waitForResponse を即座にキャンセル
+        if (this.abortController) {
+            this.abortController.abort();
+            this.abortController = null;
+            logInfo('Executor: abortController triggered — waitForResponse cancelled');
+        }
+        logInfo('Executor: force stop — running/processing/aborted flags set, queue preserved');
     }
 
     /** 現在実行中かどうか */
@@ -553,20 +599,11 @@ export class Executor {
             // ANTICROW 経由のジョブ実行中のみ自動承認を行う
             if (!this.processing) { return; }
 
-            // --- DOM ルールベースの自動クリック ---
+            // --- DOM ルールベースの自動クリック（直接クリック方式） ---
+            // checkElementExists を省略し clickElement を直接呼ぶことで、
+            // コンテキストID無効化による失敗リスクを半減させる。
             for (const rule of this.autoClickRules) {
                 try {
-                    // まず存在チェック（クリックせずに確認）
-                    const exists = await this.cdp.checkElementExists({
-                        text: rule.text,
-                        selector: rule.selector,
-                        tag: rule.tag,
-                        inCascade: rule.inCascade !== false,
-                    });
-
-                    if (!exists) { continue; }
-
-                    // 要素が存在 → クリック実行
                     const result = await this.cdp.clickElement({
                         text: rule.text,
                         selector: rule.selector,
@@ -578,7 +615,9 @@ export class Executor {
                         logInfo(`Executor: UI watcher auto-clicked "${rule.name}" (method=${result.method})`);
                     }
                 } catch (e) {
-                    logDebug(`Executor: UI watcher rule "${rule.name}" scan error: ${e instanceof Error ? e.message : e}`);
+                    // コンテキスト取得失敗時はキャッシュをリセットして次回再取得を促す
+                    this.cdp.ops.resetCascadeContext();
+                    logDebug(`Executor: UI watcher rule "${rule.name}" error (context reset): ${e instanceof Error ? e.message : e}`);
                 }
             }
 

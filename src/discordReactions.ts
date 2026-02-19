@@ -15,7 +15,7 @@ import { logInfo, logError, logDebug } from './logger';
 export async function waitForConfirmation(
     message: Message,
     botUserId: string | undefined,
-    timeoutMs: number = 120_000,
+    timeoutMs: number = 300_000,
 ): Promise<boolean> {
     const confirmEmoji = '✅';
     const rejectEmoji = '❌';
@@ -69,7 +69,7 @@ export async function waitForChoice(
     message: Message,
     botUserId: string | undefined,
     choiceCount: number,
-    timeoutMs: number = 120_000,
+    timeoutMs: number = 300_000,
 ): Promise<number> {
     const numberEmojis = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟'];
     const rejectEmoji = '❌';
@@ -134,7 +134,7 @@ export async function waitForMultiChoice(
     message: Message,
     botUserId: string | undefined,
     choiceCount: number,
-    timeoutMs: number = 120_000,
+    timeoutMs: number = 300_000,
 ): Promise<number[]> {
     const numberEmojis = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟'];
     const confirmEmoji = '☑️';

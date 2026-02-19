@@ -56,3 +56,11 @@ export class CascadePanelError extends BridgeError {
         this.name = 'CascadePanelError';
     }
 }
+
+/** IPC レスポンスのタイムアウト */
+export class IpcTimeoutError extends BridgeError {
+    constructor(message: string) {
+        super(message);
+        this.name = 'IpcTimeoutError';
+    }
+}

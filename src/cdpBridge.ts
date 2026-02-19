@@ -338,6 +338,47 @@ export class CdpBridge {
         this.cascadeContextId = null;
     }
 
+    /**
+     * Antigravity のストップボタンをクリックして処理を停止する。
+     * Cascade iframe 内のストップボタン (aria-label="Stop") を探してクリック。
+     * 見つからない場合は Escape キーを送信してフォールバック。
+     */
+    async clickStopButton(): Promise<void> {
+        await this.conn.connect();
+
+        // 1. Cascade iframe 内のストップボタンを探してクリック
+        try {
+            const result = await this.clickElement({
+                selector: '[aria-label="Stop"]',
+                tag: 'button',
+                inCascade: true,
+            });
+            if (result.success) {
+                logInfo('CDP: clickStopButton — Stop button clicked');
+                return;
+            }
+        } catch (e) {
+            logDebug(`CDP: clickStopButton — Stop button not found, trying Escape: ${e instanceof Error ? e.message : e}`);
+        }
+
+        // 2. フォールバック: Escape キーを送信
+        await this.conn.send('Input.dispatchKeyEvent', {
+            type: 'keyDown',
+            windowsVirtualKeyCode: 27,
+            code: 'Escape',
+            key: 'Escape',
+        });
+        await this.sleep(50);
+        await this.conn.send('Input.dispatchKeyEvent', {
+            type: 'keyUp',
+            windowsVirtualKeyCode: 27,
+            code: 'Escape',
+            key: 'Escape',
+        });
+        logInfo('CDP: clickStopButton — sent Escape key as fallback');
+        await this.sleep(500);
+    }
+
     // -----------------------------------------------------------------------
     // 会話履歴ポップアップ操作（cdpHistory.ts へ委譲）
     // -----------------------------------------------------------------------

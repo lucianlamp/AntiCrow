@@ -165,4 +165,80 @@ describe('FileIpc.extractResult', () => {
             'This is the only useful string result value here',
         );
     });
+
+    // ----- 複雑なネストJSON展開 -----
+
+    it('should format complex nested JSON with summary + changes', () => {
+        const raw = JSON.stringify({
+            result: 'success',
+            summary: 'タスク完了しました。',
+            changes: {
+                files_modified: ['file1.ts', 'file2.ts'],
+                details: [
+                    { section: 'セクション1', change: '変更内容1' },
+                ],
+            },
+        });
+        const result = FileIpc.extractResult(raw);
+        expect(result).toContain('📋 概要');
+        expect(result).toContain('タスク完了しました。');
+        expect(result).toContain('📝 変更内容');
+        expect(result).toContain('file1.ts');
+        expect(result).toContain('file2.ts');
+        expect(result).toContain('セクション1');
+    });
+
+    it('should format JSON with test_results and deploy', () => {
+        const raw = JSON.stringify({
+            summary: 'デプロイ完了',
+            test_results: { typecheck: 'pass', tests: '96 passed' },
+            deploy: { status: '完了', method: 'VSIX' },
+        });
+        const result = FileIpc.extractResult(raw);
+        expect(result).toContain('🧪 テスト結果');
+        expect(result).toContain('96 passed');
+        expect(result).toContain('🚀 デプロイ');
+        expect(result).toContain('VSIX');
+    });
+});
+
+describe('FileIpc.formatJsonForDiscord', () => {
+    it('should format object with summary and nested changes', () => {
+        const obj = {
+            summary: '変更完了',
+            changes: {
+                files_modified: ['a.ts', 'b.ts'],
+            },
+        };
+        const result = FileIpc.formatJsonForDiscord(obj);
+        expect(result).not.toBeNull();
+        expect(result).toContain('📋 概要');
+        expect(result).toContain('変更完了');
+        expect(result).toContain('📝 変更内容');
+        expect(result).toContain('a.ts');
+    });
+
+    it('should return null for empty object', () => {
+        expect(FileIpc.formatJsonForDiscord({})).toBeNull();
+    });
+
+    it('should handle flat string-only objects', () => {
+        const obj = { status: '完了', message: 'OK' };
+        const result = FileIpc.formatJsonForDiscord(obj);
+        expect(result).toContain('ステータス');
+        expect(result).toContain('完了');
+    });
+
+    it('should handle arrays of objects', () => {
+        const obj = {
+            details: [
+                { name: 'item1', value: '100' },
+                { name: 'item2', value: '200' },
+            ],
+        };
+        const result = FileIpc.formatJsonForDiscord(obj);
+        expect(result).not.toBeNull();
+        expect(result).toContain('item1');
+        expect(result).toContain('item2');
+    });
 });

@@ -188,7 +188,7 @@ export function getMaxMessageLength(): number {
     return getConfig().get<number>('maxMessageLength') ?? 6000;
 }
 
-/** 自動リトライ最大回数を取得する（デフォルト: 1） */
+/** 自動リトライ最大回数を取得する（デフォルト: 0 — リトライ無効） */
 export function getMaxRetries(): number {
-    return getConfig().get<number>('maxRetries') ?? 1;
+    return getConfig().get<number>('maxRetries') ?? 0;
 }

@@ -9,6 +9,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { ProgressUpdate } from './types';
+import { IpcTimeoutError } from './errors';
 import { logInfo, logDebug, logWarn, logError } from './logger';
 
 // ---------------------------------------------------------------------------
@@ -47,10 +48,17 @@ export class FileIpc {
         return this.storagePath;
     }
 
-    /** リクエスト ID を生成し、レスポンスファイルのパスを返す */
+    /** リクエスト ID を生成し、レスポンスファイルのパスを返す（JSON形式 — 計画生成用） */
     createRequestId(): { requestId: string; responsePath: string } {
         const requestId = `req_${Date.now()}_${crypto.randomUUID().replace(/-/g, '').substring(0, 12)}`;
         const responsePath = path.join(this.ipcDir, `${requestId}_response.json`);
+        return { requestId, responsePath };
+    }
+
+    /** リクエスト ID を生成し、Markdown レスポンスファイルのパスを返す（実行結果用） */
+    createMarkdownRequestId(): { requestId: string; responsePath: string } {
+        const requestId = `req_${Date.now()}_${crypto.randomUUID().replace(/-/g, '').substring(0, 12)}`;
+        const responsePath = path.join(this.ipcDir, `${requestId}_response.md`);
         return { requestId, responsePath };
     }
 
@@ -62,17 +70,23 @@ export class FileIpc {
      *   - 進捗ファイル（*_progress.json）の mtime が更新されるたびにタイムアウト起点をリセット
      *   - 最後の進捗報告（または初回送信）から timeoutMs 経過で初めてタイムアウト
      */
-    async waitForResponse(responsePath: string, timeoutMs: number): Promise<string> {
+    async waitForResponse(responsePath: string, timeoutMs: number, signal?: AbortSignal): Promise<string> {
         let lastActivityTime = Date.now();
 
         // 進捗ファイルのパスを responsePath から導出
-        const progressPath = responsePath.replace(/_response\.json$/, '_progress.json');
+        const progressPattern = /_response\.(json|md)$/;
+        const progressPath = responsePath.replace(progressPattern, '_progress.json');
         let lastProgressMtime = 0;
         const dir = path.dirname(responsePath);
         const filename = path.basename(responsePath);
         const progressFilename = path.basename(progressPath);
 
         logInfo(`FileIpc: waiting for response at ${responsePath} (timeout=${timeoutMs}ms, fs.watch + polling fallback)`);
+
+        // 既に abort 済みの場合は即時 reject
+        if (signal?.aborted) {
+            return Promise.reject(new Error('FileIpc: aborted before waiting'));
+        }
 
         return new Promise<string>((resolve, reject) => {
             let settled = false;
@@ -85,6 +99,19 @@ export class FileIpc {
                 if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
                 if (timeoutTimer) { clearInterval(timeoutTimer); timeoutTimer = null; }
             };
+
+            // AbortSignal リスナー: abort 時に即座にクリーンアップ & reject
+            if (signal) {
+                const onAbort = () => {
+                    if (!settled) {
+                        settled = true;
+                        cleanup();
+                        logInfo('FileIpc: waitForResponse aborted by signal');
+                        reject(new Error('FileIpc: aborted'));
+                    }
+                };
+                signal.addEventListener('abort', onAbort, { once: true });
+            }
 
             const tryReadResponse = async (): Promise<boolean> => {
                 try {
@@ -184,7 +211,7 @@ export class FileIpc {
                         .then(() => logDebug('FileIpc: cleaned up timed-out response file'))
                         .catch(() => { /* file doesn't exist, OK */ });
 
-                    reject(new Error(`FileIpc: response timeout (${timeoutMs}ms, ${totalElapsed}) — file never appeared at ${responsePath}`));
+                    reject(new IpcTimeoutError(`FileIpc: response timeout (${timeoutMs}ms, ${totalElapsed}) — file never appeared at ${responsePath}`));
                 }
             }, POLL_INTERVAL_MS);
         });
@@ -234,6 +261,18 @@ export class FileIpc {
                     return parsed.discord_templates.ack;
                 }
 
+                // リッチJSON展開: summary 以外にもオブジェクト/配列キーがある場合
+                const hasNestedData = Object.values(parsed).some(
+                    v => (typeof v === 'object' && v !== null),
+                );
+                if (hasNestedData) {
+                    const formatted = FileIpc.formatJsonForDiscord(parsed);
+                    if (formatted) {
+                        logDebug(`FileIpc.extractResult: formatted complex JSON (${formatted.length} chars)`);
+                        return formatted;
+                    }
+                }
+
                 // 既知のキーを優先順に試行（summary を最優先）
                 const knownKeys = ['summary', 'response', 'result', 'reply', 'content', 'text', 'output', 'message'];
                 let bestValue: string | null = null;
@@ -274,6 +313,105 @@ export class FileIpc {
             // JSON でなければそのまま返す
         }
         return raw;
+    }
+
+    /**
+     * 複雑なネスト JSON を Discord 向けの Markdown 形式に展開する。
+     * 
+     * 主に実行結果 JSON（summary, changes, test_results, deploy 等）を
+     * 人間が読みやすい形式に変換する。
+     */
+    static formatJsonForDiscord(obj: Record<string, unknown>): string | null {
+        const lines: string[] = [];
+
+        // キー名の日本語ラベルマッピング
+        const labelMap: Record<string, string> = {
+            summary: '📋 概要',
+            result: '結果',
+            changes: '📝 変更内容',
+            files_modified: '変更ファイル',
+            files_created: '新規ファイル',
+            files_deleted: '削除ファイル',
+            details: '詳細',
+            impact: '🔍 影響範囲',
+            test_results: '🧪 テスト結果',
+            deploy: '🚀 デプロイ',
+            notes: '⚠️ 注意点',
+            warnings: '⚠️ 警告',
+            errors: '❌ エラー',
+            status: 'ステータス',
+            description: '説明',
+        };
+
+        const getLabel = (key: string): string => labelMap[key] || key;
+
+        const formatValue = (value: unknown, depth: number = 0): string[] => {
+            const result: string[] = [];
+            const indent = '  '.repeat(depth);
+
+            if (typeof value === 'string') {
+                result.push(`${indent}${value}`);
+            } else if (typeof value === 'number' || typeof value === 'boolean') {
+                result.push(`${indent}${String(value)}`);
+            } else if (Array.isArray(value)) {
+                for (const item of value) {
+                    if (typeof item === 'string') {
+                        result.push(`${indent}- ${item}`);
+                    } else if (typeof item === 'object' && item !== null) {
+                        // 配列内のオブジェクト: キーバリューを箇条書き
+                        const parts: string[] = [];
+                        for (const [k, v] of Object.entries(item as Record<string, unknown>)) {
+                            if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') {
+                                parts.push(`**${getLabel(k)}:** ${v}`);
+                            }
+                        }
+                        if (parts.length > 0) {
+                            result.push(`${indent}- ${parts.join(' / ')}`);
+                        }
+                    }
+                }
+            } else if (typeof value === 'object' && value !== null) {
+                for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+                    if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') {
+                        result.push(`${indent}**${getLabel(k)}:** ${v}`);
+                    } else if (Array.isArray(v)) {
+                        result.push(`${indent}**${getLabel(k)}:**`);
+                        result.push(...formatValue(v, depth + 1));
+                    } else if (typeof v === 'object' && v !== null) {
+                        result.push(`${indent}**${getLabel(k)}:**`);
+                        result.push(...formatValue(v, depth + 1));
+                    }
+                }
+            }
+
+            return result;
+        };
+
+        // summary/result をトップに配置
+        const topKeys = ['summary', 'result', 'response', 'message'];
+        for (const key of topKeys) {
+            if (key in obj && typeof obj[key] === 'string') {
+                lines.push(`**${getLabel(key)}:** ${obj[key]}`);
+            }
+        }
+
+        // 残りのキーを処理
+        for (const [key, value] of Object.entries(obj)) {
+            if (topKeys.includes(key) && typeof value === 'string') { continue; }
+            if (value === null || value === undefined) { continue; }
+
+            if (typeof value === 'string') {
+                lines.push(`**${getLabel(key)}:** ${value}`);
+            } else if (typeof value === 'number' || typeof value === 'boolean') {
+                lines.push(`**${getLabel(key)}:** ${value}`);
+            } else if (typeof value === 'object') {
+                lines.push(`\n**${getLabel(key)}:**`);
+                lines.push(...formatValue(value, 0));
+            }
+        }
+
+        if (lines.length === 0) { return null; }
+        return lines.join('\n');
     }
 
     /** リクエストIDから進捗ファイルパスを生成 */

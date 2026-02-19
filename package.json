@@ -47,6 +47,11 @@
         "command": "anti-crow.createShortcut",
         "title": "Create Desktop Shortcut",
         "category": "AntiCrow"
+      },
+      {
+        "command": "anti-crow.dumpCommands",
+        "title": "Dump Antigravity Commands (Diagnostic)",
+        "category": "AntiCrow"
       }
     ],
     "configuration": {

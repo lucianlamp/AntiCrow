@@ -2,7 +2,7 @@
 // adminHandler.ts — 管理系スラッシュコマンドハンドラ
 // ---------------------------------------------------------------------------
 // 責務:
-//   /status, /schedules, /reset, /newchat, /workspaces, /queue,
+//   /status, /schedules, /cancel, /newchat, /workspaces, /queue,
 //   /templates, /models, /mode コマンドの処理
 // ---------------------------------------------------------------------------
 import {
@@ -69,21 +69,25 @@ export async function handleManageSlash(
         return;
     }
 
-    if (commandName === 'reset') {
+    if (commandName === 'cancel') {
         try {
             resetProcessingFlag();
-            executor?.forceReset();
+            executor?.forceStop();
+            ctx.executorPool?.forceStopAll();
 
+            // Antigravity のストップボタンをクリック
             if (cdp) {
-                await cdp.startNewChat();
+                try { await cdp.clickStopButton(); } catch (e) {
+                    logWarn(`handleManageSlash: /cancel — clickStopButton failed (non-fatal): ${e instanceof Error ? e.message : e}`);
+                }
             }
 
-            logInfo('handleManageSlash: /reset executed — all states cleared');
-            await interaction.reply({ embeds: [buildEmbed('🔄 処理をリセットしました。\n- `isProcessingMessage` → false\n- Executor キュー → クリア\n- Antigravity チャット → 新規セッション', EmbedColor.Success)] });
+            logInfo('handleManageSlash: /cancel executed — current job stopped (executor + executorPool)');
+            await interaction.reply({ embeds: [buildEmbed('⏹️ キャンセルしました。\n- 実行中のジョブ → キャンセル\n- キュー内の待機ジョブ → 保持', EmbedColor.Success)] });
         } catch (e) {
             const errMsg = e instanceof Error ? e.message : String(e);
-            logError('handleManageSlash: /reset failed', e);
-            await interaction.reply({ embeds: [buildEmbed(`❌ リセット失敗: ${errMsg}`, EmbedColor.Error)], ephemeral: true });
+            logError('handleManageSlash: /cancel failed', e);
+            await interaction.reply({ embeds: [buildEmbed(`❌ キャンセル失敗: ${errMsg}`, EmbedColor.Error)], ephemeral: true });
         }
         return;
     }

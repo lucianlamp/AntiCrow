@@ -105,7 +105,7 @@ export class ExecutorPool {
      */
     async enqueueImmediate(workspaceName: string, plan: Plan): Promise<void> {
         const executor = await this.getOrCreate(workspaceName);
-        executor.enqueueImmediate(plan);
+        await executor.enqueueImmediate(plan);
     }
 
     /**
@@ -148,6 +148,16 @@ export class ExecutorPool {
         for (const [key, executor] of this.pool.entries()) {
             logInfo(`ExecutorPool: force-resetting executor for workspace "${key}"`);
             executor.forceReset();
+        }
+    }
+
+    /**
+     * 全 Executor の現在のジョブを停止する（キューは保持）。
+     */
+    forceStopAll(): void {
+        for (const [key, executor] of this.pool.entries()) {
+            logInfo(`ExecutorPool: force-stopping executor for workspace "${key}"`);
+            executor.forceStop();
         }
     }
 

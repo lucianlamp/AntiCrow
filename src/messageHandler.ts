@@ -14,6 +14,7 @@ import * as vscode from 'vscode';
 import { Message, TextChannel } from 'discord.js';
 import { CdpBridge } from './cdpBridge';
 import { CascadePanelError } from './errors';
+import { FileIpc } from './fileIpc';
 import { parseSkillJson, buildPlan } from './planParser';
 import { ChannelIntent, Plan } from './types';
 import { logInfo, logError, logWarn, logDebug } from './logger';
@@ -309,13 +310,28 @@ export async function handleDiscordMessage(
         const skillOutput = parseSkillJson(skillResponse);
         if (!skillOutput) {
             logError('handleDiscordMessage: skill JSON parse failed');
-            await channel.send({
-                embeds: [buildEmbed(
-                    '⚠️ Antigravity からの応答を解析できませんでした。\n' +
-                    '応答:\n```\n' + skillResponse.substring(0, 1000) + '\n```',
-                    EmbedColor.Warning
-                )]
-            });
+            // 生JSONをそのまま表示するのではなく、読みやすい形式に変換してフォールバック
+            const formatted = FileIpc.extractResult(skillResponse);
+            const isFormatted = formatted !== skillResponse;
+            const warningHeader = '⚠️ Antigravity からの応答を解析できませんでした。';
+            if (isFormatted) {
+                // 複雑なJSONを展開できた場合
+                await channel.send({
+                    embeds: [buildEmbed(
+                        `${warningHeader}\n応答内容:\n${formatted}`,
+                        EmbedColor.Warning
+                    )]
+                });
+            } else {
+                // 展開できなかった場合のフォールバック（Discordメッセージ文字数制限も考慮）
+                const preview = skillResponse.substring(0, 800);
+                await channel.send({
+                    embeds: [buildEmbed(
+                        `${warningHeader}\n応答:\n\`\`\`\n${preview}\n\`\`\``,
+                        EmbedColor.Warning
+                    )]
+                });
+            }
             return;
         }
         logInfo(`handleDiscordMessage: plan parsed — plan_id = ${skillOutput.plan_id}, cron = ${skillOutput.cron} `);
@@ -377,9 +393,6 @@ export async function handleDiscordMessage(
                 }
                 plan.status = 'active';
             }
-        } else {
-            const summary = plan.human_summary || plan.prompt.substring(0, 100);
-            await channel.send({ embeds: [buildEmbed(`📋 **実行予定:** ${summary}`, EmbedColor.Info)] });
         }
 
         // -----------------------------------------------------------------
@@ -393,7 +406,7 @@ export async function handleDiscordMessage(
             if (executorPool) {
                 await executorPool.enqueueImmediate(wsNameForImmediate || '', plan);
             } else if (executor) {
-                executor.enqueueImmediate(plan);
+                await executor.enqueueImmediate(plan);
             }
         } else {
             logInfo(`handleDiscordMessage: registering scheduled plan ${plan.plan_id} with cron = ${plan.cron} `);

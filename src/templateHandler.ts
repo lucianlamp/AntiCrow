@@ -239,7 +239,7 @@ export async function handleTemplateButton(
             const wsName = cdp.getActiveWorkspaceName() || undefined;
             if (wsName) { plan.workspace_name = wsName; }
 
-            executor.enqueueImmediate(plan);
+            await executor.enqueueImmediate(plan);
             logInfo(`handleTemplateButton: tpl_confirm_run "${name}" — plan ${plan.plan_id} enqueued`);
         } catch (e) {
             const errMsg = e instanceof Error ? e.message : String(e);

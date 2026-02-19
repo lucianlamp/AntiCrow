@@ -28,6 +28,9 @@ export interface DiscordTemplates {
     run_error?: string;
 }
 
+/** 実行ターゲット（特殊フロー分岐用） */
+export type PlanTarget = 'anticrow_customization';
+
 /** Skill JSON 出力 / 永続化される計画 */
 export interface Plan {
     plan_id: string;
@@ -36,6 +39,7 @@ export interface Plan {
     prompt: string;
     requires_confirmation: boolean;
     choice_mode?: ChoiceMode;        // 確認時の選択モード（デフォルト: 'none'）
+    target?: PlanTarget;             // 特殊フロー分岐（省略時は通常実行）
     source_channel_id: string;
     notify_channel_id: string;      // デフォルト: source チャンネル
     channel_id?: string;            // 自動作成された専用チャンネル ID（Schedules カテゴリー内）
@@ -58,6 +62,7 @@ export interface SkillOutput {
     prompt: string;
     requires_confirmation: boolean;
     choice_mode?: ChoiceMode;        // 確認時の選択モード（デフォルト: 'none'）
+    target?: PlanTarget;             // 特殊フロー分岐（省略時は通常実行）
     discord_templates: DiscordTemplates;
     human_summary?: string;
     attachment_paths?: string[];     // Discord 添付ファイルのローカルパス（拡張が後付け）

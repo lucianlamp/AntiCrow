@@ -11,6 +11,7 @@ import { Plan } from './types';
 import { ChannelIntent } from './types';
 import { logWarn, logInfo, logDebug } from './logger';
 import { markdownToJson } from './mdToJson';
+import { PROMPT_RULES_MD } from './embeddedRules';
 
 // ---------------------------------------------------------------------------
 // Skill プロンプト生成
@@ -37,31 +38,23 @@ export function buildSkillPrompt(
     // 一時ファイル用 ID 生成（タイムスタンプ + ランダム）
     const tmpId = `${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
 
-    // ルール内容を Markdown → JSON 変換して一時ファイルに保存
+    // ルール内容を埋め込み定数から Markdown → JSON 変換して一時ファイルに保存
     let rulesFilePath = '';
     let rulesInline: unknown = null;
-    if (extensionPath && ipcDir) {
+    const jsonRules = markdownToJson(PROMPT_RULES_MD);
+    if (ipcDir) {
         try {
-            const rulesPath = path.join(extensionPath, '.anticrow', 'rules', 'prompt_rules.md');
-            const mdContent = fs.readFileSync(rulesPath, 'utf-8').trim();
-            const jsonRules = markdownToJson(mdContent);
             const tmpRulesPath = path.join(ipcDir, `tmp_rules_${tmpId}.json`);
             fs.writeFileSync(tmpRulesPath, JSON.stringify(jsonRules, null, 2), 'utf-8');
             tempFiles.push(tmpRulesPath);
             rulesFilePath = tmpRulesPath;
             logInfo(`promptBuilder: rules written to temp file: ${tmpRulesPath}`);
         } catch (e) {
-            logDebug(`promptBuilder: rules file not found or unreadable (ipcDir mode): ${e instanceof Error ? e.message : e}`);
+            logDebug(`promptBuilder: failed to write rules temp file: ${e instanceof Error ? e.message : e}`);
         }
-    } else if (extensionPath) {
+    } else {
         // ipcDir が渡されなかった場合は従来のインライン方式にフォールバック
-        try {
-            const rulesPath = path.join(extensionPath, '.anticrow', 'rules', 'prompt_rules.md');
-            const mdContent = fs.readFileSync(rulesPath, 'utf-8').trim();
-            rulesInline = markdownToJson(mdContent);
-        } catch (e) {
-            logDebug(`promptBuilder: rules file not found or unreadable (inline mode): ${e instanceof Error ? e.message : e}`);
-        }
+        rulesInline = jsonRules;
     }
 
     // プロンプトインジェクション検出
@@ -110,7 +103,7 @@ export function buildSkillPrompt(
         output: {
             method: 'write_to_file',
             path: responsePath,
-            constraint: '最終結果確定後に1回だけ書き込む。途中経過や確認事項は書き込まない。ファイルに書き込んだ時点でレスポンス完了と見なされる。結果には何をしたか・変更内容・影響範囲・注意点などを具体的かつ詳細に記述すること。簡素すぎる報告は避ける。',
+            constraint: '最終結果確定後に1回だけ書き込む。途中経過や確認事項は書き込まない。ファイルに書き込んだ時点でレスポンス完了と見なされる。出力は必ず JSON 形式の実行計画オブジェクト（出力スキーマ参照）のみとすること。Markdown や自然文は書き込まないこと。',
         },
     };
 

@@ -165,6 +165,135 @@ export function activate(context: vscode.ExtensionContext) {
     );
 
 
+    // -----------------------------------------------------------------
+    // コマンド: Test Antigravity Commands (CDP不要化検証)
+    // -----------------------------------------------------------------
+    context.subscriptions.push(
+        vscode.commands.registerCommand('anti-crow.dumpCommands', async () => {
+            const results: string[] = [];
+            results.push('=== Antigravity Command Test Results ===');
+            results.push(`Time: ${new Date().toISOString()}`);
+            results.push('');
+
+            // --- Test 1: sendTextToChat ---
+            results.push('--- Test 1: antigravity.sendTextToChat ---');
+            try {
+                // まず引数なしで呼んでみる（引数の形式を探る）
+                const r1 = await vscode.commands.executeCommand('antigravity.sendTextToChat', 'Hello from AntiCrow test! This is a CDP-free test message.');
+                results.push(`  Result: SUCCESS (return=${JSON.stringify(r1)})`);
+            } catch (e) {
+                const msg = e instanceof Error ? e.message : String(e);
+                results.push(`  Result: ERROR — ${msg}`);
+            }
+
+            // 少し待機
+            await new Promise(r => setTimeout(r, 2000));
+
+            // --- Test 2: startNewConversation ---
+            results.push('--- Test 2: antigravity.startNewConversation ---');
+            try {
+                const r2 = await vscode.commands.executeCommand('antigravity.startNewConversation');
+                results.push(`  Result: SUCCESS (return=${JSON.stringify(r2)})`);
+            } catch (e) {
+                const msg = e instanceof Error ? e.message : String(e);
+                results.push(`  Result: ERROR — ${msg}`);
+            }
+
+            await new Promise(r => setTimeout(r, 1000));
+
+            // --- Test 3: sendTextToChat (新会話で) ---
+            results.push('--- Test 3: antigravity.sendTextToChat (after new conversation) ---');
+            try {
+                const r3 = await vscode.commands.executeCommand('antigravity.sendTextToChat', 'Second test message in new conversation.');
+                results.push(`  Result: SUCCESS (return=${JSON.stringify(r3)})`);
+            } catch (e) {
+                const msg = e instanceof Error ? e.message : String(e);
+                results.push(`  Result: ERROR — ${msg}`);
+            }
+
+            // --- Test 4: agent.acceptAgentStep ---
+            results.push('--- Test 4: antigravity.agent.acceptAgentStep ---');
+            try {
+                const r4 = await vscode.commands.executeCommand('antigravity.agent.acceptAgentStep');
+                results.push(`  Result: SUCCESS (return=${JSON.stringify(r4)})`);
+            } catch (e) {
+                const msg = e instanceof Error ? e.message : String(e);
+                results.push(`  Result: ERROR — ${msg}`);
+            }
+
+            // --- Test 5: terminalCommand.accept (正しいコマンド名) ---
+            results.push('--- Test 5: antigravity.terminalCommand.accept ---');
+            try {
+                const r5 = await vscode.commands.executeCommand('antigravity.terminalCommand.accept');
+                results.push(`  Result: SUCCESS (return=${JSON.stringify(r5)})`);
+            } catch (e) {
+                const msg = e instanceof Error ? e.message : String(e);
+                results.push(`  Result: ERROR — ${msg}`);
+            }
+
+            // --- Test 6: command.accept ---
+            results.push('--- Test 6: antigravity.command.accept ---');
+            try {
+                const r6 = await vscode.commands.executeCommand('antigravity.command.accept');
+                results.push(`  Result: SUCCESS (return=${JSON.stringify(r6)})`);
+            } catch (e) {
+                const msg = e instanceof Error ? e.message : String(e);
+                results.push(`  Result: ERROR — ${msg}`);
+            }
+
+            // --- Test 7: acceptCompletion ---
+            results.push('--- Test 7: antigravity.acceptCompletion ---');
+            try {
+                const r7 = await vscode.commands.executeCommand('antigravity.acceptCompletion');
+                results.push(`  Result: SUCCESS (return=${JSON.stringify(r7)})`);
+            } catch (e) {
+                const msg = e instanceof Error ? e.message : String(e);
+                results.push(`  Result: ERROR — ${msg}`);
+            }
+
+            // --- Test 8: executeCascadeAction ---
+            results.push('--- Test 8: antigravity.executeCascadeAction ---');
+            try {
+                const r8 = await vscode.commands.executeCommand('antigravity.executeCascadeAction');
+                results.push(`  Result: SUCCESS (return=${JSON.stringify(r8)})`);
+            } catch (e) {
+                const msg = e instanceof Error ? e.message : String(e);
+                results.push(`  Result: ERROR — ${msg}`);
+            }
+
+            // --- Test 9: sendChatActionMessage ---
+            results.push('--- Test 9: antigravity.sendChatActionMessage ---');
+            try {
+                const r9 = await vscode.commands.executeCommand('antigravity.sendChatActionMessage', 'test action');
+                results.push(`  Result: SUCCESS (return=${JSON.stringify(r9)})`);
+            } catch (e) {
+                const msg = e instanceof Error ? e.message : String(e);
+                results.push(`  Result: ERROR — ${msg}`);
+            }
+
+            // --- Test 10: openAgent ---
+            results.push('--- Test 10: antigravity.openAgent ---');
+            try {
+                const r10 = await vscode.commands.executeCommand('antigravity.openAgent');
+                results.push(`  Result: SUCCESS (return=${JSON.stringify(r10)})`);
+            } catch (e) {
+                const msg = e instanceof Error ? e.message : String(e);
+                results.push(`  Result: ERROR — ${msg}`);
+            }
+
+            // 結果出力
+            results.push('');
+            results.push('=== Test Complete ===');
+            const output = results.join('\n');
+            logInfo(`TestCommands:\n${output}`);
+
+            const doc = await vscode.workspace.openTextDocument({
+                content: output,
+                language: 'text',
+            });
+            await vscode.window.showTextDocument(doc);
+        })
+    );
 
     // -----------------------------------------------------------------
     // コマンド: Create Desktop Shortcut

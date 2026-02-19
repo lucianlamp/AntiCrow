@@ -291,25 +291,41 @@ export async function checkElementExists(
 export async function clickExpandAll(
     ops: CdpBridgeOps,
 ): Promise<boolean> {
-    const selectors = [
+    // メインウィンドウ（inCascade: false）のセレクタ
+    const mainSelectors = [
         '[aria-label="Expand All"]',
         '[title="Expand All"]',
         '.expand-all-button',
     ];
 
-    for (const selector of selectors) {
+    for (const selector of mainSelectors) {
         try {
             const result = await clickElement(ops, {
                 selector,
                 inCascade: false,
             });
             if (result.success) {
-                logInfo(`CDP: clickExpandAll succeeded — selector=${selector}`);
+                logInfo(`CDP: clickExpandAll succeeded — selector=${selector} (main window)`);
                 return true;
             }
         } catch (e) {
             logDebug(`CDP: clickExpandAll selector "${selector}" failed — ${e instanceof Error ? e.message : e}`);
         }
+    }
+
+    // Cascade iframe 内の Expand ボタン（テキストマッチ）
+    try {
+        const result = await clickElement(ops, {
+            text: 'Expand',
+            tag: 'button',
+            inCascade: true,
+        });
+        if (result.success) {
+            logInfo('CDP: clickExpandAll succeeded — text="Expand" (cascade)');
+            return true;
+        }
+    } catch (e) {
+        logDebug(`CDP: clickExpandAll cascade Expand failed — ${e instanceof Error ? e.message : e}`);
     }
 
     logDebug('CDP: clickExpandAll — no Expand All button found');

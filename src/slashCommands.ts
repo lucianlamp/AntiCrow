@@ -31,8 +31,8 @@ export const slashCommandDefinitions = [
         .setDescription('インタラクティブなスケジュール管理パネルを表示'),
 
     new SlashCommandBuilder()
-        .setName('reset')
-        .setDescription('処理中のリクエストを強制リセット'),
+        .setName('cancel')
+        .setDescription('実行中のタスクをキャンセル'),
 
     new SlashCommandBuilder()
         .setName('newchat')
