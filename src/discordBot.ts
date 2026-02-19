@@ -20,7 +20,7 @@ import {
 } from 'discord.js';
 import { ChannelIntent } from './types';
 import { splitForEmbeds, extractTableFields } from './discordFormatter';
-import { logInfo, logError, logWarn, logDebug } from './logger';
+import { logDebug, logError, logWarn } from './logger';
 import { buildEmbed, EmbedColor } from './embedHelper';
 
 // 委譲先モジュール
@@ -83,7 +83,7 @@ export class DiscordBot {
 
     private setupEventHandlers(): void {
         this.client.on('ready', () => {
-            logInfo(`Discord: logged in as ${this.client.user?.tag}`);
+            logDebug(`Discord: logged in as ${this.client.user?.tag}`);
             this.ready = true;
         });
 
@@ -104,7 +104,7 @@ export class DiscordBot {
                 return;
             }
 
-            logInfo(`Discord: message from workspace "${wsName}" #${channelName}: "${msg.content.substring(0, 80)}..."`);
+            logDebug(`Discord: message from workspace "${wsName}" #${channelName}: "${msg.content.substring(0, 80)}..."`);
             if (this.messageHandler) {
                 try {
                     await this.messageHandler(msg, 'agent-chat', channelName);
@@ -118,7 +118,7 @@ export class DiscordBot {
         this.client.on('interactionCreate', async (interaction) => {
             // ----- Button Interaction -----
             if (interaction.isButton()) {
-                logInfo(`Discord: button interaction customId=${interaction.customId} from ${interaction.user.tag}`);
+                logDebug(`Discord: button interaction customId=${interaction.customId} from ${interaction.user.tag}`);
                 if (this.buttonHandler) {
                     try {
                         await this.buttonHandler(interaction);
@@ -147,7 +147,7 @@ export class DiscordBot {
 
             // ----- Modal Submit Interaction -----
             if (interaction.isModalSubmit()) {
-                logInfo(`Discord: modal submit customId=${interaction.customId} from ${interaction.user.tag}`);
+                logDebug(`Discord: modal submit customId=${interaction.customId} from ${interaction.user.tag}`);
                 if (this.modalSubmitHandler) {
                     try {
                         await this.modalSubmitHandler(interaction);
@@ -172,7 +172,7 @@ export class DiscordBot {
                 return;
             }
 
-            logInfo(`Discord: slash command /${commandName} (intent=${intent}) from ${interaction.user.tag}`);
+            logDebug(`Discord: slash command /${commandName} (intent=${intent}) from ${interaction.user.tag}`);
 
             if (this.interactionHandler) {
                 try {
@@ -245,7 +245,7 @@ export class DiscordBot {
 
     /** Bot を起動 */
     async start(): Promise<void> {
-        logInfo('Discord: starting bot...');
+        logDebug('Discord: starting bot...');
         await this.client.login(this.token);
     }
 
@@ -266,7 +266,7 @@ export class DiscordBot {
 
     /** Bot を停止 */
     async stop(): Promise<void> {
-        logInfo('Discord: stopping bot...');
+        logDebug('Discord: stopping bot...');
         this.ready = false;
         this.client.destroy();
     }

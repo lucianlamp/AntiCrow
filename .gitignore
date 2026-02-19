@@ -2,3 +2,5 @@ node_modules/
 out/
 *.vsix
 .vscode-test/
+.licensing-setup.json
+convex/_generated/

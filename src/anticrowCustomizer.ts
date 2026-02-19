@@ -6,7 +6,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { logInfo, logWarn, logError } from './logger';
+import { logDebug, logWarn, logError } from './logger';
 
 // -------------------------------------------------------------------------
 // Constants
@@ -63,7 +63,7 @@ export function updateAnticrowMd(
         // ディレクトリ作成
         if (!fs.existsSync(ANTICROW_DIR)) {
             fs.mkdirSync(ANTICROW_DIR, { recursive: true });
-            logInfo(`anticrowCustomizer: created directory ${ANTICROW_DIR}`);
+            logDebug(`anticrowCustomizer: created directory ${ANTICROW_DIR}`);
         }
 
         // 既存ファイルのバックアップ
@@ -71,7 +71,7 @@ export function updateAnticrowMd(
         if (fs.existsSync(ANTICROW_MD_PATH)) {
             fs.copyFileSync(ANTICROW_MD_PATH, ANTICROW_BACKUP_PATH);
             backupPath = ANTICROW_BACKUP_PATH;
-            logInfo('anticrowCustomizer: backup created');
+            logDebug('anticrowCustomizer: backup created');
         }
 
         // 内容を決定
@@ -92,7 +92,7 @@ export function updateAnticrowMd(
 
         // 書き込み
         fs.writeFileSync(ANTICROW_MD_PATH, finalContent, 'utf-8');
-        logInfo(`anticrowCustomizer: file updated (mode=${mode}, ${Buffer.byteLength(finalContent, 'utf-8')} bytes)`);
+        logDebug(`anticrowCustomizer: file updated (mode=${mode}, ${Buffer.byteLength(finalContent, 'utf-8')} bytes)`);
 
         return { success: true, backupPath };
     } catch (e) {
@@ -134,7 +134,7 @@ export function updateSection(
             return { success: false, error: result.error };
         }
 
-        logInfo(`anticrowCustomizer: section "${sectionName}" updated`);
+        logDebug(`anticrowCustomizer: section "${sectionName}" updated`);
         return { success: true };
     } catch (e) {
         logError(`anticrowCustomizer: failed to update section "${sectionName}"`, e);

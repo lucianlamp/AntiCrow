@@ -9,7 +9,7 @@ import * as path from 'path';
 import * as os from 'os';
 import { Plan } from './types';
 import { ChannelIntent } from './types';
-import { logWarn, logInfo, logDebug } from './logger';
+import { logWarn, logDebug } from './logger';
 import { markdownToJson } from './mdToJson';
 import { getPromptRulesMd } from './embeddedRules';
 import { getTimezone } from './configHelper';
@@ -49,7 +49,7 @@ export function buildSkillPrompt(
             fs.writeFileSync(tmpRulesPath, JSON.stringify(jsonRules, null, 2), 'utf-8');
             tempFiles.push(tmpRulesPath);
             rulesFilePath = tmpRulesPath;
-            logInfo(`promptBuilder: rules written to temp file: ${tmpRulesPath}`);
+            logDebug(`promptBuilder: rules written to temp file: ${tmpRulesPath}`);
         } catch (e) {
             logDebug(`promptBuilder: failed to write rules temp file: ${e instanceof Error ? e.message : e}`);
         }
@@ -142,7 +142,7 @@ export function buildSkillPrompt(
                 tempFiles.push(tmpGlobalPath);
                 promptObj.user_rules_file = tmpGlobalPath;
                 promptObj.user_rules_instruction = 'このファイルを view_file ツールで読み込み、出力のスタイルや口調に反映してください。';
-                logInfo(`promptBuilder: global rules written to temp file: ${tmpGlobalPath}`);
+                logDebug(`promptBuilder: global rules written to temp file: ${tmpGlobalPath}`);
             } else {
                 // フォールバック: インライン埋め込み
                 promptObj.user_rules = globalRulesJson;
@@ -159,7 +159,7 @@ export function buildSkillPrompt(
         const tmpPromptPath = path.join(ipcDir, `tmp_prompt_${tmpId}.json`);
         fs.writeFileSync(tmpPromptPath, promptJson, 'utf-8');
         tempFiles.push(tmpPromptPath);
-        logInfo(`promptBuilder: prompt written to temp file: ${tmpPromptPath}`);
+        logDebug(`promptBuilder: prompt written to temp file: ${tmpPromptPath}`);
         const prompt = `以下のファイルを view_file ツールで読み込み、その指示に従ってください。ファイルパス: ${tmpPromptPath}`;
         return { prompt, tempFiles };
     }

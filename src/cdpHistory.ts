@@ -5,7 +5,7 @@
 // CdpBridgeOps インターフェース経由で CdpBridge の内部機能にアクセスする。
 // ---------------------------------------------------------------------------
 
-import { logInfo, logWarn, logDebug } from './logger';
+import { logDebug, logWarn } from './logger';
 
 /** CdpBridge の内部操作を外部ヘルパーに公開するインターフェース */
 export interface CdpBridgeOps {
@@ -110,7 +110,7 @@ export async function openHistoryPopup(ops: CdpBridgeOps): Promise<void> {
         };
 
         if (result?.success) {
-            logInfo(`CDP: openHistoryPopup — clicked history button (method=${result.method}, selector=${result.selector || result.label || 'N/A'})`);
+            logDebug(`CDP: openHistoryPopup — clicked history button (method=${result.method}, selector=${result.selector || result.label || 'N/A'})`);
         } else {
             logWarn(`CDP: openHistoryPopup — history button not found: ${result?.error || 'unknown'}`);
         }
@@ -215,7 +215,7 @@ return { success: true, items: items, debugInfo: debugInfo };
             };
 
             if (result?.success && result.items.length > 0) {
-                logInfo(`CDP: getConversationList — found ${result.items.length} conversations in ${label} context`);
+                logDebug(`CDP: getConversationList — found ${result.items.length} conversations in ${label} context`);
                 logDebug(`CDP: getConversationList debugInfo (${label}): ${JSON.stringify(result.debugInfo)}`);
                 return result.items;
             }
@@ -333,7 +333,7 @@ export async function openHistoryAndGetList(ops: CdpBridgeOps): Promise<{ title:
 
     try {
         await ops.conn.evaluate(INSTALL_OBSERVER);
-        logInfo('CDP: openHistoryAndGetList — installed MutationObserver in main window');
+        logDebug('CDP: openHistoryAndGetList — installed MutationObserver in main window');
     } catch (e) {
         logWarn(`CDP: openHistoryAndGetList — failed to install observer: ${e instanceof Error ? e.message : e}`);
     }
@@ -423,7 +423,7 @@ return { success: false, error: 'History button not found in Cascade panel' };
         };
 
         if (clickResult?.success) {
-            logInfo(`CDP: openHistoryAndGetList — clicked history button (method=${clickResult.method}, selector=${clickResult.selector || clickResult.label || 'N/A'})`);
+            logDebug(`CDP: openHistoryAndGetList — clicked history button (method=${clickResult.method}, selector=${clickResult.selector || clickResult.label || 'N/A'})`);
         } else {
             logWarn(`CDP: openHistoryAndGetList — history button not found: ${clickResult?.error || 'unknown'}`);
             await cleanupHistoryObserver(ops);
@@ -474,11 +474,11 @@ return { success: false, error: 'History button not found in Cascade panel' };
             const result = await ops.conn.evaluate(READ_CAPTURE) as CaptureResult;
 
             if (pollCount === 1 || pollCount % 10 === 0) {
-                logInfo(`CDP: openHistoryAndGetList poll #${pollCount} — captured=${result?.captured}, events=${result?.events}, qp=${result?.quickPickState}, diag=${JSON.stringify(result?.diag)}`);
+                logDebug(`CDP: openHistoryAndGetList poll #${pollCount} — captured=${result?.captured}, events=${result?.events}, qp=${result?.quickPickState}, diag=${JSON.stringify(result?.diag)}`);
             }
 
             if (result?.captured && result.items.length > 0) {
-                logInfo(`CDP: openHistoryAndGetList — captured ${result.items.length} conversations via MutationObserver (poll #${pollCount}, events=${result.events})`);
+                logDebug(`CDP: openHistoryAndGetList — captured ${result.items.length} conversations via MutationObserver (poll #${pollCount}, events=${result.events})`);
                 await cleanupHistoryObserver(ops);
                 return result.items;
             }
@@ -551,7 +551,7 @@ export async function selectConversation(ops: CdpBridgeOps, index: number): Prom
         key: 'Enter',
     });
 
-    logInfo(`CDP: selectConversation — selected index ${index}`);
+    logDebug(`CDP: selectConversation — selected index ${index}`);
     await ops.sleep(1000);
     ops.resetCascadeContext();
     return true;
@@ -578,6 +578,6 @@ export async function closePopup(ops: CdpBridgeOps): Promise<void> {
         key: 'Escape',
     });
 
-    logInfo('CDP: closePopup — sent Escape');
+    logDebug('CDP: closePopup — sent Escape');
     await ops.sleep(300);
 }

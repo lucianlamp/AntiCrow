@@ -17,7 +17,7 @@ import { CascadePanelError } from './errors';
 import { FileIpc } from './fileIpc';
 import { parseSkillJson, buildPlan } from './planParser';
 import { ChannelIntent, Plan } from './types';
-import { logInfo, logError, logWarn, logDebug } from './logger';
+import { logDebug, logError, logWarn } from './logger';
 import { buildEmbed, EmbedColor, sanitizeErrorForDiscord } from './embedHelper';
 import { DiscordBot } from './discordBot';
 import { downloadAttachments } from './attachmentDownloader';
@@ -48,7 +48,7 @@ const DEFAULT_WS_KEY = '__default__';
 export function resetProcessingFlag(): void {
     workspaceQueueCount.clear();
     workspaceQueues.clear();
-    logInfo('messageHandler: all workspace queues reset');
+    logDebug('messageHandler: all workspace queues reset');
 }
 
 /**
@@ -161,7 +161,7 @@ export async function handleDiscordMessage(
 
                 const combinedContent = [refContent, embedText].filter(Boolean).join('\n\n');
                 if (combinedContent) {
-                    logInfo(`handleDiscordMessage: reply detected, referenced message from ${refAuthor} (content=${refContent.length} chars, embeds=${embedText.length} chars)`);
+                    logDebug(`handleDiscordMessage: reply detected, referenced message from ${refAuthor} (content=${refContent.length} chars, embeds=${embedText.length} chars)`);
                     text = `## 返信先メッセージ（${refAuthor} の発言）\n${combinedContent}\n\n## 上記メッセージに対する指示\n${text}`;
                 }
             }
@@ -186,7 +186,7 @@ export async function handleDiscordMessage(
         return;
     }
     try {
-        logInfo(`handleDiscordMessage: processing #${channelName} (intent = ${intent}) message: (${text.length} chars)`);
+        logDebug(`handleDiscordMessage: processing #${channelName} (intent = ${intent}) message: (${text.length} chars)`);
 
         // CDP 接続の取得
         let activeCdp: CdpBridge;
@@ -200,7 +200,7 @@ export async function handleDiscordMessage(
                         await channel.send({ embeds: [buildEmbed(`🚀 ワークスペース "${wsName}" を起動中です。しばらくお待ちください...`, EmbedColor.Info)] });
                     } catch (e) { logDebug(`handleDiscordMessage: failed to react: ${e}`); }
                 });
-                logInfo(`handleDiscordMessage: acquired CdpBridge from pool for workspace "${wsNameFromCategory || 'default'}"`);
+                logDebug(`handleDiscordMessage: acquired CdpBridge from pool for workspace "${wsNameFromCategory || 'default'}"`);
             } catch (e) {
                 logError(`handleDiscordMessage: failed to acquire CdpBridge for workspace "${wsNameFromCategory}"`, e);
                 await channel.send({ embeds: [buildEmbed(`⚠️ ワークスペース "${wsNameFromCategory}" への接続に失敗しました: ${sanitizeErrorForDiscord(e instanceof Error ? e.message : String(e))}`, EmbedColor.Warning)] });
@@ -245,18 +245,18 @@ export async function handleDiscordMessage(
         let attachmentPaths: string[] | undefined;
         const storageBase = fileIpc.getStoragePath();
         if (message.attachments.size > 0) {
-            logInfo(`handleDiscordMessage: downloading ${message.attachments.size} attachment(s)...`);
+            logDebug(`handleDiscordMessage: downloading ${message.attachments.size} attachment(s)...`);
             const downloaded = await downloadAttachments(message.attachments, storageBase, requestId);
             if (downloaded.length > 0) {
                 attachmentPaths = downloaded.map(d => d.localPath);
-                logInfo(`handleDiscordMessage: ${downloaded.length} attachment(s) saved`);
+                logDebug(`handleDiscordMessage: ${downloaded.length} attachment(s) saved`);
             }
         }
 
         // Skill プロンプト生成
         const ipcDir = fileIpc.getIpcDir();
         const { prompt: skillPrompt, tempFiles } = buildSkillPrompt(text || '（添付ファイルを確認してください）', intent, channelName, responsePath, attachmentPaths, ctx.extensionPath, ipcDir);
-        logInfo('handleDiscordMessage: sending skill prompt via CDP...');
+        logDebug('handleDiscordMessage: sending skill prompt via CDP...');
 
         // typing indicator 開始
         const typingInterval = setInterval(async () => {
@@ -271,7 +271,7 @@ export async function handleDiscordMessage(
             for (let attempt = 1; attempt <= maxRetries; attempt++) {
                 try {
                     if (attempt > 1) {
-                        logInfo(`handleDiscordMessage: retrying sendPrompt (attempt ${attempt}/${maxRetries})...`);
+                        logDebug(`handleDiscordMessage: retrying sendPrompt (attempt ${attempt}/${maxRetries})...`);
                         await new Promise(r => setTimeout(r, 5_000));
                     }
                     await activeCdp.sendPrompt(skillPrompt);
@@ -284,7 +284,7 @@ export async function handleDiscordMessage(
                     throw retryErr;
                 }
             }
-            logInfo('handleDiscordMessage: prompt sent, waiting for file response...');
+            logDebug('handleDiscordMessage: prompt sent, waiting for file response...');
 
             // 伝達完了 → 計画生成中ステータスを送信
             try {
@@ -300,13 +300,13 @@ export async function handleDiscordMessage(
             clearInterval(typingInterval);
             // 一時ファイルのクリーンアップ
             for (const f of tempFiles) {
-                try { fs.unlinkSync(f); logInfo(`handleDiscordMessage: cleaned up temp file: ${f}`); } catch { /* ignore */ }
+                try { fs.unlinkSync(f); logDebug(`handleDiscordMessage: cleaned up temp file: ${f}`); } catch { /* ignore */ }
             }
         }
-        logInfo(`handleDiscordMessage: skill response received(${skillResponse.length} chars)`);
+        logDebug(`handleDiscordMessage: skill response received(${skillResponse.length} chars)`);
 
         // パース
-        logInfo(`handleDiscordMessage: raw skill response: ${skillResponse.substring(0, 200)} `);
+        logDebug(`handleDiscordMessage: raw skill response: ${skillResponse.substring(0, 200)} `);
         const skillOutput = parseSkillJson(skillResponse);
         if (!skillOutput) {
             logError('handleDiscordMessage: skill JSON parse failed');
@@ -334,7 +334,7 @@ export async function handleDiscordMessage(
             }
             return;
         }
-        logInfo(`handleDiscordMessage: plan parsed — plan_id = ${skillOutput.plan_id}, cron = ${skillOutput.cron} `);
+        logDebug(`handleDiscordMessage: plan parsed — plan_id = ${skillOutput.plan_id}, cron = ${skillOutput.cron} `);
 
         // 通知先の決定
         const guild = message.guild;
@@ -402,14 +402,14 @@ export async function handleDiscordMessage(
             const wsNameForImmediate = wsNameFromCategory || activeCdp.getActiveWorkspaceName() || undefined;
             if (wsNameForImmediate) { plan.workspace_name = wsNameForImmediate; }
             plan.notify_channel_id = channel.id;
-            logInfo(`handleDiscordMessage: enqueueing immediate execution for plan ${plan.plan_id} (not persisted, workspace=${wsNameForImmediate || 'default'})`);
+            logDebug(`handleDiscordMessage: enqueueing immediate execution for plan ${plan.plan_id} (not persisted, workspace=${wsNameForImmediate || 'default'})`);
             if (executorPool) {
                 await executorPool.enqueueImmediate(wsNameForImmediate || '', plan);
             } else if (executor) {
                 await executor.enqueueImmediate(plan);
             }
         } else {
-            logInfo(`handleDiscordMessage: registering scheduled plan ${plan.plan_id} with cron = ${plan.cron} `);
+            logDebug(`handleDiscordMessage: registering scheduled plan ${plan.plan_id} with cron = ${plan.cron} `);
 
             if (guild && bot) {
                 const prefix = cronToPrefix(plan.cron!);
@@ -421,7 +421,7 @@ export async function handleDiscordMessage(
                 if (planChannelId) {
                     plan.channel_id = planChannelId;
                     plan.notify_channel_id = planChannelId;
-                    logInfo(`handleDiscordMessage: created plan channel ${planChannelId} for plan ${plan.plan_id} (workspace=${wsName || 'default'})`);
+                    logDebug(`handleDiscordMessage: created plan channel ${planChannelId} for plan ${plan.plan_id} (workspace=${wsName || 'default'})`);
                 }
             }
 

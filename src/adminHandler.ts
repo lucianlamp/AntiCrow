@@ -10,7 +10,7 @@ import {
 } from 'discord.js';
 import * as fs from 'fs';
 import * as path from 'path';
-import { logInfo, logError, logWarn } from './logger';
+import { logDebug, logError, logWarn } from './logger';
 import { buildEmbed, EmbedColor } from './embedHelper';
 import { buildScheduleListEmbed, buildDeleteConfirmEmbed } from './scheduleButtons';
 import { buildModelListEmbed, buildModelSwitchResultEmbed } from './modelButtons';
@@ -82,7 +82,7 @@ export async function handleManageSlash(
                 }
             }
 
-            logInfo('handleManageSlash: /cancel executed — current job stopped (executor + executorPool)');
+            logDebug('handleManageSlash: /cancel executed — current job stopped (executor + executorPool)');
             await interaction.reply({ embeds: [buildEmbed('⏹️ キャンセルしました。\n- 実行中のジョブ → キャンセル\n- キュー内の待機ジョブ → 保持', EmbedColor.Success)] });
         } catch (e) {
             const errMsg = e instanceof Error ? e.message : String(e);
@@ -96,7 +96,7 @@ export async function handleManageSlash(
         try {
             if (cdp) {
                 await cdp.startNewChat();
-                logInfo('handleManageSlash: /newchat executed — new chat started via Ctrl+Shift+L');
+                logDebug('handleManageSlash: /newchat executed — new chat started via Ctrl+Shift+L');
                 await interaction.reply({ embeds: [buildEmbed('🆕 新しいチャットを開きました。', EmbedColor.Success)] });
             } else {
                 await interaction.reply({ embeds: [buildEmbed('⚠️ Antigravity との接続が初期化されていません。', EmbedColor.Warning)], ephemeral: true });
@@ -191,16 +191,16 @@ export async function handleManageSlash(
                 return;
             }
 
-            logInfo('handleManageSlash: /models — starting getAvailableModels');
+            logDebug('handleManageSlash: /models — starting getAvailableModels');
             const { models, current, debugLog } = await getAvailableModels(cdp.ops);
-            logInfo(`handleManageSlash: /models — got ${models.length} models, current=${current}`);
+            logDebug(`handleManageSlash: /models — got ${models.length} models, current=${current}`);
 
             // デバッグログをファイルに書き出し
             if (ctx.fileIpc) {
                 try {
                     const debugPath = path.join(ctx.fileIpc.getIpcDir(), 'models_debug.json');
                     fs.writeFileSync(debugPath, JSON.stringify(debugLog, null, 2), 'utf-8');
-                    logInfo(`handleManageSlash: /models — debug log saved to ${debugPath}`);
+                    logDebug(`handleManageSlash: /models — debug log saved to ${debugPath}`);
                 } catch (writeErr) {
                     logWarn(`handleManageSlash: /models — failed to write debug log: ${writeErr}`);
                 }
@@ -226,7 +226,7 @@ export async function handleManageSlash(
 
             const quotaData = await fetchQuota();
             if (quotaData) {
-                logInfo(`handleManageSlash: /models — quota fetched: ${quotaData.models.length} models, account=${quotaData.accountLevel}`);
+                logDebug(`handleManageSlash: /models — quota fetched: ${quotaData.models.length} models, account=${quotaData.accountLevel}`);
             } else {
                 logWarn('handleManageSlash: /models — fetchQuota returned null (process detection or API call failed)');
             }
@@ -254,16 +254,16 @@ export async function handleManageSlash(
                 return;
             }
 
-            logInfo('handleManageSlash: /mode — starting getAvailableModes');
+            logDebug('handleManageSlash: /mode — starting getAvailableModes');
             const { modes, current, debugLog } = await getAvailableModes(cdp.ops);
-            logInfo(`handleManageSlash: /mode — got ${modes.length} modes, current=${current}`);
+            logDebug(`handleManageSlash: /mode — got ${modes.length} modes, current=${current}`);
 
             // デバッグログをファイルに書き出し
             if (ctx.fileIpc) {
                 try {
                     const debugPath = path.join(ctx.fileIpc.getIpcDir(), 'modes_debug.json');
                     fs.writeFileSync(debugPath, JSON.stringify(debugLog, null, 2), 'utf-8');
-                    logInfo(`handleManageSlash: /mode — debug log saved to ${debugPath}`);
+                    logDebug(`handleManageSlash: /mode — debug log saved to ${debugPath}`);
                 } catch (writeErr) {
                     logWarn(`handleManageSlash: /mode — failed to write debug log: ${writeErr}`);
                 }

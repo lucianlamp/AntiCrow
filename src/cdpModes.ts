@@ -15,7 +15,7 @@
 // ---------------------------------------------------------------------------
 
 import { CdpBridgeOps } from './cdpHistory';
-import { logInfo, logDebug, logWarn } from './logger';
+import { logDebug, logWarn } from './logger';
 
 // -----------------------------------------------------------------------
 // 共通: モードボタンを見つける JS スニペット
@@ -120,7 +120,7 @@ export async function getCurrentMode(
 
         const result = await ops.evaluateInCascade(script);
         if (typeof result === 'string' && result.length > 0) {
-            logInfo(`cdpModes: getCurrentMode = "${result}"`);
+            logDebug(`cdpModes: getCurrentMode = "${result}"`);
             return result;
         }
 
@@ -312,7 +312,7 @@ export async function getAvailableModes(
         }
 
         const modeList = Array.isArray(modes) ? modes : [];
-        logInfo(`cdpModes: getAvailableModes — found ${modeList.length} modes, current="${currentMode}"`);
+        logDebug(`cdpModes: getAvailableModes — found ${modeList.length} modes, current="${currentMode}"`);
 
         return {
             modes: modeList,
@@ -421,7 +421,7 @@ export async function selectMode(
         };
 
         if (selectResult?.success) {
-            logInfo(`cdpModes: selectMode — selected "${selectResult.selected}"`);
+            logDebug(`cdpModes: selectMode — selected "${selectResult.selected}"`);
             return true;
         }
 

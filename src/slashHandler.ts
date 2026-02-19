@@ -19,7 +19,7 @@ import {
 } from 'discord.js';
 
 import { ChannelIntent } from './types';
-import { logInfo, logError, logWarn } from './logger';
+import { logDebug, logError, logWarn } from './logger';
 import { buildEmbed, EmbedColor, sanitizeErrorForDiscord } from './embedHelper';
 import { buildScheduleListEmbed, buildDeleteConfirmEmbed } from './scheduleButtons';
 import { buildModelListEmbed, buildModelSwitchResultEmbed } from './modelButtons';
@@ -56,7 +56,7 @@ function debouncedRename(ctx: BridgeContext, channelId: string, newName: string)
     const existing = pendingRenames.get(channelId);
     if (existing) {
         clearTimeout(existing.timer);
-        logInfo(`debouncedRename: cancelled pending rename for ${channelId}, replacing with "${newName}"`);
+        logDebug(`debouncedRename: cancelled pending rename for ${channelId}, replacing with "${newName}"`);
     }
 
     const timer = setTimeout(async () => {
@@ -71,7 +71,7 @@ function debouncedRename(ctx: BridgeContext, channelId: string, newName: string)
     }, 2000);
 
     pendingRenames.set(channelId, { timer, newName });
-    logInfo(`debouncedRename: scheduled rename for ${channelId} → "${newName}" (2s delay)`);
+    logDebug(`debouncedRename: scheduled rename for ${channelId} → "${newName}" (2s delay)`);
 }
 
 // ---------------------------------------------------------------------------
@@ -114,7 +114,7 @@ export async function handleButtonInteraction(
     interaction: ButtonInteraction,
 ): Promise<void> {
     const customId = interaction.customId;
-    logInfo(`handleButtonInteraction: customId=${customId}`);
+    logDebug(`handleButtonInteraction: customId=${customId}`);
 
     // -----------------------------------------------------------------
     // セキュリティ: ボタン操作にも許可ユーザーID制限を適用
@@ -160,7 +160,7 @@ export async function handleButtonInteraction(
             if (plan.status === 'active') {
                 ctx.planStore.update(planId, { status: 'paused' });
                 ctx.scheduler.unregister(planId);
-                logInfo(`ButtonHandler: paused plan ${planId}`);
+                logDebug(`ButtonHandler: paused plan ${planId}`);
 
                 if (plan.channel_id && ctx.bot) {
                     const baseName = plan.human_summary || planId;
@@ -173,7 +173,7 @@ export async function handleButtonInteraction(
                 ctx.planStore.update(planId, { status: 'active' });
                 const updated = ctx.planStore.get(planId);
                 if (updated) { ctx.scheduler.register(updated); }
-                logInfo(`ButtonHandler: resumed plan ${planId}`);
+                logDebug(`ButtonHandler: resumed plan ${planId}`);
 
                 if (plan.channel_id && ctx.bot) {
                     const baseName = (plan.human_summary || planId).replace(/（停止中）$/, '');
@@ -212,7 +212,7 @@ export async function handleButtonInteraction(
             const removed = ctx.planStore.remove(planId);
 
             if (removed) {
-                logInfo(`ButtonHandler: deleted plan ${planId}`);
+                logDebug(`ButtonHandler: deleted plan ${planId}`);
                 if (planToDelete?.channel_id && ctx.bot) {
                     await ctx.bot.deletePlanChannel(planToDelete.channel_id);
                 }

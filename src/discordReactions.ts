@@ -5,7 +5,7 @@
 // ---------------------------------------------------------------------------
 
 import { Message } from 'discord.js';
-import { logInfo, logError, logDebug } from './logger';
+import { logDebug, logError } from './logger';
 
 // -----------------------------------------------------------------------
 // waitForConfirmation
@@ -23,7 +23,7 @@ export async function waitForConfirmation(
     try {
         await message.react(confirmEmoji);
         await message.react(rejectEmoji);
-        logInfo(`waitForConfirmation: reactions added, waiting for user reaction (timeout=${timeoutMs}ms)`);
+        logDebug(`waitForConfirmation: reactions added, waiting for user reaction (timeout=${timeoutMs}ms)`);
     } catch (e) {
         logError('waitForConfirmation: failed to add reactions', e);
         return false;
@@ -46,13 +46,13 @@ export async function waitForConfirmation(
 
         collector.on('collect', (reaction, user) => {
             const emoji = reaction.emoji.name;
-            logInfo(`waitForConfirmation: collected reaction '${emoji}' from user ${user.tag || user.id}`);
+            logDebug(`waitForConfirmation: collected reaction '${emoji}' from user ${user.tag || user.id}`);
             collector.stop('received');
             resolve(emoji === confirmEmoji);
         });
 
         collector.on('end', (_collected, reason) => {
-            logInfo(`waitForConfirmation: collector ended — reason: ${reason}`);
+            logDebug(`waitForConfirmation: collector ended — reason: ${reason}`);
             if (reason !== 'received') {
                 resolve(false); // タイムアウトまたはその他の理由
             }
@@ -80,7 +80,7 @@ export async function waitForChoice(
             await message.react(emoji);
         }
         await message.react(rejectEmoji);
-        logInfo(`waitForChoice: ${activeEmojis.length} choice reactions + ❌ added, waiting (timeout=${timeoutMs}ms)`);
+        logDebug(`waitForChoice: ${activeEmojis.length} choice reactions + ❌ added, waiting (timeout=${timeoutMs}ms)`);
     } catch (e) {
         logError('waitForChoice: failed to add reactions', e);
         return -1;
@@ -103,7 +103,7 @@ export async function waitForChoice(
 
         collector.on('collect', (reaction, user) => {
             const emoji = reaction.emoji.name || '';
-            logInfo(`waitForChoice: collected '${emoji}' from user ${user.tag || user.id}`);
+            logDebug(`waitForChoice: collected '${emoji}' from user ${user.tag || user.id}`);
             collector.stop('received');
             if (emoji === rejectEmoji) {
                 resolve(-1);
@@ -114,7 +114,7 @@ export async function waitForChoice(
         });
 
         collector.on('end', (_collected, reason) => {
-            logInfo(`waitForChoice: collector ended — reason: ${reason}`);
+            logDebug(`waitForChoice: collector ended — reason: ${reason}`);
             if (reason !== 'received') {
                 resolve(-1);
             }
@@ -149,7 +149,7 @@ export async function waitForMultiChoice(
         await message.react(confirmEmoji);
         await message.react(allEmoji);
         await message.react(rejectEmoji);
-        logInfo(`waitForMultiChoice: ${activeEmojis.length} choices + ☑️/✅/❌ added (timeout=${timeoutMs}ms)`);
+        logDebug(`waitForMultiChoice: ${activeEmojis.length} choices + ☑️/✅/❌ added (timeout=${timeoutMs}ms)`);
     } catch (e) {
         logError('waitForMultiChoice: failed to add reactions', e);
         return [];
@@ -176,21 +176,21 @@ export async function waitForMultiChoice(
             const emoji = reaction.emoji.name || '';
 
             if (emoji === rejectEmoji) {
-                logInfo(`waitForMultiChoice: rejected by ${user.tag || user.id}`);
+                logDebug(`waitForMultiChoice: rejected by ${user.tag || user.id}`);
                 collector.stop('rejected');
                 resolve([]);
                 return;
             }
 
             if (emoji === allEmoji) {
-                logInfo(`waitForMultiChoice: all selected by ${user.tag || user.id}`);
+                logDebug(`waitForMultiChoice: all selected by ${user.tag || user.id}`);
                 collector.stop('all');
                 resolve([-1]);
                 return;
             }
 
             if (emoji === confirmEmoji) {
-                logInfo(`waitForMultiChoice: confirmed [${[...selected].join(',')}] by ${user.tag || user.id}`);
+                logDebug(`waitForMultiChoice: confirmed [${[...selected].join(',')}] by ${user.tag || user.id}`);
                 collector.stop('confirmed');
                 resolve([...selected].sort((a, b) => a - b));
                 return;
@@ -211,7 +211,7 @@ export async function waitForMultiChoice(
         });
 
         collector.on('end', (_collected, reason) => {
-            logInfo(`waitForMultiChoice: collector ended — reason: ${reason}`);
+            logDebug(`waitForMultiChoice: collector ended — reason: ${reason}`);
             if (!['rejected', 'all', 'confirmed'].includes(reason || '')) {
                 resolve([]); // タイムアウト
             }

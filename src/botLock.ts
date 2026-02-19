@@ -8,7 +8,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { logInfo, logWarn, logDebug } from './logger';
+import { logDebug, logWarn } from './logger';
 
 const LOCK_FILE = 'bot.active';
 
@@ -59,7 +59,7 @@ export function acquireLock(storagePath: string): boolean {
         const fd = fs.openSync(fp, 'wx');
         fs.writeFileSync(fd, JSON.stringify(lockData, null, 2), 'utf-8');
         fs.closeSync(fd);
-        logInfo(`BotLock: acquired lock (PID=${process.pid})`);
+        logDebug(`BotLock: acquired lock (PID=${process.pid})`);
         return true;
     } catch (e: unknown) {
         if (e instanceof Error && 'code' in e && (e as NodeJS.ErrnoException).code !== 'EEXIST') {
@@ -75,7 +75,7 @@ export function acquireLock(storagePath: string): boolean {
         const data: LockData = JSON.parse(raw);
 
         if (isProcessAlive(data.pid)) {
-            logInfo(`BotLock: lock held by PID ${data.pid} (alive) — skipping bot startup`);
+            logDebug(`BotLock: lock held by PID ${data.pid} (alive) — skipping bot startup`);
             return false;
         }
 
@@ -92,7 +92,7 @@ export function acquireLock(storagePath: string): boolean {
         const fd = fs.openSync(fp, 'wx');
         fs.writeFileSync(fd, JSON.stringify(lockData, null, 2), 'utf-8');
         fs.closeSync(fd);
-        logInfo(`BotLock: acquired lock after stale cleanup (PID=${process.pid})`);
+        logDebug(`BotLock: acquired lock after stale cleanup (PID=${process.pid})`);
         return true;
     } catch {
         logWarn('BotLock: lost race after stale cleanup — another process won');
@@ -117,7 +117,7 @@ export function releaseLock(storagePath: string): void {
         }
 
         fs.unlinkSync(fp);
-        logInfo(`BotLock: released lock (PID=${process.pid})`);
+        logDebug(`BotLock: released lock (PID=${process.pid})`);
     } catch {
         // ファイルが無い or 読めない → 何もしない
         logDebug('BotLock: no lock file to release');

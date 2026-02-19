@@ -13,7 +13,7 @@ import { FileIpc } from './fileIpc';
 import { PlanStore } from './planStore';
 import { Executor, NotifyFunc, SendTypingFunc } from './executor';
 import { CdpPool, DEFAULT_WORKSPACE } from './cdpPool';
-import { logInfo, logWarn, logDebug } from './logger';
+import { logDebug, logWarn } from './logger';
 
 /**
  * ワークスペース毎に独立した Executor を管理するプール。
@@ -83,7 +83,7 @@ export class ExecutorPool {
         );
 
         this.pool.set(key, executor);
-        logInfo(`ExecutorPool: created executor for workspace "${key}" (pool size=${this.pool.size})`);
+        logDebug(`ExecutorPool: created executor for workspace "${key}" (pool size=${this.pool.size})`);
         return executor;
     }
 
@@ -146,7 +146,7 @@ export class ExecutorPool {
      */
     forceResetAll(): void {
         for (const [key, executor] of this.pool.entries()) {
-            logInfo(`ExecutorPool: force-resetting executor for workspace "${key}"`);
+            logDebug(`ExecutorPool: force-resetting executor for workspace "${key}"`);
             executor.forceReset();
         }
     }
@@ -156,7 +156,7 @@ export class ExecutorPool {
      */
     forceStopAll(): void {
         for (const [key, executor] of this.pool.entries()) {
-            logInfo(`ExecutorPool: force-stopping executor for workspace "${key}"`);
+            logDebug(`ExecutorPool: force-stopping executor for workspace "${key}"`);
             executor.forceStop();
         }
     }
@@ -167,7 +167,7 @@ export class ExecutorPool {
     clear(): void {
         this.forceResetAll();
         this.pool.clear();
-        logInfo('ExecutorPool: pool cleared');
+        logDebug('ExecutorPool: pool cleared');
     }
 
 

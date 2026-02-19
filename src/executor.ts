@@ -10,7 +10,7 @@ import { ExecutionJob, Plan, PlanExecution } from './types';
 import { CdpBridge } from './cdpBridge';
 import { FileIpc } from './fileIpc';
 import { PlanStore } from './planStore';
-import { logInfo, logError, logWarn, logDebug } from './logger';
+import { logDebug, logError, logWarn } from './logger';
 import { CdpConnectionError, IpcTimeoutError } from './errors';
 import { updateAnticrowMd, getAnticrowMdPath } from './anticrowCustomizer';
 import { getPromptRulesMd, EXECUTION_PROMPT_TEMPLATE } from './embeddedRules';
@@ -127,7 +127,7 @@ export class Executor {
             const content = fs.readFileSync(filePath, 'utf-8');
             if (content.trim().length > 0) {
                 this.userGlobalRules = content.trim();
-                logInfo(`Executor: loaded user global rules from ${filePath} (${this.userGlobalRules.length} chars)`);
+                logDebug(`Executor: loaded user global rules from ${filePath} (${this.userGlobalRules.length} chars)`);
             }
         } catch {
             logDebug(`Executor: no user global rules found at ${filePath} (optional)`);
@@ -149,7 +149,7 @@ export class Executor {
         return new Promise<void>((resolve) => {
             this.jobCompletionResolvers.set(job.plan.plan_id, resolve);
             this.queue.push(job);
-            logInfo(`Executor: enqueued job for plan ${job.plan.plan_id} (trigger: ${job.triggerType})`);
+            logDebug(`Executor: enqueued job for plan ${job.plan.plan_id} (trigger: ${job.triggerType})`);
             this.processQueue();
         });
     }
@@ -181,7 +181,7 @@ export class Executor {
 
             while (attempt <= maxRetries && !success && !this.aborted) {
                 if (attempt > 0) {
-                    logInfo(`Executor: retrying plan ${job.plan.plan_id} (attempt ${attempt}/${maxRetries})`);
+                    logDebug(`Executor: retrying plan ${job.plan.plan_id} (attempt ${attempt}/${maxRetries})`);
                     await this.safeNotify(job.plan.notify_channel_id, `🔄 リトライ中... (${attempt}/${maxRetries})`);
                 }
                 try {
@@ -190,7 +190,7 @@ export class Executor {
                 } catch (retryErr) {
                     // aborted の場合はリトライせず即座に終了
                     if (this.aborted) {
-                        logInfo(`Executor: plan ${job.plan.plan_id} aborted, skipping retry`);
+                        logDebug(`Executor: plan ${job.plan.plan_id} aborted, skipping retry`);
                         await this.safeNotify(job.plan.notify_channel_id, '⏹️ 停止しました');
                         break;
                     }
@@ -242,7 +242,7 @@ export class Executor {
             if (plan.workspace_name) {
                 const currentWs = this.cdp.getActiveWorkspaceName();
                 if (currentWs !== plan.workspace_name) {
-                    logInfo(`Executor: switching workspace "${currentWs}" → "${plan.workspace_name}" for plan ${plan.plan_id}`);
+                    logDebug(`Executor: switching workspace "${currentWs}" → "${plan.workspace_name}" for plan ${plan.plan_id}`);
                     const port = this.cdp.getActiveTargetPort();
                     let instances = await CdpBridge.discoverInstances(this.cdp.getPorts());
                     let target = instances.find(i =>
@@ -250,7 +250,7 @@ export class Executor {
 
                     // ワークスペースが見つからない場合、Antigravity を自動起動して再試行
                     if (!target) {
-                        logInfo(`Executor: workspace "${plan.workspace_name}" not found, attempting auto-launch...`);
+                        logDebug(`Executor: workspace "${plan.workspace_name}" not found, attempting auto-launch...`);
                         try {
                             await this.cdp.ensureConnected();
                             instances = await CdpBridge.discoverInstances(this.cdp.getPorts());
@@ -263,7 +263,7 @@ export class Executor {
 
                     if (target) {
                         await this.cdp.switchTarget(target.id);
-                        logInfo(`Executor: switched to workspace "${plan.workspace_name}" (id=${target.id})`);
+                        logDebug(`Executor: switched to workspace "${plan.workspace_name}" (id=${target.id})`);
                     } else {
                         logWarn(`Executor: workspace "${plan.workspace_name}" not found even after auto-launch, skipping job`);
                         await this.safeNotify(notifyChannel,
@@ -277,13 +277,13 @@ export class Executor {
             // 開始通知
             const startMsg = plan.discord_templates.run_start
                 || `⏳ 実行開始: ${plan.human_summary || plan.plan_id}`;
-            logInfo(`Executor: sending start notification to channel ${notifyChannel}`);
+            logDebug(`Executor: sending start notification to channel ${notifyChannel}`);
             await this.safeNotify(notifyChannel, startMsg);
 
             // 実行前にユーザーグローバルルールを再読み込み（ANTICROW.md 更新反映）
             this.loadUserGlobalRules();
 
-            logInfo(`Executor: executing plan ${plan.plan_id} — sending prompt via CDP (${plan.prompt.length} chars)`);
+            logDebug(`Executor: executing plan ${plan.plan_id} — sending prompt via CDP (${plan.prompt.length} chars)`);
             this.running = true;
 
             // AbortController を生成（forceStop でキャンセル可能にする）
@@ -376,7 +376,7 @@ export class Executor {
             const ipcDir = path.dirname(responsePath);
             const tmpExecPath = path.join(ipcDir, `tmp_exec_${requestId}.json`);
             fs.writeFileSync(tmpExecPath, finalPrompt, 'utf-8');
-            logInfo(`Executor: prompt written to temp file: ${tmpExecPath}`);
+            logDebug(`Executor: prompt written to temp file: ${tmpExecPath}`);
             const cdpInstruction = `以下のファイルを view_file ツールで読み込み、その指示に従ってください。ファイルパス: ${tmpExecPath}`;
 
             // typing indicator 開始（実行中に「入力中...」を表示）
@@ -397,12 +397,19 @@ export class Executor {
                             const percentStr = progress.percent !== undefined ? ` (${progress.percent}%)` : '';
                             const detailStr = progress.detail ? `\n${progress.detail}` : '';
                             const progressMsg = `📊 **進捗${percentStr}:** ${progress.status}${detailStr}`;
-                            logInfo(`Executor: progress update — ${progress.status}`);
+                            logDebug(`Executor: progress update — ${progress.status}`);
                             await this.safeNotify(notifyChannel, progressMsg);
                         }
                     }
                 } catch {
                     // 進捗ファイル読み取り失敗は無視
+                }
+
+                // AI出力を自動追従（スクロール + 展開 + レビューUI消去）
+                try {
+                    await this.cdp.autoFollowOutput();
+                } catch {
+                    // 追従失敗は無視（接続断等）
                 }
             }, PROGRESS_POLL_INTERVAL_MS);
 
@@ -418,7 +425,7 @@ export class Executor {
                         await this.safeNotify(notifyChannel, '🔌 接続断を検出しました。再接続中...');
                         try {
                             await this.cdp.ensureConnected();
-                            logInfo('Executor: reconnected successfully, retrying sendPrompt');
+                            logDebug('Executor: reconnected successfully, retrying sendPrompt');
                             await this.cdp.sendPrompt(cdpInstruction);
                         } catch (reconnectErr) {
                             logError('Executor: reconnect + retry failed', reconnectErr);
@@ -428,10 +435,13 @@ export class Executor {
                         throw sendErr;
                     }
                 }
-                logInfo(`Executor: prompt sent, waiting for file response at ${responsePath}`);
+                logDebug(`Executor: prompt sent, waiting for file response at ${responsePath}`);
 
                 // 伝達完了ステータスを Discord に通知
                 await this.safeNotify(notifyChannel, '✅ 指示を伝達しました。応答を待っています...');
+
+                // 一時プロンプトファイルを即時クリーンアップ（レビューUI被り防止）
+                await this.fileIpc.cleanupTmpFiles();
 
                 // ファイル経由でレスポンスを待機（AbortSignal 付き）
                 // （UIウォッチャーは bridgeLifecycle で常時動作しているため、ここでは起動/停止しない）
@@ -448,7 +458,7 @@ export class Executor {
             this.running = false;
             this.abortController = null;
             const durationMs = Date.now() - jobStartTime;
-            logInfo(`Executor: plan ${plan.plan_id} — response received (${response.length} chars)`);
+            logDebug(`Executor: plan ${plan.plan_id} — response received (${response.length} chars)`);
 
             // Markdown レスポンスはそのまま Discord に送信（JSON の場合はフォールバック展開）
             const isMarkdown = responsePath.endsWith('.md');
@@ -461,7 +471,7 @@ export class Executor {
             const contentStart = content.substring(0, 100).replace(/[\s*]/g, '').replace(/^[^\p{L}\p{N}]+/u, '');
             const isDuplicate = prefixCore.length > 0 && contentStart.startsWith(prefixCore);
             const resultMsg = isDuplicate ? content : `${prefix}\n${content}`;
-            logInfo(`Executor: sending success notification to channel ${notifyChannel} (${resultMsg.length} chars, prefixSkipped=${isDuplicate}, markdown=${isMarkdown})`);
+            logDebug(`Executor: sending success notification to channel ${notifyChannel} (${resultMsg.length} chars, prefixSkipped=${isDuplicate}, markdown=${isMarkdown})`);
             await this.safeNotify(notifyChannel, resultMsg, 0x00CED1);
 
             // 実行履歴を記録
@@ -473,7 +483,7 @@ export class Executor {
                 setTimeout(() => this.recentlyExecutedPlanIds.delete(plan.plan_id), RECENT_EXECUTION_TTL_MS);
             }
 
-            logInfo(`Executor: plan ${plan.plan_id} completed successfully`);
+            logDebug(`Executor: plan ${plan.plan_id} completed successfully`);
         } catch (err) {
             this.running = false;
             this.abortController = null;
@@ -500,7 +510,7 @@ export class Executor {
     private recordExecution(plan: Plan, success: boolean, durationMs: number, resultPreview: string): void {
         // 即時実行 Plan は PlanStore に存在しないのでスキップ
         if (!this.planStore.get(plan.plan_id)) {
-            logInfo(`Executor: skipping execution record for plan ${plan.plan_id} (not in PlanStore)`);
+            logDebug(`Executor: skipping execution record for plan ${plan.plan_id} (not in PlanStore)`);
             return;
         }
         try {
@@ -517,7 +527,7 @@ export class Executor {
                 execution_count: (plan.execution_count || 0) + 1,
                 executions,
             });
-            logInfo(`Executor: recorded execution for plan ${plan.plan_id} (success=${success}, ${durationMs}ms)`);
+            logDebug(`Executor: recorded execution for plan ${plan.plan_id} (success=${success}, ${durationMs}ms)`);
         } catch (e) {
             logError('Executor: failed to record execution', e);
         }
@@ -533,7 +543,7 @@ export class Executor {
             this.abortController.abort();
             this.abortController = null;
         }
-        logInfo('Executor: force reset — running/processing/aborted flags set, queue emptied');
+        logDebug('Executor: force reset — running/processing/aborted flags set, queue emptied');
     }
 
     /** 強制停止: 現在実行中のジョブのみ停止する（キューは保持） */
@@ -546,9 +556,9 @@ export class Executor {
         if (this.abortController) {
             this.abortController.abort();
             this.abortController = null;
-            logInfo('Executor: abortController triggered — waitForResponse cancelled');
+            logDebug('Executor: abortController triggered — waitForResponse cancelled');
         }
-        logInfo('Executor: force stop — running/processing/aborted flags set, queue preserved');
+        logDebug('Executor: force stop — running/processing/aborted flags set, queue preserved');
     }
 
     /** 現在実行中かどうか */
@@ -574,7 +584,7 @@ export class Executor {
         const idx = this.queue.findIndex(j => j.plan.plan_id === planId);
         if (idx === -1) { return false; }
         this.queue.splice(idx, 1);
-        logInfo(`Executor: cancelled queued job for plan ${planId}`);
+        logDebug(`Executor: cancelled queued job for plan ${planId}`);
         return true;
     }
 
@@ -591,7 +601,7 @@ export class Executor {
     startUIWatcher(): void {
         if (this.uiWatcherTimer) { return; } // 既に動作中
 
-        logInfo('Executor: UI watcher started (command-first hybrid mode)');
+        logDebug('Executor: UI watcher started (command-first hybrid mode)');
 
         this.uiWatcherTimer = setInterval(async () => {
             // autoOperation 設定を毎回チェック（設定変更を動的に反映）
@@ -633,7 +643,7 @@ export class Executor {
                     });
 
                     if (result.success) {
-                        logInfo(`Executor: UI watcher auto-clicked "${rule.name}" (method=${result.method})`);
+                        logDebug(`Executor: UI watcher auto-clicked "${rule.name}" (method=${result.method})`);
                     }
                 } catch (e) {
                     // コンテキスト取得失敗時はキャッシュをリセットして次回再取得を促す
@@ -649,7 +659,7 @@ export class Executor {
         if (this.uiWatcherTimer) {
             clearInterval(this.uiWatcherTimer);
             this.uiWatcherTimer = null;
-            logInfo('Executor: UI watcher stopped');
+            logDebug('Executor: UI watcher stopped');
         }
     }
 }

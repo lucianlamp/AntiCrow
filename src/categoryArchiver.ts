@@ -6,7 +6,7 @@
 
 import { DiscordBot } from './discordBot';
 import { PlanStore } from './planStore';
-import { logInfo, logWarn, logDebug } from './logger';
+import { logDebug, logWarn } from './logger';
 import { snowflakeToTimestamp } from './discordUtils';
 
 /**
@@ -106,7 +106,7 @@ export async function archiveOldCategories(
 
         const children = guild.channels.cache.filter(c => c.parentId === categoryId);
 
-        logInfo(`archiveOldCategories: deleting "${wsName}" (last active ${daysAgo} days ago)`);
+        logDebug(`archiveOldCategories: deleting "${wsName}" (last active ${daysAgo} days ago)`);
 
         // 子チャンネルを先に削除
         for (const [, child] of children) {

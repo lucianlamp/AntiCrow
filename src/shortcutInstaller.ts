@@ -9,7 +9,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { execSync } from 'child_process';
-import { logInfo, logError, logWarn } from './logger';
+import { logDebug, logError, logWarn } from './logger';
 
 const GLOBAL_STATE_KEY = 'shortcutCreated';
 
@@ -83,5 +83,5 @@ export function createDesktopShortcut(extensionPath: string): void {
         windowsHide: true,
     });
 
-    logInfo(`shortcutInstaller: created desktop shortcut at ${shortcutPath}`);
+    logDebug(`shortcutInstaller: created desktop shortcut at ${shortcutPath}`);
 }

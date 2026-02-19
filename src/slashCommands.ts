@@ -3,7 +3,7 @@
 // ---------------------------------------------------------------------------
 
 import { SlashCommandBuilder, REST, Routes } from 'discord.js';
-import { logInfo, logError } from './logger';
+import { logDebug, logError } from './logger';
 
 // -----------------------------------------------------------------------
 // コマンド定義
@@ -65,12 +65,12 @@ export async function registerGuildCommands(
     const body = slashCommandDefinitions.map(c => c.toJSON());
 
     try {
-        logInfo(`SlashCommands: registering ${body.length} guild commands for guild ${guildId}...`);
+        logDebug(`SlashCommands: registering ${body.length} guild commands for guild ${guildId}...`);
         await rest.put(
             Routes.applicationGuildCommands(clientId, guildId),
             { body },
         );
-        logInfo('SlashCommands: guild commands registered successfully');
+        logDebug('SlashCommands: guild commands registered successfully');
     } catch (e) {
         logError('SlashCommands: failed to register guild commands', e);
         throw e;

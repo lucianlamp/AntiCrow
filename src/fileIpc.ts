@@ -10,7 +10,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { ProgressUpdate } from './types';
 import { IpcTimeoutError } from './errors';
-import { logInfo, logDebug, logWarn, logError } from './logger';
+import { logDebug, logWarn, logError } from './logger';
 
 // ---------------------------------------------------------------------------
 // 定数
@@ -35,7 +35,7 @@ export class FileIpc {
     /** IPC ディレクトリを初期化 */
     async init(): Promise<void> {
         await fs.promises.mkdir(this.ipcDir, { recursive: true });
-        logInfo(`FileIpc: initialized IPC directory at ${this.ipcDir}`);
+        logDebug(`FileIpc: initialized IPC directory at ${this.ipcDir}`);
     }
 
     /** IPC ディレクトリのパスを取得 */
@@ -81,7 +81,7 @@ export class FileIpc {
         const filename = path.basename(responsePath);
         const progressFilename = path.basename(progressPath);
 
-        logInfo(`FileIpc: waiting for response at ${responsePath} (timeout=${timeoutMs}ms, fs.watch + polling fallback)`);
+        logDebug(`FileIpc: waiting for response at ${responsePath} (timeout=${timeoutMs}ms, fs.watch + polling fallback)`);
 
         // 既に abort 済みの場合は即時 reject
         if (signal?.aborted) {
@@ -106,7 +106,7 @@ export class FileIpc {
                     if (!settled) {
                         settled = true;
                         cleanup();
-                        logInfo('FileIpc: waitForResponse aborted by signal');
+                        logDebug('FileIpc: waitForResponse aborted by signal');
                         reject(new Error('FileIpc: aborted'));
                     }
                 };
@@ -136,7 +136,7 @@ export class FileIpc {
                         return false;
                     }
 
-                    logInfo(`FileIpc: response received (${content.length} chars)`);
+                    logDebug(`FileIpc: response received (${content.length} chars)`);
 
                     // クリーンアップ
                     try {
@@ -217,7 +217,7 @@ export class FileIpc {
         });
     }
 
-    /** 古い IPC ファイルをクリーンアップ（1分以上前のファイル） */
+    /** 古い IPC ファイルをクリーンアップ（tmp_* は即時、req_* は5分後） */
     async cleanupOldFiles(): Promise<void> {
         try {
             const files = await fs.promises.readdir(this.ipcDir);
@@ -226,7 +226,24 @@ export class FileIpc {
                 const fp = path.join(this.ipcDir, f);
                 try {
                     const stat = await fs.promises.stat(fp);
-                    if (now - stat.mtimeMs > 60 * 1000) {
+                    const ageMs = now - stat.mtimeMs;
+
+                    // tmp_* 系（一時プロンプト/ルール/グローバルファイル）: 即時削除（30秒以上）
+                    if (f.startsWith('tmp_') && ageMs > 30 * 1000) {
+                        await fs.promises.unlink(fp);
+                        logDebug(`FileIpc: cleaned up tmp file ${f}`);
+                        continue;
+                    }
+
+                    // req_*_progress.json: 応答完了後2分で削除
+                    if (f.includes('_progress.json') && ageMs > 2 * 60 * 1000) {
+                        await fs.promises.unlink(fp);
+                        logDebug(`FileIpc: cleaned up progress file ${f}`);
+                        continue;
+                    }
+
+                    // その他: 5分以上前のファイル
+                    if (ageMs > 5 * 60 * 1000) {
                         await fs.promises.unlink(fp);
                         logDebug(`FileIpc: cleaned up old file ${f}`);
                     }
@@ -234,6 +251,23 @@ export class FileIpc {
             }
         } catch (e) { logDebug(`FileIpc: cleanupOldFiles readdir failed: ${e}`); }
     }
+
+    /** tmp_* 系ファイルを即時クリーンアップ（プロンプト送信後に呼ぶ） */
+    async cleanupTmpFiles(): Promise<void> {
+        try {
+            const files = await fs.promises.readdir(this.ipcDir);
+            for (const f of files) {
+                if (f.startsWith('tmp_')) {
+                    const fp = path.join(this.ipcDir, f);
+                    try {
+                        await fs.promises.unlink(fp);
+                        logDebug(`FileIpc: cleaned up tmp file ${f}`);
+                    } catch (e) { logDebug(`FileIpc: failed to clean up tmp ${f}: ${e}`); }
+                }
+            }
+        } catch (e) { logDebug(`FileIpc: cleanupTmpFiles failed: ${e}`); }
+    }
+
 
     /**
      * レスポンス文字列からテキストコンテンツを抽出する。

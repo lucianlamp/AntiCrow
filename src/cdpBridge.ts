@@ -17,7 +17,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as net from 'net';
-import { logInfo, logError, logWarn, logDebug } from './logger';
+import { logDebug, logError, logWarn } from './logger';
 import { ClickOptions, ClickResult } from './types';
 import {
     CdpBridgeOps,
@@ -33,6 +33,8 @@ import {
     waitForElement as uiWaitForElement,
     checkElementExists as uiCheckElementExists,
     clickExpandAll as uiClickExpandAll,
+    scrollToBottom as uiScrollToBottom,
+    autoFollowOutput as uiAutoFollowOutput,
 } from './cdpUI';
 import { CdpConnectionError, AntigravityLaunchError, CascadePanelError } from './errors';
 import { CdpConnection } from './cdpConnection';
@@ -173,7 +175,7 @@ export class CdpBridge {
             await this.sleep(pollMs);
             try {
                 await this.conn.connect();
-                logInfo('CDP: auto-launch connect succeeded');
+                logDebug('CDP: auto-launch connect succeeded');
                 return;
             } catch {
                 logDebug('CDP: auto-launch polling — not ready yet');
@@ -189,14 +191,14 @@ export class CdpBridge {
     async launchAntigravity(folderPath?: string): Promise<void> {
         // ランチガード: 既に起動中なら既存の Promise を共有して待機
         if (CdpBridge.launchInFlight) {
-            logInfo('CDP: launchAntigravity — already in flight, waiting for existing launch');
+            logDebug('CDP: launchAntigravity — already in flight, waiting for existing launch');
             return CdpBridge.launchInFlight;
         }
 
         // クールダウン: 直前の起動から一定時間はスキップ
         const elapsed = Date.now() - CdpBridge.lastLaunchTime;
         if (elapsed < CdpBridge.LAUNCH_COOLDOWN_MS) {
-            logInfo(`CDP: launchAntigravity — skipped (cooldown: ${Math.ceil((CdpBridge.LAUNCH_COOLDOWN_MS - elapsed) / 1000)}s remaining)`);
+            logDebug(`CDP: launchAntigravity — skipped (cooldown: ${Math.ceil((CdpBridge.LAUNCH_COOLDOWN_MS - elapsed) / 1000)}s remaining)`);
             return;
         }
 
@@ -214,12 +216,12 @@ export class CdpBridge {
         // Terminal (pty) コンテキストで launch-antigravity.ps1 スクリプトを実行する
         const scriptPath = path.join(__dirname, '..', 'scripts', 'launch-antigravity.ps1');
 
-        logInfo(`CDP: launchAntigravity called, folderPath="${folderPath || '(none)'}", scriptPath="${scriptPath}"`);
+        logDebug(`CDP: launchAntigravity called, folderPath="${folderPath || '(none)'}", scriptPath="${scriptPath}"`);
 
         const folderArg = folderPath ? ` -FolderPath "${folderPath}"` : '';
         const command = `& "${scriptPath}"${folderArg}; exit`;
 
-        logInfo(`CDP: launching via terminal: ${command}`);
+        logDebug(`CDP: launching via terminal: ${command}`);
 
         const terminal = vscode.window.createTerminal({
             name: 'Antigravity Launch',
@@ -231,7 +233,7 @@ export class CdpBridge {
 
         // スクリプト完了後にターミナルを自動クリーンアップ
         setTimeout(() => terminal.dispose(), 10000);
-        logInfo(`CDP: launch terminal created, command sent`);
+        logDebug(`CDP: launch terminal created, command sent`);
     }
 
     // -----------------------------------------------------------------------
@@ -319,6 +321,14 @@ export class CdpBridge {
         return uiClickExpandAll(this.ops);
     }
 
+    async scrollToBottom(): Promise<boolean> {
+        return uiScrollToBottom(this.ops);
+    }
+
+    async autoFollowOutput(): Promise<void> {
+        return uiAutoFollowOutput(this.ops);
+    }
+
     // -----------------------------------------------------------------------
     // 接続テスト
     // -----------------------------------------------------------------------
@@ -331,7 +341,7 @@ export class CdpBridge {
                 'document.querySelector(\'div[role="textbox"]\') !== null',
                 contextId,
             );
-            logInfo(`CDP: connection test OK — cascade panel chat input found: ${hasInput}`);
+            logDebug(`CDP: connection test OK — cascade panel chat input found: ${hasInput}`);
             return true;
         } catch (e) {
             logError('CDP: connection test failed', e);
@@ -347,7 +357,7 @@ export class CdpBridge {
         // 優先: VSCode コマンド（UI変更に強い）
         try {
             await vscode.commands.executeCommand('antigravity.startNewConversation');
-            logInfo('CDP: startNewChat — used VSCode command (antigravity.startNewConversation)');
+            logDebug('CDP: startNewChat — used VSCode command (antigravity.startNewConversation)');
             this.cascadeContextId = null;
             return;
         } catch (e) {
@@ -373,7 +383,7 @@ export class CdpBridge {
             key: 'L',
         });
 
-        logInfo('CDP: startNewChat — fell back to Ctrl+Shift+L key injection');
+        logDebug('CDP: startNewChat — fell back to Ctrl+Shift+L key injection');
         await this.sleep(1500);
         this.cascadeContextId = null;
     }
@@ -387,7 +397,7 @@ export class CdpBridge {
         // 0. 優先: VSCode コマンド（UI変更に強い）
         try {
             await vscode.commands.executeCommand('antigravity.cancelCurrentTask');
-            logInfo('CDP: clickStopButton — used VSCode command (antigravity.cancelCurrentTask)');
+            logDebug('CDP: clickStopButton — used VSCode command (antigravity.cancelCurrentTask)');
             return;
         } catch {
             logDebug('CDP: clickStopButton — VSCode command not available, trying CDP');
@@ -403,7 +413,7 @@ export class CdpBridge {
                 inCascade: true,
             });
             if (result.success) {
-                logInfo('CDP: clickStopButton — Stop button clicked');
+                logDebug('CDP: clickStopButton — Stop button clicked');
                 return;
             }
         } catch (e) {
@@ -424,7 +434,7 @@ export class CdpBridge {
             code: 'Escape',
             key: 'Escape',
         });
-        logInfo('CDP: clickStopButton — sent Escape key as fallback');
+        logDebug('CDP: clickStopButton — sent Escape key as fallback');
         await this.sleep(500);
     }
 
@@ -530,7 +540,7 @@ export class CdpBridge {
       })()
     `;
         await this.conn.evaluate(submitJs, contextId);
-        logInfo('CDP: prompt submitted');
+        logDebug('CDP: prompt submitted');
     }
 
     // -----------------------------------------------------------------------
@@ -554,7 +564,7 @@ export class CdpBridge {
         );
         for (const result of results) {
             if (result.status === 'fulfilled' && !result.value.inUse) {
-                logInfo(`CDP: found free port ${result.value.port} for launch`);
+                logDebug(`CDP: found free port ${result.value.port} for launch`);
                 return result.value.port;
             }
         }

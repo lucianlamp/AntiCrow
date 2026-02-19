@@ -22,7 +22,7 @@ import { CdpPool } from './cdpPool';
 import { ExecutorPool } from './executorPool';
 import { TemplateStore } from './templateStore';
 import { ChannelIntent, Plan } from './types';
-import { logInfo, logError, logWarn, logDebug } from './logger';
+import { logDebug, logError, logWarn } from './logger';
 import { registerGuildCommands } from './slashCommands';
 
 import { cleanupOldAttachments } from './attachmentDownloader';
@@ -72,7 +72,7 @@ async function promoteToBotOwner(
 
     await ctx.bot.start();
     await ctx.bot.waitForReady();
-    logInfo(`Bridge: bot ready, guilds=${ctx.bot.getFirstGuild()?.name || 'none'}`);
+    logDebug(`Bridge: bot ready, guilds=${ctx.bot.getFirstGuild()?.name || 'none'}`);
 
     // ワークスペースカテゴリー自動作成
     {
@@ -91,7 +91,7 @@ async function promoteToBotOwner(
                         await ctx.bot.ensureWorkspaceStructure(guild.id, wsName);
                     }
                 }
-                logInfo(`Bridge: workspace categories ensured for ${instances.length} instance(s)`);
+                logDebug(`Bridge: workspace categories ensured for ${instances.length} instance(s)`);
 
                 // ワークスペースパス自動保存
                 const currentWsFolders = vscode.workspace.workspaceFolders;
@@ -111,7 +111,7 @@ async function promoteToBotOwner(
                             if (!wsPaths[wsName] || wsPaths[wsName] !== wsPath) {
                                 wsPaths[wsName] = wsPath;
                                 await getConfig().update('workspacePaths', wsPaths, vscode.ConfigurationTarget.Global);
-                                logInfo(`Bridge: auto-saved workspace path: "${wsName}" → "${wsPath}"`);
+                                logDebug(`Bridge: auto-saved workspace path: "${wsName}" → "${wsPath}"`);
                             }
                         }
                     }
@@ -126,7 +126,7 @@ async function promoteToBotOwner(
                 try {
                     const archived = await archiveOldCategories(guild.id, ctx.bot, archiveDays, ctx.planStore ?? undefined);
                     if (archived > 0) {
-                        logInfo(`Bridge: archived ${archived} old workspace categories (>${archiveDays} days)`);
+                        logDebug(`Bridge: archived ${archived} old workspace categories (>${archiveDays} days)`);
                     }
                 } catch (e) {
                     logWarn(`Bridge: category archive failed: ${e instanceof Error ? e.message : e}`);
@@ -142,7 +142,7 @@ async function promoteToBotOwner(
         if (guild) {
             try {
                 await registerGuildCommands(token, clientId, guild.id);
-                logInfo('Bridge: slash commands registered');
+                logDebug('Bridge: slash commands registered');
             } catch (e) {
                 logWarn(`Bridge: slash command registration failed: ${e instanceof Error ? e.message : String(e)}`);
             }
@@ -163,7 +163,7 @@ async function promoteToBotOwner(
         await handleModalSubmit(ctx, interaction);
     });
 
-    logInfo('Bridge: Bot started (this workspace is the bot owner)');
+    logDebug('Bridge: Bot started (this workspace is the bot owner)');
 
     // -----------------------------------------------------------------
     // 定期 CDP ターゲットスキャン: 新ワークスペースのカテゴリ自動生成
@@ -191,7 +191,7 @@ async function promoteToBotOwner(
                 if (!wsName || knownWorkspaces.has(wsName)) { continue; }
 
                 knownWorkspaces.add(wsName);
-                logInfo(`Bridge: new workspace detected: "${wsName}" — creating category...`);
+                logDebug(`Bridge: new workspace detected: "${wsName}" — creating category...`);
                 await ctx.bot.ensureWorkspaceStructure(guild.id, wsName);
 
                 const wsPaths = getWorkspacePaths();
@@ -291,12 +291,12 @@ export async function startBridge(
         }
     }, timezone);
     const restored = ctx.scheduler.restoreAll(ctx.planStore.getAll());
-    logInfo(`Restored ${restored} scheduled plans`);
+    logDebug(`Restored ${restored} scheduled plans`);
 
     // CDP 初期接続
     try {
         await ctx.cdp.connect();
-        logInfo(`Bridge: CDP initial connect — active workspace: "${ctx.cdp.getActiveWorkspaceName()}"`);
+        logDebug(`Bridge: CDP initial connect — active workspace: "${ctx.cdp.getActiveWorkspaceName()}"`);
     } catch (e) {
         logWarn(`Bridge: CDP initial connect failed (will retry on first message): ${e instanceof Error ? e.message : e}`);
     }
@@ -309,13 +309,13 @@ export async function startBridge(
     if (ctx.isBotOwner) {
         await promoteToBotOwner(ctx, context);
     } else {
-        logInfo('Bridge: Bot startup skipped (another workspace owns the bot) — running in standby mode');
+        logDebug('Bridge: Bot startup skipped (another workspace owns the bot) — running in standby mode');
 
         ctx.lockWatchTimer = setInterval(async () => {
             if (ctx.isBotOwner) { return; }
             const acquired = acquireLock(ctx.globalStoragePath);
             if (acquired) {
-                logInfo('Bridge: lock became available — auto-promoting to bot owner');
+                logDebug('Bridge: lock became available — auto-promoting to bot owner');
                 if (ctx.lockWatchTimer) {
                     clearInterval(ctx.lockWatchTimer);
                     ctx.lockWatchTimer = null;
@@ -337,10 +337,10 @@ export async function startBridge(
                 const autoOp = vscode.workspace.getConfiguration('antiCrow')
                     .get<boolean>('autoOperation') ?? false;
                 if (autoOp) {
-                    logInfo('Bridge: autoOperation enabled — starting UI watcher');
+                    logDebug('Bridge: autoOperation enabled — starting UI watcher');
                     ctx.executor?.startUIWatcher();
                 } else {
-                    logInfo('Bridge: autoOperation disabled — stopping UI watcher');
+                    logDebug('Bridge: autoOperation disabled — stopping UI watcher');
                     ctx.executor?.stopUIWatcher();
                 }
             }
@@ -352,7 +352,7 @@ export async function startBridge(
         .get<boolean>('autoOperation') ?? false;
     if (autoOpEnabled) {
         ctx.executor?.startUIWatcher();
-        logInfo('Bridge: UI watcher started (autoOperation enabled)');
+        logDebug('Bridge: UI watcher started (autoOperation enabled)');
     }
 
     // CDP ヘルスチェック（60秒間隔で接続状態を監視）
@@ -364,7 +364,7 @@ export async function startBridge(
                 logWarn('Bridge: health check failed — attempting reconnect (connect only, no auto-launch)');
                 try {
                     await ctx.cdp.connect();
-                    logInfo('Bridge: health check reconnect succeeded');
+                    logDebug('Bridge: health check reconnect succeeded');
                 } catch (e) {
                     logWarn(`Bridge: health check reconnect failed — ${e instanceof Error ? e.message : e}`);
                 }
@@ -423,7 +423,7 @@ export async function stopBridge(ctx: BridgeContext): Promise<void> {
     ctx.statusBarItem.tooltip = 'AntiCrow — Stopped';
     ctx.statusBarItem.command = 'anti-crow.start';
 
-    logInfo('Bridge stopped');
+    logDebug('Bridge stopped');
 }
 
 // ---------------------------------------------------------------------------

@@ -13,7 +13,7 @@ import * as https from 'https';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import * as os from 'os';
-import { logInfo, logDebug, logWarn, logError } from './logger';
+import { logDebug, logWarn, logError } from './logger';
 
 const execAsync = promisify(exec);
 
@@ -151,7 +151,7 @@ function parseWindowsProcessOutput(stdout: string, source: string): ProcessInfo 
         logDebug(`detectWindows(${source}): checking PID=${item.ProcessId}, cmdLine preview=${commandLine.substring(0, 200)}`);
         const info = parseCommandLine(commandLine, item.ProcessId);
         if (info) {
-            logInfo(`detectWindows(${source}): matched PID=${info.pid}, port=${info.extensionPort}`);
+            logDebug(`detectWindows(${source}): matched PID=${info.pid}, port=${info.extensionPort}`);
             return info;
         } else {
             logDebug(`detectWindows(${source}): PID=${item.ProcessId} did not match parseCommandLine filters`);

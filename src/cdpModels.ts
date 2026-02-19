@@ -14,7 +14,7 @@
 // ---------------------------------------------------------------------------
 
 import { CdpBridgeOps } from './cdpHistory';
-import { logInfo, logDebug, logWarn } from './logger';
+import { logDebug, logWarn } from './logger';
 
 // -----------------------------------------------------------------------
 // 共通: モデルボタンを見つける JS スニペット
@@ -89,7 +89,7 @@ export async function getCurrentModel(
 
         const result = await ops.evaluateInCascade(script);
         if (typeof result === 'string' && result.length > 0) {
-            logInfo(`cdpModels: getCurrentModel = "${result}"`);
+            logDebug(`cdpModels: getCurrentModel = "${result}"`);
             return result;
         }
 
@@ -279,7 +279,7 @@ export async function getAvailableModels(
         }
 
         const modelList = Array.isArray(models) ? models : [];
-        logInfo(`cdpModels: getAvailableModels — found ${modelList.length} models, current="${currentModel}"`);
+        logDebug(`cdpModels: getAvailableModels — found ${modelList.length} models, current="${currentModel}"`);
 
         return {
             models: modelList,
@@ -375,7 +375,7 @@ export async function selectModel(
         };
 
         if (selectResult?.success) {
-            logInfo(`cdpModels: selectModel — selected "${selectResult.selected}"`);
+            logDebug(`cdpModels: selectModel — selected "${selectResult.selected}"`);
             return true;
         }
 

@@ -4,7 +4,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { logInfo, logDebug, logError } from './logger';
+import { logDebug, logError } from './logger';
 import { getTimezone } from './configHelper';
 
 export interface PromptTemplate {
@@ -31,7 +31,7 @@ export class TemplateStore {
         };
         this.templates.set(name, template);
         this.persist();
-        logInfo(`TemplateStore: saved template "${name}"`);
+        logDebug(`TemplateStore: saved template "${name}"`);
     }
 
     /** テンプレートを取得 */
@@ -49,7 +49,7 @@ export class TemplateStore {
         const deleted = this.templates.delete(name);
         if (deleted) {
             this.persist();
-            logInfo(`TemplateStore: deleted template "${name}"`);
+            logDebug(`TemplateStore: deleted template "${name}"`);
         }
         return deleted;
     }

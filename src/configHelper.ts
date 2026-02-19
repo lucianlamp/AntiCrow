@@ -10,7 +10,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import { logInfo, logDebug, logWarn } from './logger';
+import { logDebug, logWarn } from './logger';
 
 // ---------------------------------------------------------------------------
 // デフォルト値定数
@@ -63,7 +63,7 @@ export function getCdpPorts(storagePath: string): number[] {
     }
 
     if (dynamicPorts.length > 0) {
-        logInfo(`getCdpPorts: using ${dynamicPorts.length} dynamic port(s)`);
+        logDebug(`getCdpPorts: using ${dynamicPorts.length} dynamic port(s)`);
         return dynamicPorts;
     }
 

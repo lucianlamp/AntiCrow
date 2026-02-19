@@ -10,7 +10,7 @@
 
 import { CdpBridge, DiscoveredInstance } from './cdpBridge';
 import { getCdpPorts, getWorkspacePaths } from './configHelper';
-import { logInfo, logWarn, logDebug } from './logger';
+import { logDebug, logWarn } from './logger';
 
 /** デフォルトワークスペース名（カテゴリー未指定時のフォールバック） */
 export const DEFAULT_WORKSPACE = '__default__';
@@ -105,11 +105,11 @@ export class CdpPool {
 
         if (workspaceName === DEFAULT_WORKSPACE) {
             // デフォルトワークスペース: 従来と同じ自動探索接続
-            logInfo(`CdpPool: creating default CdpBridge (auto-discover)`);
+            logDebug(`CdpPool: creating default CdpBridge (auto-discover)`);
             await cdp.connect();
         } else {
             // 特定ワークスペース: ポートファイルを再読取してターゲットを発見
-            logInfo(`CdpPool: creating CdpBridge for workspace "${workspaceName}"`);
+            logDebug(`CdpPool: creating CdpBridge for workspace "${workspaceName}"`);
             const freshPorts = this.getFreshPorts();
             const instances = await CdpBridge.discoverInstances(freshPorts);
             let target = instances.find(
@@ -121,7 +121,7 @@ export class CdpPool {
                 const wsPaths = getWorkspacePaths();
                 const folderPath = wsPaths[workspaceName];
                 if (folderPath) {
-                    logInfo(`CdpPool: workspace "${workspaceName}" not found, auto-launching folder "${folderPath}"...`);
+                    logDebug(`CdpPool: workspace "${workspaceName}" not found, auto-launching folder "${folderPath}"...`);
 
                     // コールバックで呼び出し元に通知（Discord へのフィードバック用）
                     if (onAutoLaunch) {
@@ -147,14 +147,14 @@ export class CdpPool {
                         );
                         pollCount++;
                         if (target) {
-                            logInfo(`CdpPool: auto-launched workspace "${workspaceName}" found (id=${target.id}) after ${pollCount} polls`);
+                            logDebug(`CdpPool: auto-launched workspace "${workspaceName}" found (id=${target.id}) after ${pollCount} polls`);
                             break;
                         }
                         logDebug(`CdpPool: polling for workspace "${workspaceName}"... (${pollCount})`);
                     }
                 } else {
                     // workspacePaths 未設定 — 外部で起動された可能性があるためポーリングで待機
-                    logInfo(`CdpPool: workspace "${workspaceName}" not found, no folderPath configured. Polling for external launch...`);
+                    logDebug(`CdpPool: workspace "${workspaceName}" not found, no folderPath configured. Polling for external launch...`);
                     const maxWaitMs = 15_000;
                     const pollMs = 3_000;
                     const deadline = Date.now() + maxWaitMs;
@@ -168,7 +168,7 @@ export class CdpPool {
                         );
                         pollCount++;
                         if (target) {
-                            logInfo(`CdpPool: externally launched workspace "${workspaceName}" found (id=${target.id}) after ${pollCount} polls`);
+                            logDebug(`CdpPool: externally launched workspace "${workspaceName}" found (id=${target.id}) after ${pollCount} polls`);
                             break;
                         }
                         logDebug(`CdpPool: polling for external workspace "${workspaceName}"... (${pollCount})`);
@@ -211,14 +211,14 @@ export class CdpPool {
                 let panelReady = false;
                 let panelPollCount = 0;
 
-                logInfo(`CdpPool: waiting for Cascade panel iframe to be ready (max ${panelMaxWaitMs / 1000}s)...`);
+                logDebug(`CdpPool: waiting for Cascade panel iframe to be ready (max ${panelMaxWaitMs / 1000}s)...`);
 
                 while (Date.now() < panelDeadline) {
                     try {
                         const ok = await cdp.testConnection();
                         panelPollCount++;
                         if (ok) {
-                            logInfo(`CdpPool: Cascade panel ready after ${panelPollCount} poll(s)`);
+                            logDebug(`CdpPool: Cascade panel ready after ${panelPollCount} poll(s)`);
                             panelReady = true;
                             break;
                         }
@@ -241,7 +241,7 @@ export class CdpPool {
             lastUsedAt: Date.now(),
         };
         this.pool.set(workspaceName, entry);
-        logInfo(`CdpPool: pool size = ${this.pool.size} after acquiring "${workspaceName}"`);
+        logDebug(`CdpPool: pool size = ${this.pool.size} after acquiring "${workspaceName}"`);
         return cdp;
     }
 
@@ -295,14 +295,14 @@ export class CdpPool {
         for (const key of toRelease) {
             const entry = this.pool.get(key);
             if (entry) {
-                logInfo(`CdpPool: releasing idle workspace "${key}" (idle ${Math.round((now - entry.lastUsedAt) / 1000)}s)`);
+                logDebug(`CdpPool: releasing idle workspace "${key}" (idle ${Math.round((now - entry.lastUsedAt) / 1000)}s)`);
                 entry.cdp.fullDisconnect();
                 this.pool.delete(key);
             }
         }
 
         if (toRelease.length > 0) {
-            logInfo(`CdpPool: released ${toRelease.length} idle connection(s), pool size = ${this.pool.size}`);
+            logDebug(`CdpPool: released ${toRelease.length} idle connection(s), pool size = ${this.pool.size}`);
         }
     }
 
@@ -311,12 +311,12 @@ export class CdpPool {
      */
     disconnectAll(): void {
         for (const [key, entry] of this.pool.entries()) {
-            logInfo(`CdpPool: disconnecting workspace "${key}"`);
+            logDebug(`CdpPool: disconnecting workspace "${key}"`);
             entry.cdp.fullDisconnect();
         }
         this.pool.clear();
         this.acquireLocks.clear();
-        logInfo('CdpPool: all connections disconnected, pool cleared');
+        logDebug('CdpPool: all connections disconnected, pool cleared');
     }
 
     /**

@@ -10,7 +10,7 @@ import { CdpBridge } from './cdpBridge';
 import { FileIpc } from './fileIpc';
 import { AntigravityLaunchError } from './errors';
 import { getCdpPorts, getWorkspacePaths } from './configHelper';
-import { logInfo, logWarn, logDebug } from './logger';
+import { logDebug, logWarn } from './logger';
 import { buildEmbed, EmbedColor } from './embedHelper';
 
 export interface ResolveResult {
@@ -42,14 +42,14 @@ export async function resolveWorkspace(
     }
 
     const currentWs = activeCdp.getActiveWorkspaceName();
-    logInfo(`workspaceResolver: currentWs=${currentWs || '(null)'}, target=${wsName}`);
+    logDebug(`workspaceResolver: currentWs=${currentWs || '(null)'}, target=${wsName}`);
 
     if (currentWs === wsName) {
         return { cdp: activeCdp, autoLaunched: false };
     }
 
     // 別ワークスペースへの切替が必要
-    logInfo(`workspaceResolver: auto-switching "${currentWs}" → "${wsName}"`);
+    logDebug(`workspaceResolver: auto-switching "${currentWs}" → "${wsName}"`);
     let autoLaunched = false;
 
     try {
@@ -58,19 +58,19 @@ export async function resolveWorkspace(
         const instancesLog = instances.map(i =>
             `"${i.title}" (port=${i.port}, ws=${CdpBridge.extractWorkspaceName(i.title)})`
         ).join(', ');
-        logInfo(`workspaceResolver: discoverInstances found ${instances.length} instance(s): ${instancesLog}`);
+        logDebug(`workspaceResolver: discoverInstances found ${instances.length} instance(s): ${instancesLog}`);
 
         let target = instances.find(i => CdpBridge.extractWorkspaceName(i.title) === wsName);
-        logInfo(`workspaceResolver: workspace match for "${wsName}": ${target ? `found id=${target.id}` : 'NOT FOUND'}`);
+        logDebug(`workspaceResolver: workspace match for "${wsName}": ${target ? `found id=${target.id}` : 'NOT FOUND'}`);
 
         // ワークスペースが見つからない場合、workspacePaths 設定から自動起動
         if (!target) {
             const wsPaths = getWorkspacePaths();
             const folderPath = wsPaths[wsName];
-            logInfo(`workspaceResolver: workspacePaths keys=${JSON.stringify(Object.keys(wsPaths))}, folderPath for "${wsName}"=${folderPath || '(not found)'}`);
+            logDebug(`workspaceResolver: workspacePaths keys=${JSON.stringify(Object.keys(wsPaths))}, folderPath for "${wsName}"=${folderPath || '(not found)'}`);
 
             if (folderPath) {
-                logInfo(`workspaceResolver: workspace "${wsName}" not found, auto-opening folder "${folderPath}"...`);
+                logDebug(`workspaceResolver: workspace "${wsName}" not found, auto-opening folder "${folderPath}"...`);
                 await channel.send({ embeds: [buildEmbed(`🚀 ワークスペース "${wsName}" を起動中...`, EmbedColor.Info)] });
                 try {
                     await activeCdp.launchAntigravity(folderPath);
@@ -90,7 +90,7 @@ export async function resolveWorkspace(
                     }
                     if (target) {
                         autoLaunched = true;
-                        logInfo(`workspaceResolver: auto-launched workspace found (id=${target.id}), waiting for UI init...`);
+                        logDebug(`workspaceResolver: auto-launched workspace found (id=${target.id}), waiting for UI init...`);
                     } else {
                         logWarn(`workspaceResolver: workspace not found after ${pollCount} polls`);
                     }
@@ -104,7 +104,7 @@ export async function resolveWorkspace(
                     }
                 }
             } else {
-                logInfo(`workspaceResolver: workspace "${wsName}" not found, no folderPath configured, trying ensureConnected...`);
+                logDebug(`workspaceResolver: workspace "${wsName}" not found, no folderPath configured, trying ensureConnected...`);
                 try {
                     await activeCdp.ensureConnected();
                     instances = await CdpBridge.discoverInstances(cdpPorts);
@@ -117,7 +117,7 @@ export async function resolveWorkspace(
 
         if (target) {
             await activeCdp.switchTarget(target.id);
-            logInfo(`workspaceResolver: switched to workspace "${wsName}" (id=${target.id})`);
+            logDebug(`workspaceResolver: switched to workspace "${wsName}" (id=${target.id})`);
             return { cdp: activeCdp, autoLaunched };
         } else {
             logWarn(`workspaceResolver: workspace "${wsName}" not found even after auto-open`);

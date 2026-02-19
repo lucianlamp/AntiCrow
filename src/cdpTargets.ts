@@ -8,7 +8,7 @@
 // ---------------------------------------------------------------------------
 
 import * as http from 'http';
-import { logInfo, logWarn, logDebug, logError } from './logger';
+import { logDebug, logWarn, logError } from './logger';
 import { EXCLUDED_CDP_PORTS } from './configHelper';
 
 /** CDP /json から取得できるターゲット情報 */
@@ -183,7 +183,7 @@ export async function discoverInstances(ports: number[]): Promise<DiscoveredInst
     // スコア降順でソート
     allInstances.sort((a, b) => b.score - a.score);
 
-    logInfo(`CDP: discovered ${allInstances.length} instance(s) across ${safePorts.length} port(s)`);
+    logDebug(`CDP: discovered ${allInstances.length} instance(s) across ${safePorts.length} port(s)`);
     return allInstances;
 }
 
@@ -268,7 +268,7 @@ export async function findAntigravityTarget(ports: number[]): Promise<{ target: 
     }
 
     if (bestTarget) {
-        logInfo(`CDP: using best-scored target "${bestTarget.title}" (score=${bestScore}) on port ${bestPort}`);
+        logDebug(`CDP: using best-scored target "${bestTarget.title}" (score=${bestScore}) on port ${bestPort}`);
         return { target: bestTarget, port: bestPort };
     }
 

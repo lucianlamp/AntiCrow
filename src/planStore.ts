@@ -10,7 +10,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import { Plan } from './types';
-import { logInfo, logError } from './logger';
+import { logDebug, logError } from './logger';
 
 export class PlanStore {
     private plans: Map<string, Plan> = new Map();
@@ -35,7 +35,7 @@ export class PlanStore {
             for (const p of arr) {
                 this.plans.set(p.plan_id, p);
             }
-            logInfo(`PlanStore: loaded ${this.plans.size} plans`);
+            logDebug(`PlanStore: loaded ${this.plans.size} plans`);
 
             // 即時実行 Plan（cron=null）のクリーンアップ
             // 定期実行のみ保持する方針のため、起動時にゴミを除去
@@ -47,7 +47,7 @@ export class PlanStore {
                     this.plans.delete(id);
                 }
                 await this.persistNow();
-                logInfo(`PlanStore: cleaned up ${immediatePlanIds.length} immediate plan(s)`);
+                logDebug(`PlanStore: cleaned up ${immediatePlanIds.length} immediate plan(s)`);
             }
         } catch (e) {
             // ファイルが無い場合は正常（初回起動）
@@ -80,14 +80,14 @@ export class PlanStore {
     add(plan: Plan): void {
         this.plans.set(plan.plan_id, plan);
         this.persist();
-        logInfo(`PlanStore: added plan ${plan.plan_id}`);
+        logDebug(`PlanStore: added plan ${plan.plan_id}`);
     }
 
     remove(planId: string): boolean {
         const ok = this.plans.delete(planId);
         if (ok) {
             this.persist();
-            logInfo(`PlanStore: removed plan ${planId}`);
+            logDebug(`PlanStore: removed plan ${planId}`);
         }
         return ok;
     }
@@ -116,6 +116,6 @@ export class PlanStore {
     clearAll(): void {
         this.plans.clear();
         this.persist();
-        logInfo('PlanStore: cleared all plans');
+        logDebug('PlanStore: cleared all plans');
     }
 }

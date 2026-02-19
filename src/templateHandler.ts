@@ -19,7 +19,7 @@ import {
     TextInputStyle,
 } from 'discord.js';
 import { parseSkillJson, buildPlan } from './planParser';
-import { logInfo, logError, logWarn } from './logger';
+import { logDebug, logError, logWarn } from './logger';
 import { buildEmbed, EmbedColor } from './embedHelper';
 import { BridgeContext } from './bridgeContext';
 import { buildSkillPrompt } from './messageHandler';
@@ -240,7 +240,7 @@ export async function handleTemplateButton(
             if (wsName) { plan.workspace_name = wsName; }
 
             await executor.enqueueImmediate(plan);
-            logInfo(`handleTemplateButton: tpl_confirm_run "${name}" — plan ${plan.plan_id} enqueued`);
+            logDebug(`handleTemplateButton: tpl_confirm_run "${name}" — plan ${plan.plan_id} enqueued`);
         } catch (e) {
             const errMsg = e instanceof Error ? e.message : String(e);
             logError('handleTemplateButton: tpl_confirm_run failed', e);

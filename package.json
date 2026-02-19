@@ -52,6 +52,26 @@
         "command": "anti-crow.dumpCommands",
         "title": "Dump Antigravity Commands (Diagnostic)",
         "category": "AntiCrow"
+      },
+      {
+        "command": "anti-crow.licenseInfo",
+        "title": "License Info",
+        "category": "AntiCrow"
+      },
+      {
+        "command": "anti-crow.licenseLogin",
+        "title": "License Login",
+        "category": "AntiCrow"
+      },
+      {
+        "command": "anti-crow.licensePurchase",
+        "title": "Purchase License",
+        "category": "AntiCrow"
+      },
+      {
+        "command": "anti-crow.licenseLogout",
+        "title": "License Logout",
+        "category": "AntiCrow"
       }
     ],
     "configuration": {
@@ -104,6 +124,11 @@
           "type": "number",
           "default": 0,
           "description": "タイムアウトや接続断時の自動リトライ回数（0でリトライ無効、デフォルト: 0）。"
+        },
+        "antiCrow.convexUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Convex デプロイメント URL（ライセンス管理用）。Convex ダッシュボードで確認できます。"
         }
       }
     }
@@ -116,12 +141,16 @@
     "package": "npx -y @vscode/vsce package --no-dependencies --allow-missing-repository --skip-license --baseContentUrl \".\" --baseImagesUrl \".\"",
     "deploy": "npm run compile && npm run bundle && npm run package && antigravity --install-extension anti-crow-0.1.0.vsix --force",
     "test": "vitest run",
-    "vscode:prepublish": "npm run typecheck && npm run bundle"
+    "vscode:prepublish": "npm run typecheck && npm run bundle",
+    "setup:licensing": "npx tsx scripts/setup-licensing.ts"
   },
   "dependencies": {
+    "@clerk/clerk-js": "^5.124.0",
+    "convex": "^1.32.0",
     "discord.js": "^14.16.3",
     "luxon": "^3.5.0",
     "node-cron": "^3.0.3",
+    "stripe": "^20.3.1",
     "ws": "^8.18.0"
   },
   "devDependencies": {

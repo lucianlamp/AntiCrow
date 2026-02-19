@@ -9,7 +9,7 @@
 // ---------------------------------------------------------------------------
 
 import WebSocket from 'ws';
-import { logInfo, logError, logWarn, logDebug } from './logger';
+import { logDebug, logError, logWarn } from './logger';
 import { CdpConnectionError, CdpCommandError } from './errors';
 import {
     CdpTarget,
@@ -76,7 +76,7 @@ export class CdpConnection {
             this.ws = new WebSocket(wsUrl);
 
             this.ws.on('open', () => {
-                logInfo(`CDP: WebSocket connected to "${this.activeTargetTitle}"`);
+                logDebug(`CDP: WebSocket connected to "${this.activeTargetTitle}"`);
                 resolve();
             });
 
@@ -122,7 +122,7 @@ export class CdpConnection {
                 wsUrl = prev.wsUrl;
                 this.activeTargetTitle = prev.title;
                 this.activeTargetPort = prev.port;
-                logInfo(`CDP: reconnecting to previously active target "${prev.title}" (id=${prev.id})`);
+                logDebug(`CDP: reconnecting to previously active target "${prev.title}" (id=${prev.id})`);
             } else {
                 logWarn(`CDP: previously active target "${this.activeTargetId}" no longer available, falling back`);
                 this.activeTargetId = null;
@@ -262,7 +262,7 @@ export class CdpConnection {
         this.activeTargetPort = target.port;
 
         await this.connectToUrl(target.wsUrl);
-        logInfo(`CDP: switched to target "${target.title}" (id=${target.id}, port=${target.port})`);
+        logDebug(`CDP: switched to target "${target.title}" (id=${target.id}, port=${target.port})`);
 
         return target;
     }

@@ -13,7 +13,7 @@ export enum LogLevel {
 }
 
 let channel: vscode.OutputChannel | undefined;
-let currentLevel: LogLevel = LogLevel.DEBUG;
+let currentLevel: LogLevel = LogLevel.INFO;
 
 export function initLogger(): vscode.OutputChannel {
     if (!channel) {

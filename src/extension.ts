@@ -11,11 +11,12 @@
 import * as vscode from 'vscode';
 import { PlanStore } from './planStore';
 import { Scheduler } from './scheduler';
-import { initLogger, logInfo, logError, disposeLogger } from './logger';
+import { initLogger, logInfo, logDebug, logError, disposeLogger } from './logger';
 
 import { BridgeContext } from './bridgeContext';
 import { startBridge, stopBridge, updateStatusBar } from './bridgeLifecycle';
 import { checkAndOfferShortcut, createDesktopShortcut } from './shortcutInstaller';
+import { LicenseChecker, LicenseGate, LicenseStatusBar, registerLicenseCommands } from './licensing';
 
 // ---------------------------------------------------------------------------
 // グローバル BridgeContext
@@ -42,6 +43,11 @@ const ctx: BridgeContext = {
     healthCheckTimer: null,
 };
 
+// ライセンスモジュールのインスタンス
+let licenseChecker: LicenseChecker | null = null;
+let licenseGate: LicenseGate | null = null;
+let licenseStatusBar: LicenseStatusBar | null = null;
+
 // =====================================================================
 // activate
 // =====================================================================
@@ -57,6 +63,31 @@ export function activate(context: vscode.ExtensionContext) {
     ctx.statusBarItem.command = 'anti-crow.start';
     ctx.statusBarItem.show();
     context.subscriptions.push(ctx.statusBarItem);
+
+    // -----------------------------------------------------------------
+    // ライセンスモジュール初期化
+    // -----------------------------------------------------------------
+    const convexUrl = vscode.workspace.getConfiguration('antiCrow').get<string>('convexUrl') || '';
+    if (convexUrl) {
+        licenseChecker = new LicenseChecker(convexUrl);
+        licenseGate = new LicenseGate(licenseChecker);
+        licenseStatusBar = new LicenseStatusBar(licenseChecker);
+        context.subscriptions.push({ dispose: () => licenseStatusBar?.dispose() });
+
+        // Clerk ID を SecretStorage から復元
+        context.secrets.get('clerk-user-id').then((clerkId) => {
+            if (clerkId) {
+                licenseChecker!.setClerkId(clerkId);
+                licenseChecker!.startAutoCheck();
+                logDebug(`License: restored Clerk ID from SecretStorage`);
+            }
+        });
+
+        registerLicenseCommands(context, licenseChecker);
+        logDebug(`License: module initialized`);
+    } else {
+        logDebug('License: skipped (convexUrl not configured)');
+    }
 
 
 
@@ -74,7 +105,7 @@ export function activate(context: vscode.ExtensionContext) {
                 await context.secrets.store('discord-bot-token', token);
                 await vscode.workspace.getConfiguration('antiCrow').update('botToken', true, vscode.ConfigurationTarget.Global);
                 vscode.window.showInformationMessage('🔐 Bot Token を SecretStorage に保存しました。');
-                logInfo('Token saved to SecretStorage');
+                logDebug('Token saved to SecretStorage');
 
                 // autoStart 有効かつ未起動なら自動的に Bridge を開始
                 const cfg = vscode.workspace.getConfiguration('antiCrow');
@@ -180,7 +211,7 @@ export function activate(context: vscode.ExtensionContext) {
                 ...agCmds,
             ].join('\n');
 
-            logInfo(`DumpCommands:\n${output}`);
+            logDebug(`DumpCommands:\n${output}`);
 
             const doc = await vscode.workspace.openTextDocument({
                 content: output,
@@ -231,6 +262,12 @@ export function activate(context: vscode.ExtensionContext) {
 // =====================================================================
 
 export async function deactivate(): Promise<void> {
+    licenseChecker?.dispose();
+    licenseStatusBar?.dispose();
+    licenseChecker = null;
+    licenseGate = null;
+    licenseStatusBar = null;
+
     await stopBridge(ctx);
     disposeLogger();
 }

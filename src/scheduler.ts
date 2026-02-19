@@ -10,7 +10,7 @@
 
 import * as cron from 'node-cron';
 import { Plan } from './types';
-import { logInfo, logWarn, logError } from './logger';
+import { logDebug, logWarn, logError } from './logger';
 import { getTimezone } from './configHelper';
 
 type ScheduleCallback = (plan: Plan) => void;
@@ -52,14 +52,14 @@ export class Scheduler {
 
         try {
             const task = cron.schedule(plan.cron, () => {
-                logInfo(`Scheduler: triggering plan ${plan.plan_id}`);
+                logDebug(`Scheduler: triggering plan ${plan.plan_id}`);
                 this.callback(plan);
             }, {
                 timezone: this.timezone,
             });
 
             this.tasks.set(plan.plan_id, { plan, task });
-            logInfo(`Scheduler: registered plan ${plan.plan_id} — cron: "${plan.cron}" tz: ${this.timezone}`);
+            logDebug(`Scheduler: registered plan ${plan.plan_id} — cron: "${plan.cron}" tz: ${this.timezone}`);
             return true;
         } catch (e) {
             logError(`Scheduler: failed to register plan ${plan.plan_id}`, e);
@@ -73,7 +73,7 @@ export class Scheduler {
         if (entry) {
             entry.task.stop();
             this.tasks.delete(planId);
-            logInfo(`Scheduler: unregistered plan ${planId}`);
+            logDebug(`Scheduler: unregistered plan ${planId}`);
         }
     }
 
@@ -86,7 +86,7 @@ export class Scheduler {
     stopAll(): void {
         for (const [id, entry] of this.tasks) {
             entry.task.stop();
-            logInfo(`Scheduler: stopped task ${id}`);
+            logDebug(`Scheduler: stopped task ${id}`);
         }
         this.tasks.clear();
     }
@@ -99,7 +99,7 @@ export class Scheduler {
                 if (this.register(plan)) { count++; }
             }
         }
-        logInfo(`Scheduler: restored ${count} plans`);
+        logDebug(`Scheduler: restored ${count} plans`);
         return count;
     }
 }

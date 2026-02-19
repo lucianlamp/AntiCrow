@@ -9,7 +9,7 @@ import {
     TextChannel,
     ChannelType,
 } from 'discord.js';
-import { logInfo, logError, logWarn, logDebug } from './logger';
+import { logDebug, logError, logWarn } from './logger';
 
 // -----------------------------------------------------------------------
 // 定数・ユーティリティ (static 相当)
@@ -59,7 +59,7 @@ export async function ensureSchedulesCategory(client: Client, guildId: string): 
             && c.name === SCHEDULES_CATEGORY_NAME
     );
     if (existing) {
-        logInfo(`Discord: found existing Schedules category: ${existing.id}`);
+        logDebug(`Discord: found existing Schedules category: ${existing.id}`);
         return existing.id;
     }
 
@@ -68,7 +68,7 @@ export async function ensureSchedulesCategory(client: Client, guildId: string): 
             name: SCHEDULES_CATEGORY_NAME,
             type: ChannelType.GuildCategory,
         });
-        logInfo(`Discord: created Schedules category: ${category.id}`);
+        logDebug(`Discord: created Schedules category: ${category.id}`);
         return category.id;
     } catch (e) {
         logError('Discord: failed to create Schedules category', e);
@@ -99,7 +99,7 @@ export async function ensureWorkspaceCategory(client: Client, guildId: string, w
             name: catName,
             type: ChannelType.GuildCategory,
         });
-        logInfo(`Discord: created workspace category "${catName}": ${category.id}`);
+        logDebug(`Discord: created workspace category "${catName}": ${category.id}`);
         return category.id;
     } catch (e) {
         logError(`Discord: failed to create workspace category "${catName}"`, e);
@@ -135,7 +135,7 @@ export async function ensureWorkspaceStructure(client: Client, guildId: string, 
             type: ChannelType.GuildText,
             parent: categoryId,
         });
-        logInfo(`Discord: created #agent-chat (${channel.id}) in workspace "${wsName}"`);
+        logDebug(`Discord: created #agent-chat (${channel.id}) in workspace "${wsName}"`);
     } catch (e) {
         logError(`Discord: failed to create #agent-chat in workspace "${wsName}"`, e);
     }
@@ -195,7 +195,7 @@ export async function createPlanChannel(
             type: ChannelType.GuildText,
             parent: categoryId,
         });
-        logInfo(`Discord: created plan channel #${channel.name} (${channel.id}) in ${parentLabel}`);
+        logDebug(`Discord: created plan channel #${channel.name} (${channel.id}) in ${parentLabel}`);
         return channel.id;
     } catch (e) {
         logError(`Discord: failed to create plan channel "${channelName}" in ${parentLabel}`, e);
@@ -213,7 +213,7 @@ export async function deletePlanChannel(client: Client, channelId: string): Prom
         }
         if ('delete' in channel && typeof channel.delete === 'function') {
             await channel.delete();
-            logInfo(`Discord: deleted plan channel ${channelId}`);
+            logDebug(`Discord: deleted plan channel ${channelId}`);
             return true;
         }
         logWarn(`Discord: channel ${channelId} is not deletable`);
@@ -233,7 +233,7 @@ export async function renamePlanChannel(client: Client, channelId: string, newNa
             return false;
         }
         await channel.setName(newName);
-        logInfo(`Discord: renamed plan channel ${channelId} to "${newName}"`);
+        logDebug(`Discord: renamed plan channel ${channelId} to "${newName}"`);
         return true;
     } catch (e) {
         logError(`Discord: failed to rename plan channel ${channelId}`, e);

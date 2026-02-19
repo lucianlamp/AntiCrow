@@ -5,7 +5,7 @@
 // 要素クリック・存在確認・待機を行う。
 // ---------------------------------------------------------------------------
 
-import { logInfo, logDebug } from './logger';
+import { logDebug } from './logger';
 import { ClickOptions, ClickResult } from './types';
 import { CdpBridgeOps } from './cdpHistory';
 
@@ -161,7 +161,7 @@ export async function clickElement(
 
         const clickResult = result as ClickResult;
         if (clickResult?.success) {
-            logInfo(`CDP: clickElement success — method=${clickResult.method}, target=${clickResult.target}`);
+            logDebug(`CDP: clickElement success — method=${clickResult.method}, target=${clickResult.target}`);
         } else {
             logDebug(`CDP: clickElement failed — ${clickResult?.error || 'unknown'}`);
         }
@@ -307,7 +307,7 @@ export async function clickExpandAll(
                 inCascade: false,
             });
             if (result.success) {
-                logInfo(`CDP: clickExpandAll succeeded — selector=${selector} (main window)`);
+                logDebug(`CDP: clickExpandAll succeeded — selector=${selector} (main window)`);
                 return true;
             }
         } catch (e) {
@@ -323,7 +323,7 @@ export async function clickExpandAll(
             inCascade: true,
         });
         if (result.success) {
-            logInfo('CDP: clickExpandAll succeeded — text="Expand" (cascade)');
+            logDebug('CDP: clickExpandAll succeeded — text="Expand" (cascade)');
             return true;
         }
     } catch (e) {
@@ -332,4 +332,120 @@ export async function clickExpandAll(
 
     logDebug('CDP: clickExpandAll — no Expand All button found');
     return false;
+}
+
+// -----------------------------------------------------------------------
+// scrollToBottom — チャットエリアを最下部にスクロール
+// -----------------------------------------------------------------------
+
+export async function scrollToBottom(
+    ops: CdpBridgeOps,
+): Promise<boolean> {
+    const SCROLL_SCRIPT = `
+(function() {
+    var scrolled = false;
+
+    // 優先: "Scroll to bottom" ボタンをクリック（最も確実）
+    var scrollBtn = document.querySelector('button[aria-label="Scroll to bottom"]');
+    if (scrollBtn) {
+        try {
+            scrollBtn.click();
+            scrolled = true;
+        } catch(e) {}
+    }
+
+    // フォールバック: overflow-y-auto コンテナを最下部にスクロール
+    if (!scrolled) {
+        var containers = document.querySelectorAll('.overflow-y-auto, [class*="overflow-y-auto"]');
+        for (var i = 0; i < containers.length; i++) {
+            var el = containers[i];
+            if (el.scrollHeight > el.clientHeight + 50) {
+                el.scrollTop = el.scrollHeight;
+                scrolled = true;
+            }
+        }
+    }
+
+    return { scrolled: scrolled };
+})()
+`;
+
+    try {
+        const result = await ops.evaluateInCascade(SCROLL_SCRIPT) as { scrolled: boolean } | null;
+        if (result?.scrolled) {
+            logDebug('CDP: scrollToBottom succeeded');
+            return true;
+        }
+    } catch (e) {
+        logDebug(`CDP: scrollToBottom failed — ${e instanceof Error ? e.message : e}`);
+    }
+
+    return false;
+}
+
+// -----------------------------------------------------------------------
+// dismissReviewUI — Antigravity のレビュー提案パネルを自動 Accept/Dismiss
+// -----------------------------------------------------------------------
+
+export async function dismissReviewUI(
+    ops: CdpBridgeOps,
+): Promise<boolean> {
+    // メインウィンドウ（inCascade: false）でレビューUI を探す
+    const DISMISS_SCRIPT = `
+(function() {
+    // "Accept All" や "Accept" ボタンを探してクリック
+    var buttons = document.querySelectorAll('button');
+    var dismissed = 0;
+    for (var i = 0; i < buttons.length; i++) {
+        var btn = buttons[i];
+        var text = (btn.textContent || '').trim().toLowerCase();
+        var ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
+        if (text === 'accept all' || text === 'accept' || text === 'dismiss' ||
+            ariaLabel.includes('accept all') || ariaLabel.includes('dismiss')) {
+            // レビュー系ボタンのみ対象にするため、特定のコンテキストを確認
+            var parent = btn.closest('[class*="review"], [class*="diff"], [class*="notification"], [class*="inline-chat"]');
+            if (parent) {
+                try {
+                    btn.scrollIntoView({ block: 'center', behavior: 'instant' });
+                    btn.click();
+                    dismissed++;
+                } catch(e) {}
+            }
+        }
+    }
+    return { dismissed: dismissed };
+})()
+`;
+
+    try {
+        // メインウィンドウで実行（レビューUIはCascade外にある）
+        const result = await ops.evaluateInCascade(DISMISS_SCRIPT) as { dismissed: number } | null;
+        if (result && result.dismissed > 0) {
+            logDebug(`CDP: dismissReviewUI — dismissed ${result.dismissed} review panel(s)`);
+            return true;
+        }
+    } catch (e) {
+        logDebug(`CDP: dismissReviewUI failed — ${e instanceof Error ? e.message : e}`);
+    }
+
+    return false;
+}
+
+// -----------------------------------------------------------------------
+// autoFollowOutput — AI出力追従（スクロール + 展開 + レビューUI消去）
+// -----------------------------------------------------------------------
+
+export async function autoFollowOutput(
+    ops: CdpBridgeOps,
+): Promise<void> {
+    // 1. チャットエリアを最下部にスクロール
+    await scrollToBottom(ops);
+
+    // 2. 折りたたまれたセクションを展開
+    await clickExpandAll(ops);
+
+    // 3. レビューUI を自動 Dismiss
+    await dismissReviewUI(ops);
+
+    logDebug('CDP: autoFollowOutput completed');
 }

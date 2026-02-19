@@ -5,7 +5,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { Attachment, Collection } from 'discord.js';
-import { logInfo, logWarn, logError, logDebug } from './logger';
+import { logDebug, logWarn, logError } from './logger';
 
 /** ダウンロードされた添付ファイルの情報 */
 export interface DownloadedAttachment {
@@ -105,7 +105,7 @@ export async function downloadAttachments(
                 size: buffer.length,
             });
 
-            logInfo(`attachmentDownloader: saved ${safeName} (${(buffer.length / 1024).toFixed(1)}KB)`);
+            logDebug(`attachmentDownloader: saved ${safeName} (${(buffer.length / 1024).toFixed(1)}KB)`);
         } catch (e) {
             logError(`attachmentDownloader: error downloading ${attachment.name}`, e);
         }
@@ -158,7 +158,7 @@ export function cleanupOldAttachments(storageBasePath: string): void {
     }
 
     if (cleaned > 0) {
-        logInfo(`attachmentDownloader: cleaned up ${cleaned} old attachment directories`);
+        logDebug(`attachmentDownloader: cleaned up ${cleaned} old attachment directories`);
     }
 }
 
