@@ -3,6 +3,13 @@
 // ---------------------------------------------------------------------------
 // cdpBridge.ts から分離した履歴操作の実装。
 // CdpBridgeOps インターフェース経由で CdpBridge の内部機能にアクセスする。
+//
+// 2026-02-20: 全関数を実機 DOM 調査結果に基づいてリライト。
+//   - openHistoryPopup: data-tooltip-id="history-tooltip" ベースに変更
+//   - getConversationList: サイドバー内 BUTTON 要素のスクレイピングに変更
+//   - openHistoryAndGetList: 上記2つの統合版をリライト
+//   - selectConversation: ArrowDown/Enter → 直接 BUTTON クリックに変更
+//   - closePopup: history-tooltip トグルに変更
 // ---------------------------------------------------------------------------
 
 import { logDebug, logWarn } from './logger';
@@ -23,99 +30,70 @@ export interface CdpBridgeOps {
 // openHistoryPopup
 // -----------------------------------------------------------------------
 
+/**
+ * 履歴パネルを開く（トグル）。
+ *
+ * DOM 構造（実機調査結果 2026-02-20）:
+ *   - 履歴ボタン: <A data-tooltip-id="history-tooltip">
+ *   - クリックするとサイドバーに会話リストが展開される
+ */
 export async function openHistoryPopup(ops: CdpBridgeOps): Promise<void> {
     await ops.conn.connect();
 
-    const CLICK_HISTORY_BUTTON = `
+    const CLICK_HISTORY = `
 (function() {
-    var selectors = [
-        'button[aria-label*="history" i]',
-        'button[aria-label*="History" i]',
-        'button[aria-label*="conversation" i]',
-        'button[aria-label*="Conversation" i]',
-        '.codicon-history',
-        '[class*="history"]',
-        'button[data-testid*="history"]',
-    ];
-
-    function isVisible(el) {
-        if (!el) return false;
-        var rect = el.getBoundingClientRect();
-        return rect.width > 0 && rect.height > 0;
+    // 戦略0（最優先）: data-tooltip-id="history-tooltip"
+    var btn = document.querySelector('[data-tooltip-id="history-tooltip"]');
+    if (btn) {
+        btn.click();
+        return { success: true, method: 'tooltip-id', tag: btn.tagName };
     }
 
-    function clickEl(el) {
-        var rect = el.getBoundingClientRect();
-        var cx = rect.left + rect.width / 2;
-        var cy = rect.top + rect.height / 2;
-        var opts = { bubbles: true, cancelable: true, view: window, clientX: cx, clientY: cy };
-        el.dispatchEvent(new MouseEvent('mousedown', opts));
-        el.dispatchEvent(new MouseEvent('mouseup', opts));
-        el.dispatchEvent(new MouseEvent('click', opts));
-        try {
-            el.dispatchEvent(new PointerEvent('pointerdown', opts));
-            el.dispatchEvent(new PointerEvent('pointerup', opts));
-        } catch(e) {}
+    // 戦略1: data-past-conversations-toggle 属性
+    var toggle = document.querySelector('[data-past-conversations-toggle]');
+    if (toggle) {
+        toggle.click();
+        return { success: true, method: 'past-conversations-toggle', tag: toggle.tagName };
     }
 
-    for (var i = 0; i < selectors.length; i++) {
-        try {
-            var els = document.querySelectorAll(selectors[i]);
-            for (var j = 0; j < els.length; j++) {
-                var el = els[j];
-                var target = el;
-                if (el.tagName !== 'BUTTON') {
-                    var parent = el.closest('button') || el.parentElement;
-                    if (parent && parent.tagName === 'BUTTON') {
-                        target = parent;
-                    }
-                }
-                if (isVisible(target)) {
-                    clickEl(target);
-                    return { success: true, method: 'selector', selector: selectors[i] };
-                }
-            }
-        } catch(e) {}
-    }
-
-    var buttons = document.querySelectorAll('button');
-    for (var k = 0; k < buttons.length; k++) {
-        var btn = buttons[k];
-        var svg = btn.querySelector('svg');
-        if (svg && isVisible(btn)) {
-            var paths = svg.querySelectorAll('path, circle');
-            if (paths.length > 0) {
-                var ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
-                var title = (btn.getAttribute('title') || '').toLowerCase();
-                if (ariaLabel.indexOf('histor') >= 0 || ariaLabel.indexOf('clock') >= 0 ||
-                    title.indexOf('histor') >= 0 || title.indexOf('clock') >= 0) {
-                    clickEl(btn);
-                    return { success: true, method: 'svg_fallback', label: ariaLabel || title };
+    // 戦略2: テキスト/アイコンベースのフォールバック
+    var anchors = document.querySelectorAll('a');
+    for (var i = 0; i < anchors.length; i++) {
+        var a = anchors[i];
+        var rect = a.getBoundingClientRect();
+        if (rect.width > 0 && rect.height > 0) {
+            var svg = a.querySelector('svg');
+            if (svg && a.closest('[class*="header"]')) {
+                // ヘッダー内の SVG アイコン付きリンクをヒューリスティックに検出
+                var tooltipId = a.getAttribute('data-tooltip-id') || '';
+                if (tooltipId.indexOf('history') >= 0) {
+                    a.click();
+                    return { success: true, method: 'heuristic-header-link', tooltipId: tooltipId };
                 }
             }
         }
     }
 
-    return { success: false, error: 'History button not found in Cascade panel' };
+    return { success: false, error: 'History button not found' };
 })()
     `.trim();
 
     try {
-        const result = await ops.evaluateInCascade(CLICK_HISTORY_BUTTON) as {
+        const result = await ops.evaluateInCascade(CLICK_HISTORY) as {
             success: boolean;
             method?: string;
-            selector?: string;
-            label?: string;
+            tag?: string;
+            tooltipId?: string;
             error?: string;
         };
 
         if (result?.success) {
-            logDebug(`CDP: openHistoryPopup — clicked history button (method=${result.method}, selector=${result.selector || result.label || 'N/A'})`);
+            logDebug(`CDP: openHistoryPopup — clicked (method=${result.method}, tag=${result.tag || 'N/A'})`);
         } else {
-            logWarn(`CDP: openHistoryPopup — history button not found: ${result?.error || 'unknown'}`);
+            logWarn(`CDP: openHistoryPopup — not found: ${result?.error || 'unknown'}`);
         }
     } catch (e) {
-        logWarn(`CDP: openHistoryPopup — failed to click history button: ${e instanceof Error ? e.message : e}`);
+        logWarn(`CDP: openHistoryPopup — failed: ${e instanceof Error ? e.message : e}`);
     }
 
     await ops.sleep(1500);
@@ -125,93 +103,120 @@ export async function openHistoryPopup(ops: CdpBridgeOps): Promise<void> {
 // getConversationList
 // -----------------------------------------------------------------------
 
-export async function getConversationList(ops: CdpBridgeOps): Promise<{ title: string; index: number }[]> {
+/**
+ * 会話一覧を取得する。
+ *
+ * DOM 構造（実機調査結果 2026-02-20）:
+ *   DIV.mt-2.flex.flex-col (会話リストコンテナ)
+ *     ├── BUTTON.group (会話アイテム)
+ *     │    ├── DIV.flex.grow.items-baseline (タイトル)
+ *     │    ├── P.text-nowrap (時間: "1h", "2d" 等)
+ *     │    └── P.hidden (削除アイコン SVG)
+ *     ├── BUTTON.group (会話アイテム)
+ *     └── ...
+ *
+ * 各会話アイテムの削除ボタンに data-tooltip-id="{uuid}-delete-conversation"
+ * が付与されているため、これを目印にして会話アイテムを特定する。
+ */
+export async function getConversationList(ops: CdpBridgeOps): Promise<{ title: string; index: number; timeAgo?: string }[]> {
     await ops.conn.connect();
 
-    const SCRAPE_SCRIPT = `
+    const SCRAPE_CONVERSATIONS = `
 (function() {
-var selectors = [
-    '.quick-input-list .monaco-list-row',
-    '.quick-input-widget [role="option"]',
-    '.quick-input-widget .monaco-list-row',
-    '.quick-input-widget [role="listbox"] [role="option"]',
-];
+    var result = { success: false, items: [], debugInfo: {} };
 
-var debugInfo = { tried: [], foundSelector: null, totalElements: 0, quickInputVisible: false };
+    // 戦略0: delete-conversation tooltip-id を持つ SVG の親 BUTTON を探す
+    var deleteIcons = document.querySelectorAll('[data-tooltip-id*="delete-conversation"]');
+    result.debugInfo.deleteIconCount = deleteIcons.length;
 
-var quickInput = document.querySelector('.quick-input-widget');
-var qiStyle = quickInput ? window.getComputedStyle(quickInput) : null;
-debugInfo.quickInputVisible = quickInput ? (quickInput.style.display !== 'none' && (!qiStyle || qiStyle.display !== 'none')) : false;
-
-if (!debugInfo.quickInputVisible) {
-    return {
-        success: false, items: [], debugInfo: debugInfo,
-        error: 'Quick Pick widget not visible'
-    };
-}
-
-var rows = [];
-for (var s = 0; s < selectors.length; s++) {
-    try {
-        var found = document.querySelectorAll(selectors[s]);
-        debugInfo.tried.push({ selector: selectors[s], count: found ? found.length : 0 });
-        if (found && found.length > 0) {
-            rows = Array.from(found);
-            debugInfo.foundSelector = selectors[s];
-            break;
-        }
-    } catch(e) {
-        debugInfo.tried.push({ selector: selectors[s], error: e.message });
-    }
-}
-
-debugInfo.totalElements = document.querySelectorAll('*').length;
-
-if (rows.length === 0) {
-    return {
-        success: false, items: [], debugInfo: debugInfo,
-        error: 'No Quick Pick items found. quickInputVisible=' + debugInfo.quickInputVisible
-    };
-}
-var items = [];
-for (var i = 0; i < Math.min(rows.length, 10); i++) {
-    var el = rows[i];
-    var labelEl = el.querySelector('.label-name');
-    var text = '';
-    if (labelEl) {
-        var spans = labelEl.querySelectorAll(':scope > span');
-        if (spans.length > 0) {
-            var parts = [];
-            for (var j = 0; j < spans.length; j++) {
-                parts.push(spans[j].textContent || '');
+    if (deleteIcons.length > 0) {
+        var buttons = [];
+        for (var i = 0; i < deleteIcons.length; i++) {
+            var btn = deleteIcons[i].closest('button');
+            if (btn && buttons.indexOf(btn) === -1) {
+                buttons.push(btn);
             }
-            text = parts.join('').trim();
         }
-        if (!text) {
-            text = (labelEl.textContent || '').trim();
+
+        result.debugInfo.buttonCount = buttons.length;
+        var items = [];
+        for (var j = 0; j < buttons.length; j++) {
+            var button = buttons[j];
+            var titleEl = button.querySelector('div');
+            var text = '';
+            var timeAgo = '';
+            if (titleEl) {
+                // タイトル DIV 内のテキスト（P タグの時間テキストを除外）
+                var spans = titleEl.querySelectorAll('span, p');
+                var parts = [];
+                for (var k = 0; k < spans.length; k++) {
+                    var span = spans[k];
+                    // P.text-nowrap は時間表示 → timeAgo に格納
+                    if (span.tagName === 'P' && (span.className || '').indexOf('text-nowrap') >= 0) {
+                        timeAgo = (span.textContent || '').trim();
+                        continue;
+                    }
+                    // hidden な削除ボタンの P もスキップ
+                    if (span.tagName === 'P' && (span.className || '').indexOf('hidden') >= 0) continue;
+                    var t = (span.textContent || '').trim();
+                    if (t) parts.push(t);
+                }
+                text = parts.join(' ').trim();
+            }
+            if (!text) {
+                // フォールバック: BUTTON の直接テキストから時間表記を除外
+                var cloned = button.cloneNode(true);
+                var pTags = cloned.querySelectorAll('p');
+                for (var m = 0; m < pTags.length; m++) { pTags[m].remove(); }
+                text = (cloned.textContent || '').trim();
+            }
+            if (text.length > 0) {
+                var item = { title: text.substring(0, 100), index: j };
+                if (timeAgo) item.timeAgo = timeAgo;
+                items.push(item);
+            }
+        }
+        if (items.length > 0) {
+            result.success = true;
+            result.items = items;
+            return result;
         }
     }
-    if (!text) {
-        text = (el.getAttribute('aria-label') || el.textContent || '').trim();
+
+    // 戦略1: group クラスの BUTTON を直接探す
+    var groupButtons = document.querySelectorAll('button.group[class*="cursor-pointer"][class*="flex-row"]');
+    result.debugInfo.groupButtonCount = groupButtons ? groupButtons.length : 0;
+    if (groupButtons && groupButtons.length > 0) {
+        var items2 = [];
+        for (var n = 0; n < groupButtons.length; n++) {
+            var gb = groupButtons[n];
+            var titleDiv = gb.querySelector('div');
+            var txt = titleDiv ? (titleDiv.textContent || '').trim() : (gb.textContent || '').trim();
+            if (txt.length > 0) {
+                items2.push({ title: txt.substring(0, 100), index: n });
+            }
+        }
+        if (items2.length > 0) {
+            result.success = true;
+            result.items = items2;
+            return result;
+        }
     }
-    if (text.length > 0) {
-        items.push({ title: text.substring(0, 100), index: i });
-    }
-}
-return { success: true, items: items, debugInfo: debugInfo };
+
+    result.debugInfo.error = 'No conversation items found';
+    return result;
 })()
     `.trim();
 
     for (const [label, evaluator] of [
-        ['main', () => ops.conn.evaluate(SCRAPE_SCRIPT)],
-        ['cascade', () => ops.evaluateInCascade(SCRAPE_SCRIPT)],
+        ['cascade', () => ops.evaluateInCascade(SCRAPE_CONVERSATIONS)],
+        ['main', () => ops.conn.evaluate(SCRAPE_CONVERSATIONS)],
     ] as [string, () => Promise<unknown>][]) {
         try {
             const result = await evaluator() as {
                 success: boolean;
-                items: { title: string; index: number }[];
+                items: { title: string; index: number; timeAgo?: string }[];
                 debugInfo?: unknown;
-                error?: string;
             };
 
             if (result?.success && result.items.length > 0) {
@@ -220,7 +225,7 @@ return { success: true, items: items, debugInfo: debugInfo };
                 return result.items;
             }
 
-            logDebug(`CDP: getConversationList (${label}) — ${result?.error || 'no items'}, debugInfo: ${JSON.stringify(result?.debugInfo)}`);
+            logDebug(`CDP: getConversationList (${label}) — no items, debugInfo: ${JSON.stringify(result?.debugInfo)}`);
         } catch (e) {
             logDebug(`CDP: getConversationList (${label}) exception — ${e instanceof Error ? e.message : e}`);
         }
@@ -234,7 +239,14 @@ return { success: true, items: items, debugInfo: debugInfo };
 // openHistoryAndGetList (統合版: MutationObserver + ポーリング)
 // -----------------------------------------------------------------------
 
-export async function openHistoryAndGetList(ops: CdpBridgeOps): Promise<{ title: string; index: number }[]> {
+/**
+ * 履歴パネルを開いて会話一覧を取得する統合版。
+ *
+ * 1. MutationObserver を設置して会話アイテムの出現を監視
+ * 2. history-tooltip をクリックしてパネルを開く
+ * 3. ポーリングで会話アイテムをスクレイピング
+ */
+export async function openHistoryAndGetList(ops: CdpBridgeOps): Promise<{ title: string; index: number; timeAgo?: string }[]> {
     await ops.conn.connect();
 
     // --- Step 1: MutationObserver を設置 ---
@@ -245,64 +257,58 @@ export async function openHistoryAndGetList(ops: CdpBridgeOps): Promise<{ title:
     }
     window.__historyCapture = { items: [], captured: false, events: 0, diag: [] };
 
-    function scrapeQuickPick() {
-        var qiw = document.querySelector('.quick-input-widget');
-        if (!qiw) return;
-        var style = window.getComputedStyle(qiw);
-        if (style.display === 'none' || qiw.style.display === 'none') return;
-
-        var selectors = [
-            '.quick-input-list .monaco-list-row',
-            '.quick-input-widget [role="option"]',
-            '.quick-input-widget .monaco-list-row',
-        ];
-
-        var rows = [];
-        for (var s = 0; s < selectors.length; s++) {
-            try {
-                found = document.querySelectorAll(selectors[s]);
-                if (found && found.length > 0) {
-                    rows = Array.from(found);
-                    break;
-                }
-            } catch(e) {}
+    function scrapeConversations() {
+        // delete-conversation tooltip-id を持つ SVG の親 BUTTON から会話を取得
+        var deleteIcons = document.querySelectorAll('[data-tooltip-id*="delete-conversation"]');
+        if (deleteIcons.length === 0) {
+            window.__historyCapture.diag.push('no_delete_icons');
+            return;
         }
 
-        if (rows.length === 0) {
-            window.__historyCapture.diag.push('visible_but_no_rows');
+        var buttons = [];
+        for (var i = 0; i < deleteIcons.length; i++) {
+            var btn = deleteIcons[i].closest('button');
+            if (btn && buttons.indexOf(btn) === -1) {
+                buttons.push(btn);
+            }
+        }
+
+        if (buttons.length === 0) {
+            window.__historyCapture.diag.push('no_parent_buttons');
             return;
         }
 
         var items = [];
-        for (var i = 0; i < Math.min(rows.length, 20); i++) {
-            var el = rows[i];
-            var labelEl = el.querySelector('.label-name');
+        for (var j = 0; j < buttons.length; j++) {
+            var button = buttons[j];
+            var titleEl = button.querySelector('div');
             var text = '';
-            if (labelEl) {
-                var spans = labelEl.querySelectorAll(':scope > span');
-                if (spans.length > 0) {
-                    var parts = [];
-                    for (var j = 0; j < spans.length; j++) {
-                        parts.push(spans[j].textContent || '');
+            var timeAgo2 = '';
+            if (titleEl) {
+                var spans = titleEl.querySelectorAll('span, p');
+                var parts = [];
+                for (var k = 0; k < spans.length; k++) {
+                    var span = spans[k];
+                    if (span.tagName === 'P' && (span.className || '').indexOf('text-nowrap') >= 0) {
+                        timeAgo2 = (span.textContent || '').trim();
+                        continue;
                     }
-                    text = parts.join('').trim();
+                    if (span.tagName === 'P' && (span.className || '').indexOf('hidden') >= 0) continue;
+                    var t = (span.textContent || '').trim();
+                    if (t) parts.push(t);
                 }
-                if (!text) {
-                    text = (labelEl.textContent || '').trim();
-                }
+                text = parts.join(' ').trim();
             }
             if (!text) {
-                text = (el.getAttribute('aria-label') || '').trim();
-            }
-            if (!text) {
-                var descEl = el.querySelector('.label-description');
-                if (descEl) { text = (descEl.textContent || '').trim(); }
-            }
-            if (!text) {
-                text = (el.textContent || '').trim();
+                var cloned = button.cloneNode(true);
+                var pTags = cloned.querySelectorAll('p');
+                for (var m = 0; m < pTags.length; m++) { pTags[m].remove(); }
+                text = (cloned.textContent || '').trim();
             }
             if (text.length > 0) {
-                items.push({ title: text.substring(0, 100), index: i });
+                var item2 = { title: text.substring(0, 100), index: j };
+                if (timeAgo2) item2.timeAgo = timeAgo2;
+                items.push(item2);
             }
         }
 
@@ -314,7 +320,7 @@ export async function openHistoryAndGetList(ops: CdpBridgeOps): Promise<{ title:
 
     var observer = new MutationObserver(function() {
         window.__historyCapture.events++;
-        scrapeQuickPick();
+        scrapeConversations();
     });
 
     observer.observe(document.body, {
@@ -325,112 +331,54 @@ export async function openHistoryAndGetList(ops: CdpBridgeOps): Promise<{ title:
     });
     window.__historyCaptureObserver = observer;
 
-    scrapeQuickPick();
+    // 初回スキャン
+    scrapeConversations();
 
     return { success: true };
 })()
     `.trim();
 
     try {
-        await ops.conn.evaluate(INSTALL_OBSERVER);
-        logDebug('CDP: openHistoryAndGetList — installed MutationObserver in main window');
+        await ops.evaluateInCascade(INSTALL_OBSERVER);
+        logDebug('CDP: openHistoryAndGetList — installed MutationObserver in cascade');
     } catch (e) {
         logWarn(`CDP: openHistoryAndGetList — failed to install observer: ${e instanceof Error ? e.message : e}`);
     }
 
     // --- Step 2: 履歴ボタンをクリック ---
-    const CLICK_HISTORY_BUTTON = `
+    const CLICK_HISTORY = `
 (function() {
-var selectors = [
-    'button[aria-label*="history" i]',
-    'button[aria-label*="History" i]',
-    'button[aria-label*="conversation" i]',
-    'button[aria-label*="Conversation" i]',
-    '.codicon-history',
-    '[class*="history"]',
-    'button[data-testid*="history"]',
-];
-
-function isVisible(el) {
-    if (!el) return false;
-    var rect = el.getBoundingClientRect();
-    return rect.width > 0 && rect.height > 0;
-}
-
-function clickEl(el) {
-    var rect = el.getBoundingClientRect();
-    var cx = rect.left + rect.width / 2;
-    var cy = rect.top + rect.height / 2;
-    var opts = { bubbles: true, cancelable: true, view: window, clientX: cx, clientY: cy };
-    el.dispatchEvent(new MouseEvent('mousedown', opts));
-    el.dispatchEvent(new MouseEvent('mouseup', opts));
-    el.dispatchEvent(new MouseEvent('click', opts));
-    try {
-        el.dispatchEvent(new PointerEvent('pointerdown', opts));
-        el.dispatchEvent(new PointerEvent('pointerup', opts));
-    } catch(e) {}
-}
-
-for (var i = 0; i < selectors.length; i++) {
-    try {
-        var els = document.querySelectorAll(selectors[i]);
-        for (var j = 0; j < els.length; j++) {
-            var el = els[j];
-            var target = el;
-            if (el.tagName !== 'BUTTON') {
-                var parent = el.closest('button') || el.parentElement;
-                if (parent && parent.tagName === 'BUTTON') {
-                    target = parent;
-                }
-            }
-            if (isVisible(target)) {
-                clickEl(target);
-                return { success: true, method: 'selector', selector: selectors[i] };
-            }
-        }
-    } catch(e) {}
-}
-
-var buttons = document.querySelectorAll('button');
-for (var k = 0; k < buttons.length; k++) {
-    var btn = buttons[k];
-    var svg = btn.querySelector('svg');
-    if (svg && isVisible(btn)) {
-        var paths = svg.querySelectorAll('path, circle');
-        if (paths.length > 0) {
-            var ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
-            var title = (btn.getAttribute('title') || '').toLowerCase();
-            if (ariaLabel.indexOf('histor') >= 0 || ariaLabel.indexOf('clock') >= 0 ||
-                title.indexOf('histor') >= 0 || title.indexOf('clock') >= 0) {
-                clickEl(btn);
-                return { success: true, method: 'svg_fallback', label: ariaLabel || title };
-            }
-        }
+    var btn = document.querySelector('[data-tooltip-id="history-tooltip"]');
+    if (btn) {
+        btn.click();
+        return { success: true, method: 'tooltip-id', tag: btn.tagName };
     }
-}
-
-return { success: false, error: 'History button not found in Cascade panel' };
+    var toggle = document.querySelector('[data-past-conversations-toggle]');
+    if (toggle) {
+        toggle.click();
+        return { success: true, method: 'past-conversations-toggle', tag: toggle.tagName };
+    }
+    return { success: false, error: 'History button not found' };
 })()
     `.trim();
 
     try {
-        const clickResult = await ops.evaluateInCascade(CLICK_HISTORY_BUTTON) as {
+        const clickResult = await ops.evaluateInCascade(CLICK_HISTORY) as {
             success: boolean;
             method?: string;
-            selector?: string;
-            label?: string;
+            tag?: string;
             error?: string;
         };
 
         if (clickResult?.success) {
-            logDebug(`CDP: openHistoryAndGetList — clicked history button (method=${clickResult.method}, selector=${clickResult.selector || clickResult.label || 'N/A'})`);
+            logDebug(`CDP: openHistoryAndGetList — clicked history (method=${clickResult.method})`);
         } else {
             logWarn(`CDP: openHistoryAndGetList — history button not found: ${clickResult?.error || 'unknown'}`);
             await cleanupHistoryObserver(ops);
             return [];
         }
     } catch (e) {
-        logWarn(`CDP: openHistoryAndGetList — failed to click history button: ${e instanceof Error ? e.message : e}`);
+        logWarn(`CDP: openHistoryAndGetList — failed to click: ${e instanceof Error ? e.message : e}`);
         await cleanupHistoryObserver(ops);
         return [];
     }
@@ -439,18 +387,13 @@ return { success: false, error: 'History button not found in Cascade panel' };
     const READ_CAPTURE = `
 (function() {
     var c = window.__historyCapture || { items: [], captured: false, events: 0, diag: [] };
-    var qiw = document.querySelector('.quick-input-widget');
-    var qpState = 'not_found';
-    if (qiw) {
-        var s = window.getComputedStyle(qiw);
-        qpState = (qiw.style.display || s.display) + ' children=' + qiw.children.length;
-    }
+    var deleteIcons = document.querySelectorAll('[data-tooltip-id*="delete-conversation"]');
     return {
         captured: c.captured,
         items: c.items,
         events: c.events,
         diag: c.diag,
-        quickPickState: qpState,
+        deleteIconCount: deleteIcons.length,
     };
 })()
     `.trim();
@@ -462,23 +405,23 @@ return { success: false, error: 'History button not found in Cascade panel' };
 
     type CaptureResult = {
         captured: boolean;
-        items: { title: string; index: number }[];
+        items: { title: string; index: number; timeAgo?: string }[];
         events: number;
         diag: string[];
-        quickPickState: string;
+        deleteIconCount: number;
     };
 
     while (Date.now() < deadline) {
         pollCount++;
         try {
-            const result = await ops.conn.evaluate(READ_CAPTURE) as CaptureResult;
+            const result = await ops.evaluateInCascade(READ_CAPTURE) as CaptureResult;
 
             if (pollCount === 1 || pollCount % 10 === 0) {
-                logDebug(`CDP: openHistoryAndGetList poll #${pollCount} — captured=${result?.captured}, events=${result?.events}, qp=${result?.quickPickState}, diag=${JSON.stringify(result?.diag)}`);
+                logDebug(`CDP: openHistoryAndGetList poll #${pollCount} — captured=${result?.captured}, events=${result?.events}, deleteIcons=${result?.deleteIconCount}, diag=${JSON.stringify(result?.diag)}`);
             }
 
             if (result?.captured && result.items.length > 0) {
-                logDebug(`CDP: openHistoryAndGetList — captured ${result.items.length} conversations via MutationObserver (poll #${pollCount}, events=${result.events})`);
+                logDebug(`CDP: openHistoryAndGetList — captured ${result.items.length} conversations (poll #${pollCount}, events=${result.events})`);
                 await cleanupHistoryObserver(ops);
                 return result.items;
             }
@@ -488,10 +431,20 @@ return { success: false, error: 'History button not found in Cascade panel' };
         await ops.sleep(POLL_INTERVAL_MS);
     }
 
-    // タイムアウト
+    // タイムアウト — 最後にもう一度直接スクレイピングを試行
     try {
-        const finalResult = await ops.conn.evaluate(READ_CAPTURE) as CaptureResult;
-        logWarn(`CDP: openHistoryAndGetList — timeout after ${pollCount} polls. events=${finalResult?.events}, qp=${finalResult?.quickPickState}, diag=${JSON.stringify(finalResult?.diag)}`);
+        const directResult = await getConversationList(ops);
+        if (directResult.length > 0) {
+            logDebug(`CDP: openHistoryAndGetList — timeout but direct scrape found ${directResult.length} conversations`);
+            await cleanupHistoryObserver(ops);
+            return directResult;
+        }
+    } catch (e) { /* ignore */ }
+
+    // 本当にタイムアウト
+    try {
+        const finalResult = await ops.evaluateInCascade(READ_CAPTURE) as CaptureResult;
+        logWarn(`CDP: openHistoryAndGetList — timeout after ${pollCount} polls. events=${finalResult?.events}, deleteIcons=${finalResult?.deleteIconCount}, diag=${JSON.stringify(finalResult?.diag)}`);
     } catch (e) { /* ignore */ }
 
     await cleanupHistoryObserver(ops);
@@ -505,7 +458,7 @@ return { success: false, error: 'History button not found in Cascade panel' };
 
 export async function cleanupHistoryObserver(ops: CdpBridgeOps): Promise<void> {
     try {
-        await ops.conn.evaluate(
+        await ops.evaluateInCascade(
             'if(window.__historyCaptureObserver){window.__historyCaptureObserver.disconnect();delete window.__historyCaptureObserver;delete window.__historyCapture;}'
         );
     } catch (e) {
@@ -517,67 +470,133 @@ export async function cleanupHistoryObserver(ops: CdpBridgeOps): Promise<void> {
 // selectConversation
 // -----------------------------------------------------------------------
 
+/**
+ * N 番目の会話を選択する。
+ *
+ * 改善: ArrowDown/Enter キー入力ではなく、会話アイテムの BUTTON を直接クリック。
+ * delete-conversation tooltip-id を持つ SVG の親 BUTTON を使って
+ * 会話アイテムを正確に特定してクリックする。
+ */
 export async function selectConversation(ops: CdpBridgeOps, index: number): Promise<boolean> {
     await ops.conn.connect();
 
-    for (let i = 0; i < index; i++) {
-        await ops.conn.send('Input.dispatchKeyEvent', {
-            type: 'keyDown',
-            windowsVirtualKeyCode: 40,
-            code: 'ArrowDown',
-            key: 'ArrowDown',
-        });
-        await ops.sleep(30);
-        await ops.conn.send('Input.dispatchKeyEvent', {
-            type: 'keyUp',
-            windowsVirtualKeyCode: 40,
-            code: 'ArrowDown',
-            key: 'ArrowDown',
-        });
-        await ops.sleep(100);
+    const CLICK_CONVERSATION = `
+(function() {
+    var deleteIcons = document.querySelectorAll('[data-tooltip-id*="delete-conversation"]');
+    if (deleteIcons.length === 0) {
+        return { success: false, error: 'No conversation items found (no delete icons)' };
     }
 
-    await ops.conn.send('Input.dispatchKeyEvent', {
-        type: 'keyDown',
-        windowsVirtualKeyCode: 13,
-        code: 'Enter',
-        key: 'Enter',
-    });
-    await ops.sleep(30);
-    await ops.conn.send('Input.dispatchKeyEvent', {
-        type: 'keyUp',
-        windowsVirtualKeyCode: 13,
-        code: 'Enter',
-        key: 'Enter',
-    });
+    // 各 delete icon の親 BUTTON を取得（重複排除）
+    var buttons = [];
+    for (var i = 0; i < deleteIcons.length; i++) {
+        var btn = deleteIcons[i].closest('button');
+        if (btn && buttons.indexOf(btn) === -1) {
+            buttons.push(btn);
+        }
+    }
 
-    logDebug(`CDP: selectConversation — selected index ${index}`);
-    await ops.sleep(1000);
-    ops.resetCascadeContext();
-    return true;
+    var targetIndex = ${index};
+    if (targetIndex < 0 || targetIndex >= buttons.length) {
+        return { success: false, error: 'Index out of range: ' + targetIndex + ' (total: ' + buttons.length + ')' };
+    }
+
+    var target = buttons[targetIndex];
+    // BUTTON をクリック
+    var rect = target.getBoundingClientRect();
+    var cx = rect.left + rect.width / 2;
+    var cy = rect.top + rect.height / 2;
+    var opts = { bubbles: true, cancelable: true, view: window, clientX: cx, clientY: cy };
+    target.dispatchEvent(new MouseEvent('mousedown', opts));
+    target.dispatchEvent(new MouseEvent('mouseup', opts));
+    target.dispatchEvent(new MouseEvent('click', opts));
+
+    return { success: true, index: targetIndex, total: buttons.length };
+})()
+    `.trim();
+
+    try {
+        const result = await ops.evaluateInCascade(CLICK_CONVERSATION) as {
+            success: boolean;
+            index?: number;
+            total?: number;
+            error?: string;
+        };
+
+        if (result?.success) {
+            logDebug(`CDP: selectConversation — selected index ${result.index} of ${result.total}`);
+            await ops.sleep(1000);
+            ops.resetCascadeContext();
+            return true;
+        } else {
+            logWarn(`CDP: selectConversation — failed: ${result?.error || 'unknown'}`);
+            return false;
+        }
+    } catch (e) {
+        logWarn(`CDP: selectConversation — exception: ${e instanceof Error ? e.message : e}`);
+        return false;
+    }
 }
 
 // -----------------------------------------------------------------------
 // closePopup
 // -----------------------------------------------------------------------
 
+/**
+ * 履歴パネルを閉じる。
+ *
+ * 改善: Escape キーではなく history-tooltip を再クリック（トグル）で閉じる。
+ * フォールバックとして Escape キーも残す。
+ */
 export async function closePopup(ops: CdpBridgeOps): Promise<void> {
     await ops.conn.connect();
 
-    await ops.conn.send('Input.dispatchKeyEvent', {
-        type: 'keyDown',
-        windowsVirtualKeyCode: 27,
-        code: 'Escape',
-        key: 'Escape',
-    });
-    await ops.sleep(30);
-    await ops.conn.send('Input.dispatchKeyEvent', {
-        type: 'keyUp',
-        windowsVirtualKeyCode: 27,
-        code: 'Escape',
-        key: 'Escape',
-    });
+    // 戦略0: history-tooltip を再クリックしてトグル
+    const TOGGLE_CLOSE = `
+(function() {
+    var btn = document.querySelector('[data-tooltip-id="history-tooltip"]');
+    if (btn) {
+        btn.click();
+        return { success: true, method: 'tooltip-toggle' };
+    }
+    return { success: false };
+})()
+    `.trim();
 
-    logDebug('CDP: closePopup — sent Escape');
+    try {
+        const result = await ops.evaluateInCascade(TOGGLE_CLOSE) as {
+            success: boolean;
+            method?: string;
+        };
+
+        if (result?.success) {
+            logDebug(`CDP: closePopup — closed via ${result.method}`);
+            await ops.sleep(300);
+            return;
+        }
+    } catch (e) {
+        logDebug(`CDP: closePopup — toggle failed: ${e instanceof Error ? e.message : e}`);
+    }
+
+    // 戦略1: Escape キーでフォールバック
+    try {
+        await ops.conn.send('Input.dispatchKeyEvent', {
+            type: 'keyDown',
+            windowsVirtualKeyCode: 27,
+            code: 'Escape',
+            key: 'Escape',
+        });
+        await ops.sleep(30);
+        await ops.conn.send('Input.dispatchKeyEvent', {
+            type: 'keyUp',
+            windowsVirtualKeyCode: 27,
+            code: 'Escape',
+            key: 'Escape',
+        });
+        logDebug('CDP: closePopup — sent Escape (fallback)');
+    } catch (e) {
+        logWarn(`CDP: closePopup — Escape fallback failed: ${e instanceof Error ? e.message : e}`);
+    }
+
     await ops.sleep(300);
 }

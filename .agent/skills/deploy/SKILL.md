@@ -39,6 +39,8 @@ npx -y @vscode/vsce package --no-dependencies --allow-missing-repository --skip-
 
 ### 4. Antigravity にインストール
 
+> **⚠️ 注意:** Anti-Crow 経由の実行タスク内でこの手順を実行している場合、VSIX インストールにより Antigravity の拡張ホストが再起動し、IPC レスポンスが未配信になる可能性があります。レスポンスファイルへの書き込みを完了してから最後にこの手順を実行してください。
+
 ```
 antigravity --install-extension anti-crow-0.1.0.vsix --force
 ```

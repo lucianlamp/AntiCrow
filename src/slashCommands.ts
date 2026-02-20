@@ -47,6 +47,10 @@ export const slashCommandDefinitions = [
         .setDescription('AI モード切替（Planning / Fast）'),
 
     new SlashCommandBuilder()
+        .setName('history')
+        .setDescription('Antigravity の会話履歴を表示・切り替え'),
+
+    new SlashCommandBuilder()
         .setName('help')
         .setDescription('AntiCrow のコマンド一覧と使い方を表示'),
 

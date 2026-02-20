@@ -473,6 +473,13 @@ export class CdpBridge {
         try {
             const stopBtnResult = await this.evaluateInCascade(`
 (function() {
+    // 戦略0: data-tooltip-id セレクタ（最も信頼性が高い）
+    var cancelByTooltip = document.querySelector('[data-tooltip-id="input-send-button-cancel-tooltip"]');
+    if (cancelByTooltip && cancelByTooltip.offsetParent !== null) {
+        cancelByTooltip.click();
+        return { found: true, method: 'tooltip-id' };
+    }
+
     // 戦略A: textbox の親要素内にある button で SVG rect/stop アイコンを持つもの
     var textbox = document.querySelector('div[role="textbox"]');
     if (textbox) {

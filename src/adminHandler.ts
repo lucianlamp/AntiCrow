@@ -13,6 +13,8 @@ import * as path from 'path';
 import { logDebug, logError, logWarn } from './logger';
 import { buildEmbed, EmbedColor } from './embedHelper';
 import { buildScheduleListEmbed, buildDeleteConfirmEmbed } from './scheduleButtons';
+import { buildHistoryListEmbed } from './historyButtons';
+import { openHistoryAndGetList, closePopup } from './cdpHistory';
 import { buildModelListEmbed, buildModelSwitchResultEmbed } from './modelButtons';
 import { getCurrentModel, getAvailableModels, selectModel } from './cdpModels';
 import { buildModeListEmbed, buildModeSwitchResultEmbed } from './modeButtons';
@@ -295,6 +297,31 @@ async function handleMode(ctx: BridgeContext, interaction: ChatInputCommandInter
     }
 }
 
+async function handleHistory(ctx: BridgeContext, interaction: ChatInputCommandInteraction): Promise<void> {
+    await interaction.deferReply();
+    try {
+        const cdp = ctx.cdp;
+        if (!cdp) {
+            await interaction.editReply({ embeds: [buildEmbed('⚠️ Antigravity との接続が初期化されていません。', EmbedColor.Warning)] });
+            return;
+        }
+
+        logDebug('handleHistory: starting openHistoryAndGetList');
+        const conversations = await openHistoryAndGetList(cdp.ops);
+        logDebug(`handleHistory: got ${conversations.length} conversations`);
+
+        // 履歴パネルを閉じる（Antigravity UI を元に戻す）
+        await closePopup(cdp.ops);
+
+        const { embeds, components } = buildHistoryListEmbed(conversations);
+        await interaction.editReply({ embeds, components: components as any });
+    } catch (e) {
+        const errMsg = e instanceof Error ? e.message : String(e);
+        logError('handleHistory: failed', e);
+        await interaction.editReply({ embeds: [buildEmbed(`❌ 会話履歴取得エラー: ${errMsg}`, EmbedColor.Error)] }).catch(() => { });
+    }
+}
+
 async function handleHelp(_ctx: BridgeContext, interaction: ChatInputCommandInteraction): Promise<void> {
     const helpMsg = [
         '📖 **AntiCrow ヘルプ**',
@@ -307,6 +334,7 @@ async function handleHelp(_ctx: BridgeContext, interaction: ChatInputCommandInte
         '`/newchat` — Antigravity で新しいチャットを開く',
         '`/models` — AI モデルの一覧・切替',
         '`/mode` — AI モード切替（Planning / Fast）',
+        '`/history` — 会話履歴を表示・切り替え',
         '`/workspaces` — ワークスペース一覧を表示',
         '`/templates` — テンプレート一覧・管理',
         '`/help` — このヘルプを表示',
@@ -335,6 +363,7 @@ const COMMAND_HANDLERS: Record<string, CommandHandler> = {
     templates: handleTemplates,
     models: handleModels,
     mode: handleMode,
+    history: handleHistory,
     help: handleHelp,
 };
 

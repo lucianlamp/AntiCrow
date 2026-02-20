@@ -259,6 +259,22 @@ async function startBridgeInternal(
     // FileIpc 初期化
     ctx.fileIpc = new FileIpc(storageUri);
     await ctx.fileIpc.init();
+
+    // 起動時 stale レスポンスリカバリー（cleanupOldFiles より先に実行）
+    try {
+        const staleResponses = await ctx.fileIpc.recoverStaleResponses();
+        if (staleResponses.length > 0) {
+            logWarn(`Bridge: found ${staleResponses.length} stale response(s) at startup`);
+            for (const sr of staleResponses) {
+                logWarn(`Bridge: stale response — requestId=${sr.requestId}, format=${sr.format}, chars=${sr.content.length}`);
+                // Phase 1: ログ出力 + 安全削除のみ（Discord 再送は Phase 2 で検討）
+                await ctx.fileIpc.cleanupStaleResponse(sr.filePath);
+            }
+        }
+    } catch (e) {
+        logWarn(`Bridge: stale response recovery failed: ${e instanceof Error ? e.message : e}`);
+    }
+
     await ctx.fileIpc.cleanupOldFiles();
     cleanupOldAttachments(storageUri.fsPath);
 
@@ -399,6 +415,16 @@ async function startBridgeInternal(
         }
     }, 60_000);
 
+    // 定期 IPC ファイルクリーンアップ（5分間隔）
+    ctx.cleanupTimer = setInterval(async () => {
+        if (!ctx.fileIpc) { return; }
+        try {
+            await ctx.fileIpc.cleanupOldFiles();
+        } catch (e) {
+            logDebug(`Bridge: periodic cleanup failed: ${e instanceof Error ? e.message : e}`);
+        }
+    }, 5 * 60_000);
+
     updateStatusBar(ctx);
 }
 
@@ -420,6 +446,11 @@ export async function stopBridge(ctx: BridgeContext): Promise<void> {
     if (ctx.healthCheckTimer) {
         clearInterval(ctx.healthCheckTimer);
         ctx.healthCheckTimer = null;
+    }
+
+    if (ctx.cleanupTimer) {
+        clearInterval(ctx.cleanupTimer);
+        ctx.cleanupTimer = null;
     }
 
     ctx.scheduler?.stopAll();

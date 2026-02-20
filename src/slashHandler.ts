@@ -26,6 +26,8 @@ import { buildModelListEmbed, buildModelSwitchResultEmbed } from './modelButtons
 import { getAvailableModels, selectModel } from './cdpModels';
 import { buildModeListEmbed, buildModeSwitchResultEmbed } from './modeButtons';
 import { getAvailableModes, selectMode } from './cdpModes';
+import { buildHistoryListEmbed, buildHistorySelectResultEmbed } from './historyButtons';
+import { openHistoryAndGetList, selectConversation, closePopup } from './cdpHistory';
 import { BridgeContext } from './bridgeContext';
 
 import { getTimezone, isUserAllowed } from './configHelper';
@@ -321,6 +323,69 @@ export async function handleButtonInteraction(
         // クォータ更新ボタン
         // -------------------------------------------------------------------
 
+
+        // -------------------------------------------------------------------
+        // 会話履歴管理ボタン
+        // -------------------------------------------------------------------
+        if (customId.startsWith('hist_select_')) {
+            const indexStr = customId.replace('hist_select_', '');
+            const index = parseInt(indexStr, 10);
+            await interaction.deferUpdate();
+
+            const cdp = ctx.cdp;
+            if (!cdp) {
+                await interaction.followUp({ embeds: [buildEmbed('⚠️ Antigravity との接続が初期化されていません。', EmbedColor.Warning)], ephemeral: true });
+                return;
+            }
+
+            // まず履歴パネルを開いて一覧を取得（会話タイトル取得用）
+            const conversations = await openHistoryAndGetList(cdp.ops);
+            const targetConv = conversations.find(c => c.index === index);
+            const title = targetConv?.title || `会話 #${index + 1}`;
+
+            const success = await selectConversation(cdp.ops, index);
+            // 選択後（成功・失敗問わず）履歴パネルを閉じる
+            await closePopup(cdp.ops);
+            const resultEmbed = buildHistorySelectResultEmbed(title, success);
+
+            if (success) {
+                await interaction.editReply({ embeds: [resultEmbed], components: [] });
+            } else {
+                await interaction.followUp({ embeds: [resultEmbed], ephemeral: true });
+            }
+            return;
+        }
+
+        if (customId === 'hist_refresh' || customId.startsWith('hist_page_')) {
+            await interaction.deferUpdate();
+
+            const cdp = ctx.cdp;
+            if (!cdp) {
+                await interaction.followUp({ embeds: [buildEmbed('⚠️ Antigravity との接続が初期化されていません。', EmbedColor.Warning)], ephemeral: true });
+                return;
+            }
+
+            const conversations = await openHistoryAndGetList(cdp.ops);
+            await closePopup(cdp.ops);
+
+            let page = 0;
+            if (customId.startsWith('hist_page_')) {
+                page = parseInt(customId.replace('hist_page_', ''), 10) || 0;
+            }
+
+            const { embeds, components } = buildHistoryListEmbed(conversations, page);
+            await interaction.editReply({ embeds, components: components as any });
+            return;
+        }
+
+        if (customId === 'hist_close') {
+            try {
+                await interaction.message.delete();
+            } catch {
+                await interaction.deferUpdate();
+            }
+            return;
+        }
 
         // ----- テンプレート関連ボタン -----
         if (customId.startsWith('tpl_')) {

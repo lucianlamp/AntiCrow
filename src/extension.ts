@@ -41,6 +41,7 @@ const ctx: BridgeContext = {
     categoryWatchTimer: null,
     autoOperationWatcherTimer: null,
     healthCheckTimer: null,
+    cleanupTimer: null,
 };
 
 // ライセンスモジュールのインスタンス

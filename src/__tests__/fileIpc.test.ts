@@ -2,7 +2,7 @@
 // fileIpc.test.ts — FileIpc.extractResult テスト
 // ---------------------------------------------------------------------------
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // vscode モジュールをモック
 vi.mock('vscode', () => ({
@@ -240,5 +240,168 @@ describe('FileIpc.formatJsonForDiscord', () => {
         expect(result).not.toBeNull();
         expect(result).toContain('item1');
         expect(result).toContain('item2');
+    });
+});
+
+// ---------------------------------------------------------------------------
+// recoverStaleResponses + cleanupOldFiles テスト
+// ---------------------------------------------------------------------------
+
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
+
+describe('FileIpc instance methods', () => {
+    let ipc: FileIpc;
+    let tmpDir: string;
+    let ipcDir: string;
+
+    beforeEach(async () => {
+        tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'fileIpc-test-'));
+        ipcDir = path.join(tmpDir, 'ipc');
+        fs.mkdirSync(ipcDir, { recursive: true });
+        const fakeUri = { fsPath: tmpDir } as any;
+        ipc = new FileIpc(fakeUri);
+        await ipc.init();
+    });
+
+    afterEach(() => {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    describe('recoverStaleResponses', () => {
+        it('should detect stale JSON response files', async () => {
+            const filePath = path.join(ipcDir, 'req_123456_abcdef012345_response.json');
+            fs.writeFileSync(filePath, '{"summary": "test"}');
+
+            const stale = await ipc.recoverStaleResponses();
+            expect(stale).toHaveLength(1);
+            expect(stale[0].requestId).toBe('req_123456_abcdef012345');
+            expect(stale[0].format).toBe('json');
+            expect(stale[0].content).toContain('summary');
+        });
+
+        it('should detect stale MD response files', async () => {
+            const filePath = path.join(ipcDir, 'req_789012_fedcba987654_response.md');
+            fs.writeFileSync(filePath, '# Test Response');
+
+            const stale = await ipc.recoverStaleResponses();
+            expect(stale).toHaveLength(1);
+            expect(stale[0].format).toBe('md');
+        });
+
+        it('should skip empty stale response files', async () => {
+            const filePath = path.join(ipcDir, 'req_123456_abcdef012345_response.json');
+            fs.writeFileSync(filePath, '  ');
+
+            const stale = await ipc.recoverStaleResponses();
+            expect(stale).toHaveLength(0);
+        });
+
+        it('should ignore non-response files', async () => {
+            fs.writeFileSync(path.join(ipcDir, 'req_123456_abcdef012345_progress.json'), '{}');
+            fs.writeFileSync(path.join(ipcDir, 'tmp_prompt_123.json'), '{}');
+
+            const stale = await ipc.recoverStaleResponses();
+            expect(stale).toHaveLength(0);
+        });
+
+        it('should detect multiple stale responses', async () => {
+            fs.writeFileSync(path.join(ipcDir, 'req_111_aaa_response.json'), '{"a":1}');
+            fs.writeFileSync(path.join(ipcDir, 'req_222_bbb_response.md'), '# B');
+
+            const stale = await ipc.recoverStaleResponses();
+            expect(stale).toHaveLength(2);
+        });
+    });
+
+    describe('cleanupStaleResponse', () => {
+        it('should delete specified stale response file', async () => {
+            const filePath = path.join(ipcDir, 'req_123_abc_response.json');
+            fs.writeFileSync(filePath, '{}');
+
+            await ipc.cleanupStaleResponse(filePath);
+            expect(fs.existsSync(filePath)).toBe(false);
+        });
+
+        it('should not throw for missing file', async () => {
+            await expect(
+                ipc.cleanupStaleResponse(path.join(ipcDir, 'nonexistent.json'))
+            ).resolves.toBeUndefined();
+        });
+    });
+
+    describe('registerActiveRequest / unregisterActiveRequest', () => {
+        it('should protect registered request files from cleanupOldFiles', async () => {
+            const requestId = 'req_999999_aabbccddeeff';
+            const progressFile = path.join(ipcDir, `${requestId}_progress.json`);
+            const responseFile = path.join(ipcDir, `${requestId}_response.json`);
+
+            // 古いファイルとして作成（10分前）
+            fs.writeFileSync(progressFile, '{}');
+            fs.writeFileSync(responseFile, '{}');
+            const oldTime = Date.now() - 15 * 60 * 1000;
+            fs.utimesSync(progressFile, new Date(oldTime), new Date(oldTime));
+            fs.utimesSync(responseFile, new Date(oldTime), new Date(oldTime));
+
+            // activeRequest として登録
+            ipc.registerActiveRequest(requestId);
+
+            await ipc.cleanupOldFiles();
+
+            // 登録されたファイルは削除されないこと
+            expect(fs.existsSync(progressFile)).toBe(true);
+            expect(fs.existsSync(responseFile)).toBe(true);
+
+            // 解除後は削除対象
+            ipc.unregisterActiveRequest(requestId);
+            await ipc.cleanupOldFiles();
+
+            expect(fs.existsSync(progressFile)).toBe(false);
+            expect(fs.existsSync(responseFile)).toBe(false);
+        });
+    });
+
+    describe('cleanupOldFiles thresholds', () => {
+        it('should delete response files only after 10 minutes', async () => {
+            // 7分前のレスポンス（10分未満 → 削除されない）
+            const recentResponse = path.join(ipcDir, 'req_111_aaa_response.json');
+            fs.writeFileSync(recentResponse, '{}');
+            const sevenMinAgo = Date.now() - 7 * 60 * 1000;
+            fs.utimesSync(recentResponse, new Date(sevenMinAgo), new Date(sevenMinAgo));
+
+            // 15分前のレスポンス（10分超 → 削除される）
+            const oldResponse = path.join(ipcDir, 'req_222_bbb_response.md');
+            fs.writeFileSync(oldResponse, '# old');
+            const fifteenMinAgo = Date.now() - 15 * 60 * 1000;
+            fs.utimesSync(oldResponse, new Date(fifteenMinAgo), new Date(fifteenMinAgo));
+
+            await ipc.cleanupOldFiles();
+
+            expect(fs.existsSync(recentResponse)).toBe(true);  // 7分 < 10分閾値
+            expect(fs.existsSync(oldResponse)).toBe(false);     // 15分 > 10分閾値
+        });
+
+        it('should delete progress files after 2 minutes', async () => {
+            const progressFile = path.join(ipcDir, 'req_333_ccc_progress.json');
+            fs.writeFileSync(progressFile, '{}');
+            const threeMinAgo = Date.now() - 3 * 60 * 1000;
+            fs.utimesSync(progressFile, new Date(threeMinAgo), new Date(threeMinAgo));
+
+            await ipc.cleanupOldFiles();
+
+            expect(fs.existsSync(progressFile)).toBe(false);
+        });
+
+        it('should delete tmp files after 30 seconds', async () => {
+            const tmpFile = path.join(ipcDir, 'tmp_prompt_12345_abc.json');
+            fs.writeFileSync(tmpFile, '{}');
+            const oneMinAgo = Date.now() - 60 * 1000;
+            fs.utimesSync(tmpFile, new Date(oneMinAgo), new Date(oneMinAgo));
+
+            await ipc.cleanupOldFiles();
+
+            expect(fs.existsSync(tmpFile)).toBe(false);
+        });
     });
 });

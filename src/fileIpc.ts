@@ -23,9 +23,19 @@ const WRITE_SETTLE_MS = 500;
 /** ポーリング間隔（ms） */
 const POLL_INTERVAL_MS = 1_000;
 
+/** stale レスポンスの情報 */
+export interface StaleResponse {
+    requestId: string;
+    content: string;
+    format: 'json' | 'md';
+    filePath: string;
+}
+
 export class FileIpc {
     private readonly ipcDir: string;
     private readonly storagePath: string;
+    /** waitForResponse が待機中のリクエストID集合（誤削除防止） */
+    private readonly activeRequests = new Set<string>();
 
     constructor(storageUri: vscode.Uri) {
         this.storagePath = storageUri.fsPath;
@@ -60,6 +70,22 @@ export class FileIpc {
         const requestId = `req_${Date.now()}_${crypto.randomUUID().replace(/-/g, '').substring(0, 12)}`;
         const responsePath = path.join(this.ipcDir, `${requestId}_response.md`);
         return { requestId, responsePath };
+    }
+
+    // -----------------------------------------------------------------
+    // アクティブリクエスト管理（cleanupOldFiles 誤削除防止）
+    // -----------------------------------------------------------------
+
+    /** waitForResponse 開始時にリクエストIDを登録 */
+    registerActiveRequest(requestId: string): void {
+        this.activeRequests.add(requestId);
+        logDebug(`FileIpc: registered active request: ${requestId}`);
+    }
+
+    /** waitForResponse 完了後にリクエストIDを解除 */
+    unregisterActiveRequest(requestId: string): void {
+        this.activeRequests.delete(requestId);
+        logDebug(`FileIpc: unregistered active request: ${requestId}`);
     }
 
     /**
@@ -203,28 +229,103 @@ export class FileIpc {
             }, POLL_INTERVAL_MS);
 
             // --- タイムアウト監視（1秒間隔でチェック） ---
-            timeoutTimer = setInterval(() => {
+            timeoutTimer = setInterval(async () => {
                 if (settled) { return; }
                 if (Date.now() - lastActivityTime >= timeoutMs) {
-                    const totalElapsed = lastProgressMtime > 0
+                    const totalElapsedMs = Date.now() - lastActivityTime;
+                    const totalElapsedSec = Math.round(totalElapsedMs / 1000);
+                    const progressInfo = lastProgressMtime > 0
                         ? `last progress ${Math.round((Date.now() - lastProgressMtime) / 1000)}s ago`
                         : 'no progress received';
+
+                    // レスポンスファイルの存在チェック（メトリクス用）
+                    let responseFileExists = false;
+                    try {
+                        await fs.promises.access(responsePath, fs.constants.F_OK);
+                        responseFileExists = true;
+                    } catch { /* not found */ }
+
                     settled = true;
                     cleanup();
 
-                    // タイムアウトしたレスポンスファイルがあれば削除
-                    fs.promises.access(responsePath, fs.constants.F_OK)
-                        .then(() => fs.promises.unlink(responsePath))
-                        .then(() => logDebug('FileIpc: cleaned up timed-out response file'))
-                        .catch(() => { /* file doesn't exist, OK */ });
+                    // ログ強化: logWarn でメトリクス出力
+                    logWarn(`FileIpc: waitForResponse TIMEOUT — elapsed=${totalElapsedSec}s, timeout=${timeoutMs}ms, ${progressInfo}, responseFileExists=${responseFileExists}, path=${responsePath}`);
 
-                    reject(new IpcTimeoutError(`FileIpc: response timeout (${timeoutMs}ms, ${totalElapsed}) — file never appeared at ${responsePath}`));
+                    // タイムアウトしたレスポンスファイルがあれば削除
+                    if (responseFileExists) {
+                        try {
+                            await fs.promises.unlink(responsePath);
+                            logDebug('FileIpc: cleaned up timed-out response file');
+                        } catch { /* ignore */ }
+                    }
+
+                    reject(new IpcTimeoutError(`FileIpc: response timeout (${timeoutMs}ms, ${progressInfo}) — file never appeared at ${responsePath}`));
                 }
             }, POLL_INTERVAL_MS);
         });
     }
 
-    /** 古い IPC ファイルをクリーンアップ（tmp_* は即時、req_* は5分後） */
+    // -----------------------------------------------------------------
+    // stale レスポンスリカバリー
+    // -----------------------------------------------------------------
+
+    /**
+     * 起動時に未回収のレスポンスファイルを検出して返却する。
+     * ファイルは削除せずに返却し、呼び出し元が処理後に明示的に削除する。
+     */
+    async recoverStaleResponses(): Promise<StaleResponse[]> {
+        const staleResponses: StaleResponse[] = [];
+        try {
+            const files = await fs.promises.readdir(this.ipcDir);
+            for (const f of files) {
+                // req_*_response.json or req_*_response.md パターンにマッチ
+                const match = f.match(/^(req_\d+_[a-f0-9]+)_response\.(json|md)$/);
+                if (!match) { continue; }
+
+                const requestId = match[1];
+                const format = match[2] as 'json' | 'md';
+                const fp = path.join(this.ipcDir, f);
+
+                try {
+                    const content = await fs.promises.readFile(fp, 'utf-8');
+                    if (content.trim().length === 0) {
+                        logDebug(`FileIpc: skipping empty stale response: ${f}`);
+                        continue;
+                    }
+                    staleResponses.push({ requestId, content, format, filePath: fp });
+                    logWarn(`FileIpc: found stale response: ${f} (${content.length} chars)`);
+                } catch (e) {
+                    logDebug(`FileIpc: failed to read stale response ${f}: ${e}`);
+                }
+            }
+        } catch (e) {
+            logDebug(`FileIpc: recoverStaleResponses readdir failed: ${e}`);
+        }
+        return staleResponses;
+    }
+
+    /** stale レスポンスファイルを安全に削除する */
+    async cleanupStaleResponse(filePath: string): Promise<void> {
+        try {
+            await fs.promises.unlink(filePath);
+            logDebug(`FileIpc: cleaned up stale response: ${path.basename(filePath)}`);
+        } catch (e) {
+            logDebug(`FileIpc: failed to clean up stale response: ${e}`);
+        }
+    }
+
+    // -----------------------------------------------------------------
+    // ファイルクリーンアップ
+    // -----------------------------------------------------------------
+
+    /**
+     * 古い IPC ファイルをクリーンアップ。
+     * - tmp_* は 30秒以上で削除
+     * - req_*_progress.json は 2分以上で削除
+     * - req_*_response.* は 10分以上で削除（閾値引き上げ）
+     * - その他は 5分以上で削除
+     * - activeRequests に含まれるファイルはスキップ（誤削除防止）
+     */
     async cleanupOldFiles(): Promise<void> {
         try {
             const files = await fs.promises.readdir(this.ipcDir);
@@ -232,6 +333,17 @@ export class FileIpc {
             for (const f of files) {
                 const fp = path.join(this.ipcDir, f);
                 try {
+                    // activeRequests 保護: 待機中のリクエストに関連するファイルはスキップ
+                    let isActive = false;
+                    for (const activeId of this.activeRequests) {
+                        if (f.startsWith(activeId)) {
+                            logDebug(`FileIpc: skipping active request file: ${f}`);
+                            isActive = true;
+                            break;
+                        }
+                    }
+                    if (isActive) { continue; }
+
                     const stat = await fs.promises.stat(fp);
                     const ageMs = now - stat.mtimeMs;
 
@@ -249,8 +361,15 @@ export class FileIpc {
                         continue;
                     }
 
-                    // その他: 5分以上前のファイル
-                    if (ageMs > 5 * 60 * 1000) {
+                    // req_*_response.*: 10分以上で削除（閾値引き上げで安全性向上）
+                    if (f.includes('_response.') && ageMs > 10 * 60 * 1000) {
+                        await fs.promises.unlink(fp);
+                        logDebug(`FileIpc: cleaned up old response file ${f}`);
+                        continue;
+                    }
+
+                    // その他（response 以外）: 5分以上前のファイル
+                    if (!f.includes('_response.') && ageMs > 5 * 60 * 1000) {
                         await fs.promises.unlink(fp);
                         logDebug(`FileIpc: cleaned up old file ${f}`);
                     }
