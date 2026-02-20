@@ -142,6 +142,313 @@ export async function enqueueMessage(
 // メッセージハンドラ
 // ---------------------------------------------------------------------------
 
+/**
+ * 返信コンテキストを取得してテキストに付加する。
+ */
+async function resolveReplyContext(channel: TextChannel, text: string, messageRef?: { messageId?: string }): Promise<string> {
+    if (!messageRef?.messageId) { return text; }
+    try {
+        const refMsg = await channel.messages.fetch(messageRef.messageId);
+        if (!refMsg) { return text; }
+
+        const refContent = refMsg.content?.trim() || '';
+        const refAuthor = refMsg.author?.tag ?? '不明';
+        let embedText = '';
+        if (refMsg.embeds && refMsg.embeds.length > 0) {
+            const parts: string[] = [];
+            for (const embed of refMsg.embeds) {
+                if (embed.title) { parts.push(embed.title); }
+                if (embed.description) { parts.push(embed.description); }
+                if (embed.fields && embed.fields.length > 0) {
+                    for (const field of embed.fields) {
+                        parts.push(`${field.name}: ${field.value}`);
+                    }
+                }
+            }
+            embedText = parts.join('\n');
+        }
+
+        const combinedContent = [refContent, embedText].filter(Boolean).join('\n\n');
+        if (combinedContent) {
+            logDebug(`handleDiscordMessage: reply detected, referenced message from ${refAuthor} (content=${refContent.length} chars, embeds=${embedText.length} chars)`);
+            return `## 返信先メッセージ（${refAuthor} の発言）\n${combinedContent}\n\n## 上記メッセージに対する指示\n${text}`;
+        }
+    } catch (e) {
+        logWarn(`handleDiscordMessage: failed to fetch referenced message: ${e instanceof Error ? e.message : e}`);
+    }
+    return text;
+}
+
+/**
+ * CDP 接続を取得する。CdpPool 使用時は acquire、従来モードは直接接続。
+ * 接続失敗時は null を返し、呼び出し元でエラー通知する。
+ */
+async function acquireCdpConnection(
+    ctx: BridgeContext,
+    channel: TextChannel,
+    wsNameFromCategory: string | undefined,
+    fileIpc: FileIpc,
+): Promise<{ cdp: CdpBridge; autoLaunched: boolean } | null> {
+    const { cdp, cdpPool } = ctx;
+    const useCdpPool = !!cdpPool;
+
+    if (useCdpPool && cdpPool) {
+        try {
+            const activeCdp = await cdpPool.acquire(wsNameFromCategory || '', async (wsName) => {
+                try {
+                    await channel.sendTyping();
+                    await channel.send({ embeds: [buildEmbed(`🚀 ワークスペース "${wsName}" を起動中です。しばらくお待ちください...`, EmbedColor.Info)] });
+                } catch (e) { logDebug(`handleDiscordMessage: failed to react: ${e}`); }
+            });
+            logDebug(`handleDiscordMessage: acquired CdpBridge from pool for workspace "${wsNameFromCategory || 'default'}"`);
+            return { cdp: activeCdp, autoLaunched: false };
+        } catch (e) {
+            logError(`handleDiscordMessage: failed to acquire CdpBridge for workspace "${wsNameFromCategory}"`, e);
+            await channel.send({ embeds: [buildEmbed(`⚠️ ワークスペース "${wsNameFromCategory}" への接続に失敗しました: ${sanitizeErrorForDiscord(e instanceof Error ? e.message : String(e))}`, EmbedColor.Warning)] });
+            return null;
+        }
+    }
+
+    const activeCdp = cdp!;
+    if (!activeCdp.getActiveTargetTitle()) {
+        try { await activeCdp.connect(); } catch (e) {
+            logDebug(`handleDiscordMessage: pre-connect for instance title failed: ${e instanceof Error ? e.message : e}`);
+        }
+    }
+
+    // ワークスペースカテゴリーから自動切替（CdpPool未使用時のみ）
+    if (wsNameFromCategory) {
+        const result = await resolveWorkspace(activeCdp, wsNameFromCategory, channel, fileIpc);
+        if (!result) { return null; }
+        return { cdp: result.cdp, autoLaunched: result.autoLaunched };
+    }
+    return { cdp: activeCdp, autoLaunched: false };
+}
+
+/**
+ * Plan プロンプトを Antigravity に送信し、JSON レスポンスをパースして Plan を返す。
+ * パース失敗時は null を返す（呼び出し元でフォールバック通知する）。
+ */
+async function generatePlan(
+    activeCdp: CdpBridge,
+    autoLaunched: boolean,
+    fileIpc: FileIpc,
+    channel: TextChannel,
+    text: string,
+    intent: ChannelIntent,
+    channelName: string,
+    attachmentPaths: string[] | undefined,
+    extensionPath: string | undefined,
+    resolvedWsPath: string | undefined,
+): Promise<{ plan: Plan; guild: typeof import('discord.js').Guild.prototype | null } | null> {
+    const { requestId, responsePath } = fileIpc.createRequestId();
+    const ipcDir = fileIpc.getIpcDir();
+    const progressPath = fileIpc.createProgressPath(requestId);
+    const { prompt: planPrompt, tempFiles } = buildPlanPrompt(
+        text || '（添付ファイルを確認してください）', intent, channelName,
+        responsePath, attachmentPaths, extensionPath, ipcDir, resolvedWsPath, progressPath,
+    );
+    logDebug('handleDiscordMessage: sending plan prompt via CDP...');
+
+    // typing indicator 開始
+    const typingInterval = setInterval(async () => {
+        try { await channel.sendTyping(); } catch (e) { logDebug(`handleDiscordMessage: sendTyping failed: ${e}`); }
+    }, 8_000);
+    try { await channel.sendTyping(); } catch (e) { logDebug(`handleDiscordMessage: sendTyping failed: ${e}`); }
+
+    let planResponse: string;
+    try {
+        // CDP でプロンプト送信（自動起動直後は UI 初期化待ちのためリトライ）
+        const maxRetries = autoLaunched ? 3 : 1;
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                if (attempt > 1) {
+                    logDebug(`handleDiscordMessage: retrying sendPrompt (attempt ${attempt}/${maxRetries})...`);
+                    await new Promise(r => setTimeout(r, 5_000));
+                }
+                await activeCdp.sendPrompt(planPrompt);
+                break;
+            } catch (retryErr) {
+                if (retryErr instanceof CascadePanelError && attempt < maxRetries) {
+                    logWarn(`handleDiscordMessage: CascadePanelError on attempt ${attempt}, will retry...`);
+                    continue;
+                }
+                throw retryErr;
+            }
+        }
+        logDebug('handleDiscordMessage: prompt sent, waiting for file response...');
+
+        // 伝令完了 → 計画生成中ステータス
+        try {
+            await channel.send({ embeds: [buildEmbed('✅ 伝令完了。計画を練っています...', EmbedColor.Success)] });
+        } catch (ackErr) {
+            logDebug(`handleDiscordMessage: failed to send plan-generation ack: ${ackErr}`);
+        }
+
+        // 計画生成中の進捗報告
+        let lastPlanProgress = '';
+        const planProgressInterval = setInterval(async () => {
+            try {
+                const progress = await fileIpc.readProgress(progressPath);
+                if (progress) {
+                    const currentContent = JSON.stringify(progress);
+                    if (currentContent !== lastPlanProgress) {
+                        lastPlanProgress = currentContent;
+                        const percentStr = progress.percent !== undefined ? ` (${progress.percent}%)` : '';
+                        const detail = progress.detail ? `\n> ${progress.detail}` : '';
+                        await channel.send({ embeds: [buildEmbed(`⏳ ${progress.status || '処理中...'}${percentStr}${detail}`, EmbedColor.Progress)] });
+                    }
+                }
+            } catch { /* ignore */ }
+        }, 3_000);
+
+        const responseTimeout = getResponseTimeout();
+        try {
+            planResponse = await fileIpc.waitForResponse(responsePath, responseTimeout);
+        } finally {
+            clearInterval(planProgressInterval);
+            fileIpc.cleanupProgress(progressPath).catch(() => { });
+        }
+    } finally {
+        clearInterval(typingInterval);
+        for (const f of tempFiles) {
+            try { fs.unlinkSync(f); logDebug(`handleDiscordMessage: cleaned up temp file: ${f}`); } catch { /* ignore */ }
+        }
+    }
+    logDebug(`handleDiscordMessage: plan response received(${planResponse.length} chars)`);
+
+    // パース
+    logDebug(`handleDiscordMessage: raw plan response: ${planResponse.substring(0, 200)} `);
+    const planOutput = parsePlanJson(planResponse);
+    if (!planOutput) {
+        logError('handleDiscordMessage: plan JSON parse failed');
+        const formatted = FileIpc.extractResult(planResponse);
+        const isFormatted = formatted !== planResponse;
+        const warningHeader = '⚠️ Antigravity からの応答を解析できませんでした。';
+        if (isFormatted) {
+            await channel.send({ embeds: [buildEmbed(`${warningHeader}\n応答内容:\n${formatted}`, EmbedColor.Warning)] });
+        } else {
+            const preview = planResponse.substring(0, 800);
+            await channel.send({ embeds: [buildEmbed(`${warningHeader}\n応答:\n\`\`\`\n${preview}\n\`\`\``, EmbedColor.Warning)] });
+        }
+        return null;
+    }
+    logDebug(`handleDiscordMessage: plan parsed — plan_id = ${planOutput.plan_id}, cron = ${planOutput.cron} `);
+
+    const plan = buildPlan(planOutput, channel.id, channel.id);
+    if (attachmentPaths && attachmentPaths.length > 0) {
+        plan.attachment_paths = attachmentPaths;
+    }
+    return { plan, guild: channel.guild };
+}
+
+/**
+ * 確認フロー: choice_mode に応じてユーザーの承認を待つ。
+ * 承認されたら true、却下されたら false を返す。
+ */
+async function handleConfirmation(
+    plan: Plan,
+    channel: TextChannel,
+    bot: DiscordBot,
+): Promise<boolean> {
+    const choiceMode = plan.choice_mode || 'none';
+    const confirmMsg = buildConfirmMessage(plan);
+
+    if (choiceMode === 'all') {
+        await channel.send({ embeds: [buildEmbed(confirmMsg, EmbedColor.Info)] });
+        plan.status = 'active';
+        return true;
+    }
+    if (choiceMode === 'multi') {
+        const choiceCount = countChoiceItems(plan.discord_templates.confirm);
+        const sentMsg = await channel.send({ embeds: [buildEmbed(confirmMsg, EmbedColor.Warning)] });
+        const choices = await bot.waitForMultiChoice(sentMsg, choiceCount);
+        if (choices.length === 0) {
+            await channel.send({ embeds: [buildEmbed('❌ 却下しました。', EmbedColor.Error)] });
+            return false;
+        }
+        if (choices[0] === -1) {
+            await channel.send({ embeds: [buildEmbed('✅ 全て選択しました。', EmbedColor.Success)] });
+        } else {
+            await channel.send({ embeds: [buildEmbed(`✅ 選択肢 ${choices.join(', ')} を選択しました。`, EmbedColor.Success)] });
+        }
+        plan.status = 'active';
+        return true;
+    }
+    if (choiceMode === 'single') {
+        const choiceCount = countChoiceItems(plan.discord_templates.confirm);
+        const sentMsg = await channel.send({ embeds: [buildEmbed(confirmMsg, EmbedColor.Warning)] });
+        const choice = await bot.waitForChoice(sentMsg, choiceCount);
+        if (choice === -1) {
+            await channel.send({ embeds: [buildEmbed('❌ 却下しました。', EmbedColor.Error)] });
+            return false;
+        }
+        await channel.send({ embeds: [buildEmbed(`✅ 選択肢 ${choice} を承認しました。`, EmbedColor.Success)] });
+        plan.status = 'active';
+        return true;
+    }
+    // choiceMode === 'none'
+    const sentMsg = await channel.send({ embeds: [buildEmbed(confirmMsg, EmbedColor.Warning)] });
+    const confirmed = await bot.waitForConfirmation(sentMsg);
+    if (!confirmed) {
+        await channel.send({ embeds: [buildEmbed('❌ 却下しました。', EmbedColor.Error)] });
+        return false;
+    }
+    plan.status = 'active';
+    return true;
+}
+
+/**
+ * Plan を即時実行キューに追加、または定期スケジュールとして登録する。
+ */
+async function dispatchPlan(
+    ctx: BridgeContext,
+    plan: Plan,
+    channel: TextChannel,
+    activeCdp: CdpBridge,
+    wsNameFromCategory: string | undefined,
+    guild: typeof import('discord.js').Guild.prototype | null,
+): Promise<void> {
+    const { bot, planStore, executor, executorPool, scheduler } = ctx;
+
+    if (plan.cron === null) {
+        const wsNameForImmediate = wsNameFromCategory || activeCdp.getActiveWorkspaceName() || undefined;
+        if (wsNameForImmediate) { plan.workspace_name = wsNameForImmediate; }
+        plan.notify_channel_id = channel.id;
+        logDebug(`handleDiscordMessage: enqueueing immediate execution for plan ${plan.plan_id} (not persisted, workspace=${wsNameForImmediate || 'default'})`);
+        if (executorPool) {
+            await executorPool.enqueueImmediate(wsNameForImmediate || '', plan);
+        } else if (executor) {
+            await executor.enqueueImmediate(plan);
+        }
+    } else {
+        logDebug(`handleDiscordMessage: registering scheduled plan ${plan.plan_id} with cron = ${plan.cron} `);
+        if (guild && bot) {
+            const prefix = cronToPrefix(plan.cron!);
+            const baseName = plan.human_summary || plan.plan_id;
+            const chName = `${prefix} ${baseName} `;
+            const wsName = wsNameFromCategory || activeCdp.getActiveWorkspaceName() || undefined;
+            if (wsName) { plan.workspace_name = wsName; }
+            const planChannelId = await bot.createPlanChannel(guild.id, chName, wsName);
+            if (planChannelId) {
+                plan.channel_id = planChannelId;
+                plan.notify_channel_id = planChannelId;
+                logDebug(`handleDiscordMessage: created plan channel ${planChannelId} for plan ${plan.plan_id} (workspace=${wsName || 'default'})`);
+            }
+        }
+
+        planStore!.add(plan);
+        scheduler!.register(plan);
+        const channelMention = plan.channel_id ? `<#${plan.channel_id}> ` : '#schedule';
+        await channel.send({ embeds: [buildEmbed(`📅 定期実行を登録しました: \`${plan.cron}\` (${plan.timezone})\n結果は ${channelMention} チャンネルに通知されます。`, EmbedColor.Success)] });
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// メインディスパッチャー
+// ---------------------------------------------------------------------------
+
 export async function handleDiscordMessage(
     ctx: BridgeContext,
     message: Message,
@@ -153,9 +460,7 @@ export async function handleDiscordMessage(
 
     const channel = message.channel as TextChannel;
 
-    // -----------------------------------------------------------------
     // セキュリティ: 許可ユーザーID制限
-    // -----------------------------------------------------------------
     const authResult = isUserAllowed(message.author.id);
     if (!authResult.allowed) {
         logWarn(`handleDiscordMessage: user ${message.author.tag} (${message.author.id}) not allowed — ${authResult.reason}`);
@@ -163,9 +468,7 @@ export async function handleDiscordMessage(
         return;
     }
 
-    // -----------------------------------------------------------------
     // セキュリティ: メッセージ長制限
-    // -----------------------------------------------------------------
     const maxLen = getMaxMessageLength();
     if (maxLen > 0 && text.length > maxLen) {
         logWarn(`handleDiscordMessage: message too long (${text.length} > ${maxLen}) from ${message.author.tag}`);
@@ -173,106 +476,36 @@ export async function handleDiscordMessage(
         return;
     }
 
+    // 返信コンテキスト解決
+    text = await resolveReplyContext(channel, text, message.reference ?? undefined);
 
-    // -----------------------------------------------------------------
-    // 返信コンテキスト: リプライ先メッセージの内容を取得してプロンプトに付加
-    // -----------------------------------------------------------------
-    if (message.reference?.messageId) {
-        try {
-            const refMsg = await channel.messages.fetch(message.reference.messageId);
-            if (refMsg) {
-                const refContent = refMsg.content?.trim() || '';
-                const refAuthor = refMsg.author?.tag ?? '不明';
-
-                // 返信先の Embed 内容も取得
-                let embedText = '';
-                if (refMsg.embeds && refMsg.embeds.length > 0) {
-                    const parts: string[] = [];
-                    for (const embed of refMsg.embeds) {
-                        if (embed.title) { parts.push(embed.title); }
-                        if (embed.description) { parts.push(embed.description); }
-                        if (embed.fields && embed.fields.length > 0) {
-                            for (const field of embed.fields) {
-                                parts.push(`${field.name}: ${field.value}`);
-                            }
-                        }
-                    }
-                    embedText = parts.join('\n');
-                }
-
-                const combinedContent = [refContent, embedText].filter(Boolean).join('\n\n');
-                if (combinedContent) {
-                    logDebug(`handleDiscordMessage: reply detected, referenced message from ${refAuthor} (content=${refContent.length} chars, embeds=${embedText.length} chars)`);
-                    text = `## 返信先メッセージ（${refAuthor} の発言）\n${combinedContent}\n\n## 上記メッセージに対する指示\n${text}`;
-                }
-            }
-        } catch (e) {
-            logWarn(`handleDiscordMessage: failed to fetch referenced message: ${e instanceof Error ? e.message : e}`);
-        }
-    }
-
-    // -----------------------------------------------------------------
-    // 計画生成: Plan プロンプトを Antigravity に送信
-    // -----------------------------------------------------------------
-    const wsNameFromCategory = DiscordBot.resolveWorkspaceFromChannel(channel);
-    const { bot, cdp, cdpPool, fileIpc, planStore, executor, executorPool, scheduler } = ctx;
+    // 依存モジュールの検証
+    const wsNameFromCategory = DiscordBot.resolveWorkspaceFromChannel(channel) ?? undefined;
+    const { bot, fileIpc, planStore, scheduler, cdp, cdpPool, executor } = ctx;
     if (!fileIpc || !planStore || !scheduler || !bot) {
         await channel.send({ embeds: [buildEmbed('⚠️ Bridge の内部モジュールが初期化されていません。', EmbedColor.Warning)] });
         return;
     }
-    // CdpPool/ExecutorPool がある場合はそちらを優先、なければ従来の cdp/executor を使用
     const useCdpPool = !!cdpPool;
     if (!useCdpPool && (!cdp || !executor)) {
         await channel.send({ embeds: [buildEmbed('⚠️ Antigravity との接続が初期化されていません。', EmbedColor.Warning)] });
         return;
     }
+
     try {
         logDebug(`handleDiscordMessage: processing #${channelName} (intent = ${intent}) message: (${text.length} chars)`);
 
         // CDP 接続の取得
-        let activeCdp: CdpBridge;
-        let autoLaunched = false;
+        const connResult = await acquireCdpConnection(ctx, channel, wsNameFromCategory, fileIpc);
+        if (!connResult) { return; }
+        const { cdp: activeCdp, autoLaunched } = connResult;
 
-        if (useCdpPool && cdpPool) {
-            try {
-                activeCdp = await cdpPool.acquire(wsNameFromCategory || '', async (wsName) => {
-                    try {
-                        await channel.sendTyping();
-                        await channel.send({ embeds: [buildEmbed(`🚀 ワークスペース "${wsName}" を起動中です。しばらくお待ちください...`, EmbedColor.Info)] });
-                    } catch (e) { logDebug(`handleDiscordMessage: failed to react: ${e}`); }
-                });
-                logDebug(`handleDiscordMessage: acquired CdpBridge from pool for workspace "${wsNameFromCategory || 'default'}"`);
-            } catch (e) {
-                logError(`handleDiscordMessage: failed to acquire CdpBridge for workspace "${wsNameFromCategory}"`, e);
-                await channel.send({ embeds: [buildEmbed(`⚠️ ワークスペース "${wsNameFromCategory}" への接続に失敗しました: ${sanitizeErrorForDiscord(e instanceof Error ? e.message : String(e))}`, EmbedColor.Warning)] });
-                return;
-            }
-        } else {
-            activeCdp = cdp!;
-            // 従来の事前接続
-            if (!activeCdp.getActiveTargetTitle()) {
-                try {
-                    await activeCdp.connect();
-                } catch (e) {
-                    logDebug(`handleDiscordMessage: pre-connect for instance title failed: ${e instanceof Error ? e.message : e}`);
-                }
-            }
-
-            // ワークスペースカテゴリーから自動切替（CdpPool未使用時のみ）
-            if (wsNameFromCategory) {
-                const result = await resolveWorkspace(activeCdp, wsNameFromCategory, channel, fileIpc);
-                if (!result) { return; } // 切替失敗
-                activeCdp = result.cdp;
-                autoLaunched = result.autoLaunched;
-            }
-        }
-
+        // ACK 送信（モデル/モード情報付き）
         try {
             const [currentMode, currentModel] = await Promise.all([
                 getCurrentMode(activeCdp.ops).catch(() => null),
                 getCurrentModel(activeCdp.ops).catch(() => null),
             ]);
-            // Embed フッター用にモデル名を同期
             if (currentModel) { ctx.bot?.setModelName(currentModel); }
             const parts = [currentMode, currentModel].filter(Boolean);
             const ackPrefix = parts.length > 0 ? `[${parts.join(' - ')}]` : '';
@@ -281,154 +514,38 @@ export async function handleDiscordMessage(
             logError('handleDiscordMessage: failed to send acknowledgement', sendErr);
         }
 
-        // ファイルベース IPC: リクエストIDとレスポンスパスを生成
-        const { requestId, responsePath } = fileIpc.createRequestId();
-
         // 添付ファイルのダウンロード
         let attachmentPaths: string[] | undefined;
-        const storageBase = fileIpc.getStoragePath();
         if (message.attachments.size > 0) {
             logDebug(`handleDiscordMessage: downloading ${message.attachments.size} attachment(s)...`);
-            const downloaded = await downloadAttachments(message.attachments, storageBase, requestId);
+            const downloaded = await downloadAttachments(message.attachments, fileIpc.getStoragePath(), fileIpc.createRequestId().requestId);
             if (downloaded.length > 0) {
                 attachmentPaths = downloaded.map(d => d.localPath);
                 logDebug(`handleDiscordMessage: ${downloaded.length} attachment(s) saved`);
             }
         }
-
-        // ワークスペースパス解決（MEMORY.md 用）
         const resolvedWsPath = wsNameFromCategory ? getWorkspacePaths()[wsNameFromCategory] : undefined;
 
-        // Plan プロンプト生成（進捗報告パスも渡す）
-        const ipcDir = fileIpc.getIpcDir();
-        const progressPath = fileIpc.createProgressPath(requestId);
-        const { prompt: planPrompt, tempFiles } = buildPlanPrompt(text || '（添付ファイルを確認してください）', intent, channelName, responsePath, attachmentPaths, ctx.extensionPath, ipcDir, resolvedWsPath, progressPath);
-        logDebug('handleDiscordMessage: sending plan prompt via CDP...');
-
-        // typing indicator 開始
-        const typingInterval = setInterval(async () => {
-            try { await channel.sendTyping(); } catch (e) { logDebug(`handleDiscordMessage: sendTyping failed: ${e}`); }
-        }, 8_000);
-        try { await channel.sendTyping(); } catch (e) { logDebug(`handleDiscordMessage: sendTyping failed: ${e}`); }
-
-        let planResponse: string;
-        try {
-            // CDP でプロンプト送信（自動起動直後は UI 初期化待ちのためリトライ）
-            const maxRetries = autoLaunched ? 3 : 1;
-            for (let attempt = 1; attempt <= maxRetries; attempt++) {
-                try {
-                    if (attempt > 1) {
-                        logDebug(`handleDiscordMessage: retrying sendPrompt (attempt ${attempt}/${maxRetries})...`);
-                        await new Promise(r => setTimeout(r, 5_000));
-                    }
-                    await activeCdp.sendPrompt(planPrompt);
-                    break;
-                } catch (retryErr) {
-                    if (retryErr instanceof CascadePanelError && attempt < maxRetries) {
-                        logWarn(`handleDiscordMessage: CascadePanelError on attempt ${attempt}, will retry...`);
-                        continue;
-                    }
-                    throw retryErr;
-                }
-            }
-            logDebug('handleDiscordMessage: prompt sent, waiting for file response...');
-
-            // 伝令完了 → 計画生成中ステータスを送信
-            try {
-                await channel.send({ embeds: [buildEmbed('✅ 伝令完了。計画を練っています...', EmbedColor.Success)] });
-            } catch (ackErr) {
-                logDebug(`handleDiscordMessage: failed to send plan-generation ack: ${ackErr}`);
-            }
-
-            // 計画生成中の進捗報告（進捗ファイルの変更を監視して Discord に通知）
-            let lastPlanProgress = '';
-            const planProgressInterval = setInterval(async () => {
-                try {
-                    const progress = await fileIpc.readProgress(progressPath);
-                    if (progress) {
-                        const currentContent = JSON.stringify(progress);
-                        if (currentContent !== lastPlanProgress) {
-                            lastPlanProgress = currentContent;
-                            const percentStr = progress.percent !== undefined ? ` (${progress.percent}%)` : '';
-                            const detail = progress.detail ? `\n> ${progress.detail}` : '';
-                            await channel.send({ embeds: [buildEmbed(`⏳ ${progress.status || '処理中...'}${percentStr}${detail}`, EmbedColor.Progress)] });
-                        }
-                    }
-                } catch { /* ignore */ }
-            }, 3_000);
-
-            // ファイル経由でレスポンスを待機
-            const responseTimeout = getResponseTimeout();
-            try {
-                planResponse = await fileIpc.waitForResponse(responsePath, responseTimeout);
-            } finally {
-                clearInterval(planProgressInterval);
-                fileIpc.cleanupProgress(progressPath).catch(() => { });
-            }
-        } finally {
-            clearInterval(typingInterval);
-            // 一時ファイルのクリーンアップ
-            for (const f of tempFiles) {
-                try { fs.unlinkSync(f); logDebug(`handleDiscordMessage: cleaned up temp file: ${f}`); } catch { /* ignore */ }
-            }
-        }
-        logDebug(`handleDiscordMessage: plan response received(${planResponse.length} chars)`);
-
-        // パース
-        logDebug(`handleDiscordMessage: raw plan response: ${planResponse.substring(0, 200)} `);
-        const planOutput = parsePlanJson(planResponse);
-        if (!planOutput) {
-            logError('handleDiscordMessage: plan JSON parse failed');
-            // 生JSONをそのまま表示するのではなく、読みやすい形式に変換してフォールバック
-            const formatted = FileIpc.extractResult(planResponse);
-            const isFormatted = formatted !== planResponse;
-            const warningHeader = '⚠️ Antigravity からの応答を解析できませんでした。';
-            if (isFormatted) {
-                // 複雑なJSONを展開できた場合
-                await channel.send({
-                    embeds: [buildEmbed(
-                        `${warningHeader}\n応答内容:\n${formatted}`,
-                        EmbedColor.Warning
-                    )]
-                });
-            } else {
-                // 展開できなかった場合のフォールバック（Discordメッセージ文字数制限も考慮）
-                const preview = planResponse.substring(0, 800);
-                await channel.send({
-                    embeds: [buildEmbed(
-                        `${warningHeader}\n応答:\n\`\`\`\n${preview}\n\`\`\``,
-                        EmbedColor.Warning
-                    )]
-                });
-            }
-            return;
-        }
-        logDebug(`handleDiscordMessage: plan parsed — plan_id = ${planOutput.plan_id}, cron = ${planOutput.cron} `);
-
-        // 通知先の決定
-        const guild = message.guild;
-        const plan = buildPlan(planOutput, channel.id, channel.id);
-
-        // 添付ファイルパスを Plan に引き継ぐ
-        if (attachmentPaths && attachmentPaths.length > 0) {
-            plan.attachment_paths = attachmentPaths;
-        }
+        // Plan 生成
+        const result = await generatePlan(
+            activeCdp, autoLaunched, fileIpc, channel, text, intent, channelName,
+            attachmentPaths, ctx.extensionPath, resolvedWsPath,
+        );
+        if (!result) { return; }
+        const { plan, guild } = result;
 
         // 計画詳細を Discord に表示
         try {
-            const summaryText = plan.action_summary
-                || plan.discord_templates.ack
-                || plan.human_summary
+            const summaryText = plan.action_summary || plan.discord_templates.ack || plan.human_summary
                 || plan.prompt.substring(0, 100) + (plan.prompt.length > 100 ? '...' : '');
             const execType = plan.cron ? `定期: \`${plan.cron}\`` : '即時実行';
             const confirmText = plan.requires_confirmation ? `要確認 (${plan.choice_mode || 'none'})` : '自動実行';
-
-            const detailLines = [
-                `📋 **実行計画**`,
-                `> **📝 概要:** ${summaryText}`,
-                `> **⏱️ 実行:** ${execType}　|　**🔐 確認:** ${confirmText}`,
-            ];
-            await channel.send({ embeds: [buildEmbed(detailLines.join('\n'), EmbedColor.Info)] });
+            await channel.send({
+                embeds: [buildEmbed(
+                    `📋 **実行計画**\n> **📝 概要:** ${summaryText}\n> **⏱️ 実行:** ${execType}　|　**🔐 確認:** ${confirmText}`,
+                    EmbedColor.Info,
+                )]
+            });
         } catch (detailErr) {
             logDebug(`handleDiscordMessage: failed to send plan detail: ${detailErr}`);
         }
@@ -438,86 +555,14 @@ export async function handleDiscordMessage(
             await channel.send({ embeds: [buildEmbed(plan.discord_templates.ack, EmbedColor.Info)] });
         }
 
-        // -----------------------------------------------------------------
         // 確認フロー
-        // -----------------------------------------------------------------
         if (plan.requires_confirmation) {
-            const choiceMode = plan.choice_mode || 'none';
-            const confirmMsg = buildConfirmMessage(plan);
-
-            if (choiceMode === 'all') {
-                await channel.send({ embeds: [buildEmbed(confirmMsg, EmbedColor.Info)] });
-                plan.status = 'active';
-            } else if (choiceMode === 'multi') {
-                const choiceCount = countChoiceItems(plan.discord_templates.confirm);
-                const sentMsg = await channel.send({ embeds: [buildEmbed(confirmMsg, EmbedColor.Warning)] });
-                const choices = await bot.waitForMultiChoice(sentMsg, choiceCount);
-                if (choices.length === 0) {
-                    await channel.send({ embeds: [buildEmbed('❌ 却下しました。', EmbedColor.Error)] });
-                    return;
-                }
-                if (choices[0] === -1) {
-                    await channel.send({ embeds: [buildEmbed('✅ 全て選択しました。', EmbedColor.Success)] });
-                } else {
-                    await channel.send({ embeds: [buildEmbed(`✅ 選択肢 ${choices.join(', ')} を選択しました。`, EmbedColor.Success)] });
-                }
-                plan.status = 'active';
-            } else if (choiceMode === 'single') {
-                const choiceCount = countChoiceItems(plan.discord_templates.confirm);
-                const sentMsg = await channel.send({ embeds: [buildEmbed(confirmMsg, EmbedColor.Warning)] });
-                const choice = await bot.waitForChoice(sentMsg, choiceCount);
-                if (choice === -1) {
-                    await channel.send({ embeds: [buildEmbed('❌ 却下しました。', EmbedColor.Error)] });
-                    return;
-                }
-                await channel.send({ embeds: [buildEmbed(`✅ 選択肢 ${choice} を承認しました。`, EmbedColor.Success)] });
-                plan.status = 'active';
-            } else {
-                const sentMsg = await channel.send({ embeds: [buildEmbed(confirmMsg, EmbedColor.Warning)] });
-                const confirmed = await bot.waitForConfirmation(sentMsg);
-                if (!confirmed) {
-                    await channel.send({ embeds: [buildEmbed('❌ 却下しました。', EmbedColor.Error)] });
-                    return;
-                }
-                plan.status = 'active';
-            }
+            const confirmed = await handleConfirmation(plan, channel, bot);
+            if (!confirmed) { return; }
         }
 
-        // -----------------------------------------------------------------
         // 即時実行 or 定期登録
-        // -----------------------------------------------------------------
-        if (plan.cron === null) {
-            const wsNameForImmediate = wsNameFromCategory || activeCdp.getActiveWorkspaceName() || undefined;
-            if (wsNameForImmediate) { plan.workspace_name = wsNameForImmediate; }
-            plan.notify_channel_id = channel.id;
-            logDebug(`handleDiscordMessage: enqueueing immediate execution for plan ${plan.plan_id} (not persisted, workspace=${wsNameForImmediate || 'default'})`);
-            if (executorPool) {
-                await executorPool.enqueueImmediate(wsNameForImmediate || '', plan);
-            } else if (executor) {
-                await executor.enqueueImmediate(plan);
-            }
-        } else {
-            logDebug(`handleDiscordMessage: registering scheduled plan ${plan.plan_id} with cron = ${plan.cron} `);
-
-            if (guild && bot) {
-                const prefix = cronToPrefix(plan.cron!);
-                const baseName = plan.human_summary || plan.plan_id;
-                const chName = `${prefix} ${baseName} `;
-                const wsName = wsNameFromCategory || activeCdp.getActiveWorkspaceName() || undefined;
-                if (wsName) { plan.workspace_name = wsName; }
-                const planChannelId = await bot.createPlanChannel(guild.id, chName, wsName);
-                if (planChannelId) {
-                    plan.channel_id = planChannelId;
-                    plan.notify_channel_id = planChannelId;
-                    logDebug(`handleDiscordMessage: created plan channel ${planChannelId} for plan ${plan.plan_id} (workspace=${wsName || 'default'})`);
-                }
-            }
-
-            planStore.add(plan);
-            scheduler.register(plan);
-            const channelMention = plan.channel_id ? `<#${plan.channel_id}> ` : '#schedule';
-            await channel.send({ embeds: [buildEmbed(`📅 定期実行を登録しました: \`${plan.cron}\` (${plan.timezone})\n結果は ${channelMention} チャンネルに通知されます。`, EmbedColor.Success)] });
-        }
+        await dispatchPlan(ctx, plan, channel, activeCdp, wsNameFromCategory, guild);
 
     } catch (e) {
         const errMsg = e instanceof Error ? e.message : String(e);
