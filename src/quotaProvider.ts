@@ -301,7 +301,7 @@ function pingPort(port: number, token: string): Promise<boolean> {
 // GetUserStatus API 呼出
 // ---------------------------------------------------------------------------
 
-async function callGetUserStatus(port: number, csrfToken: string): Promise<any> {
+async function callGetUserStatus(port: number, csrfToken: string): Promise<unknown> {
     return new Promise((resolve, reject) => {
         const data = JSON.stringify({
             metadata: {
@@ -353,31 +353,38 @@ async function callGetUserStatus(port: number, csrfToken: string): Promise<any> 
 // レスポンス解析
 // ---------------------------------------------------------------------------
 
-function parseQuotaResponse(response: any): QuotaData {
+function parseQuotaResponse(response: unknown): QuotaData {
     const models: ModelQuota[] = [];
 
-    if (!response || !response.userStatus) {
+    if (!response || typeof response !== 'object') {
+        logWarn('quotaProvider: invalid response structure');
+        return createDefaultQuotaData();
+    }
+    const res = response as Record<string, unknown>;
+    if (!res.userStatus || typeof res.userStatus !== 'object') {
         logWarn('quotaProvider: invalid response structure');
         return createDefaultQuotaData();
     }
 
-    const status = response.userStatus;
-    const plan = status.planStatus?.planInfo;
+    const status = res.userStatus as Record<string, unknown>;
+    const planStatus = status.planStatus as Record<string, unknown> | undefined;
+    const plan = planStatus?.planInfo as Record<string, unknown> | undefined;
 
     // clientModelConfigs から各モデルの配額を抽出
-    const modelConfigs = status.cascadeModelConfigData?.clientModelConfigs || [];
+    const cascadeData = status.cascadeModelConfigData as Record<string, unknown> | undefined;
+    const modelConfigs = (cascadeData?.clientModelConfigs || []) as Record<string, unknown>[];
 
     for (const config of modelConfigs) {
-        const quotaInfo = config.quotaInfo;
+        const quotaInfo = config.quotaInfo as Record<string, unknown> | undefined;
         if (!quotaInfo) { continue; }
 
-        const remainingFraction = quotaInfo.remainingFraction;
+        const remainingFraction = quotaInfo.remainingFraction as number | undefined;
         const remainingPercentage = remainingFraction !== undefined
             ? remainingFraction * 100
             : 0;
 
         const now = new Date();
-        let resetTime = quotaInfo.resetTime ? new Date(quotaInfo.resetTime) : undefined;
+        let resetTime = quotaInfo.resetTime ? new Date(quotaInfo.resetTime as string | number) : undefined;
         let timeUntilResetFormatted = 'N/A';
 
         if (resetTime && !Number.isNaN(resetTime.getTime())) {
@@ -387,21 +394,22 @@ function parseQuotaResponse(response: any): QuotaData {
             resetTime = undefined;
         }
 
+        const modelOrAlias = config.modelOrAlias as Record<string, unknown> | undefined;
         models.push({
-            name: config.modelOrAlias?.model || 'unknown',
-            displayName: config.label || config.modelOrAlias?.model || 'unknown',
+            name: (modelOrAlias?.model as string) || 'unknown',
+            displayName: (config.label as string) || (modelOrAlias?.model as string) || 'unknown',
             remainingPercentage: Math.round(remainingPercentage),
             usedPercentage: Math.round(100 - remainingPercentage),
             resetTime,
             timeUntilResetFormatted,
             isExhausted: remainingFraction === 0,
-            supportsImages: config.supportsImages,
-            isRecommended: config.isRecommended,
+            supportsImages: config.supportsImages as boolean | undefined,
+            isRecommended: config.isRecommended as boolean | undefined,
         });
     }
 
     // モデルソート（API 推奨順）
-    const modelSorts = status.cascadeModelConfigData?.clientModelSorts || [];
+    const modelSorts = (cascadeData?.clientModelSorts || []) as ModelSortEntry[];
     sortModels(models, modelSorts);
 
     if (models.length === 0) {
@@ -410,9 +418,9 @@ function parseQuotaResponse(response: any): QuotaData {
 
     // PromptCredits
     let promptCredits: PromptCredits | undefined;
-    const credits = status.planStatus?.availablePromptCredits;
+    const credits = planStatus?.availablePromptCredits;
     if (plan && credits !== undefined) {
-        const monthlyLimit = Number(plan.monthlyPromptCredits || 0);
+        const monthlyLimit = Number((plan as Record<string, unknown>).monthlyPromptCredits || 0);
         const available = Number(credits);
         if (monthlyLimit > 0) {
             promptCredits = {
@@ -425,13 +433,18 @@ function parseQuotaResponse(response: any): QuotaData {
 
     return {
         models,
-        accountLevel: status.userTier?.name || plan?.teamsTier || 'Free',
+        accountLevel: (status.userTier as Record<string, unknown> | undefined)?.name as string || (plan as Record<string, unknown> | undefined)?.teamsTier as string || 'Free',
         promptCredits,
         lastUpdated: new Date(),
     };
 }
 
-function sortModels(models: ModelQuota[], modelSorts: any[]): void {
+/** モデルソートエントリの型 */
+interface ModelSortEntry {
+    groups?: Array<{ modelLabels?: string[] }>;
+}
+
+function sortModels(models: ModelQuota[], modelSorts: ModelSortEntry[]): void {
     if (modelSorts.length === 0) { return; }
 
     const sortOrderMap = new Map<string, number>();

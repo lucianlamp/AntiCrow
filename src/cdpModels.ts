@@ -152,7 +152,7 @@ export async function getAvailableModels(
 })()
         `.trim();
 
-        type OpenResult = { success: boolean; currentModel?: string; error?: string; findDebug?: any };
+        type OpenResult = { success: boolean; currentModel?: string; error?: string; findDebug?: Record<string, unknown> };
 
         let openResult: OpenResult | null = null;
 
@@ -243,7 +243,7 @@ export async function getAvailableModels(
 })()
         `.trim();
 
-        const listResult = await ops.evaluateInCascade(listScript) as { items: string[]; debug: any } | string[];
+        const listResult = await ops.evaluateInCascade(listScript) as { items: string[]; debug: Record<string, unknown> } | string[];
 
         let models: string[];
         if (Array.isArray(listResult)) {

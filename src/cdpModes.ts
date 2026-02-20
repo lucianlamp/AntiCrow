@@ -185,7 +185,7 @@ export async function getAvailableModes(
 })()
         `.trim();
 
-        type OpenResult = { success: boolean; currentMode?: string; error?: string; findDebug?: any };
+        type OpenResult = { success: boolean; currentMode?: string; error?: string; findDebug?: Record<string, unknown> };
 
         let openResult: OpenResult | null = null;
 
@@ -277,7 +277,7 @@ export async function getAvailableModes(
 })()
         `.trim();
 
-        const listResult = await ops.evaluateInCascade(listScript) as { items: string[]; debug: any } | string[];
+        const listResult = await ops.evaluateInCascade(listScript) as { items: string[]; debug: Record<string, unknown> } | string[];
 
         let modes: string[];
         if (Array.isArray(listResult)) {
