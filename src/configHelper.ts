@@ -11,6 +11,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import { logDebug, logWarn } from './logger';
+import type { WorkspaceStore } from './workspaceStore';
 
 // ---------------------------------------------------------------------------
 // デフォルト値定数
@@ -153,9 +154,21 @@ export function getArchiveDays(): number {
     return getConfig().get<number>('categoryArchiveDays') ?? DEFAULT_ARCHIVE_DAYS;
 }
 
-/** workspacePaths を取得する */
+/** workspacePaths を取得する（手動設定のみ、非推奨） */
 export function getWorkspacePaths(): Record<string, string> {
     return getConfig().get<Record<string, string>>('workspacePaths') || {};
+}
+
+/**
+ * ワークスペース→フォルダパスのマッピングを解決する。
+ * 優先順位: WorkspaceStore（自動学習）> settings.json（手動設定、非推奨）
+ */
+export function resolveWorkspacePaths(store?: WorkspaceStore): Record<string, string> {
+    const manual = getWorkspacePaths();
+    if (!store) { return manual; }
+    const auto = store.getAll();
+    // 自動学習データを優先し、手動設定をフォールバックとしてマージ
+    return { ...manual, ...auto };
 }
 
 /** clientId を取得する */

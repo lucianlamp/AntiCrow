@@ -1,7 +1,7 @@
 // ---------------------------------------------------------------------------
-// anticrowCustomizer.ts — ANTICROW.md カスタマイズモジュール
+// anticrowCustomizer.ts — SOUL.md カスタマイズモジュール
 // ---------------------------------------------------------------------------
-// ユーザーがカスタマイズ設定ファイル（ANTICROW.md）を安全に更新するための機能。
+// ユーザーがカスタマイズ設定ファイル（SOUL.md）を安全に更新するための機能。
 
 import * as fs from 'fs';
 import * as path from 'path';
@@ -12,10 +12,10 @@ import { logDebug, logWarn, logError } from './logger';
 // Constants
 // -------------------------------------------------------------------------
 
-/** ANTICROW.md のパス（ホームディレクトリ配下） */
+/** SOUL.md のパス（ホームディレクトリ配下） */
 const ANTICROW_DIR = path.join(os.homedir(), '.anticrow');
-const ANTICROW_MD_PATH = path.join(ANTICROW_DIR, 'ANTICROW.md');
-const ANTICROW_BACKUP_PATH = path.join(ANTICROW_DIR, 'ANTICROW.md.bak');
+const ANTICROW_MD_PATH = path.join(ANTICROW_DIR, 'SOUL.md');
+const ANTICROW_BACKUP_PATH = path.join(ANTICROW_DIR, 'SOUL.md.bak');
 
 /** 最大ファイルサイズ（10KB） */
 const MAX_FILE_SIZE_BYTES = 10 * 1024;
@@ -25,7 +25,7 @@ const MAX_FILE_SIZE_BYTES = 10 * 1024;
 // -------------------------------------------------------------------------
 
 /**
- * ANTICROW.md の内容を読み取る。
+ * SOUL.md の内容を読み取る。
  * ファイルが存在しない場合は null を返す。
  */
 export function readAnticrowMd(): string | null {
@@ -41,7 +41,7 @@ export function readAnticrowMd(): string | null {
 }
 
 /**
- * ANTICROW.md を更新する。
+ * SOUL.md を更新する。
  * - 書き込み前にバックアップを作成
  * - ディレクトリが存在しない場合は自動作成
  * - 最大サイズ制限のバリデーション
@@ -105,7 +105,7 @@ export function updateAnticrowMd(
 }
 
 /**
- * ANTICROW.md の特定セクションを更新する。
+ * SOUL.md の特定セクションを更新する。
  * セクションは Markdown の見出し（## セクション名）で識別する。
  * セクションが存在しない場合は末尾に追加する。
  */
@@ -146,7 +146,7 @@ export function updateSection(
 }
 
 /**
- * ANTICROW.md のファイルパスを取得する。
+ * SOUL.md のファイルパスを取得する。
  */
 export function getAnticrowMdPath(): string {
     return ANTICROW_MD_PATH;

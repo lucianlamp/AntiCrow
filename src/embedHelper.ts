@@ -14,6 +14,10 @@ export const EmbedColor = {
     Error: 0xED4245,
     /** 警告・確認 (Yellow) */
     Warning: 0xFEE75C,
+    /** 進捗報告 (Cyan) */
+    Progress: 0x00BEBE,
+    /** 最終レスポンス (Purple) */
+    Response: 0x8D3ED9,
 } as const;
 
 export type EmbedColorValue = (typeof EmbedColor)[keyof typeof EmbedColor];
@@ -26,9 +30,22 @@ export function buildEmbed(
     description: string,
     color: EmbedColorValue = EmbedColor.Info
 ): EmbedBuilder {
+    // Discord は ####（4つ以上の #）をサポートしないため、**太字** 形式に変換
+    const sanitized = normalizeHeadings(description || '');
     return new EmbedBuilder()
-        .setDescription(description || '\u200b')
+        .setDescription(sanitized || '\u200b')
         .setColor(color);
+}
+
+/**
+ * Discord Embed 非対応の見出し記法（#### 以上）を **太字** 形式に変換する。
+ * Discord がサポートするのは #, ##, ### のみ。
+ */
+export function normalizeHeadings(text: string): string {
+    // 行頭の #{4,} を **太字** に変換（### 以下はそのまま）
+    return text.replace(/^(#{4,})\s+(.+)$/gm, (_match, _hashes, title) => {
+        return `**${title}**`;
+    });
 }
 
 /**

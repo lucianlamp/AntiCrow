@@ -9,8 +9,9 @@
 // ---------------------------------------------------------------------------
 
 import { CdpBridge, DiscoveredInstance } from './cdpBridge';
-import { getCdpPorts, getWorkspacePaths } from './configHelper';
+import { getCdpPorts, resolveWorkspacePaths } from './configHelper';
 import { logDebug, logWarn } from './logger';
+import { WorkspaceStore } from './workspaceStore';
 
 /** デフォルトワークスペース名（カテゴリー未指定時のフォールバック） */
 export const DEFAULT_WORKSPACE = '__default__';
@@ -34,6 +35,7 @@ export class CdpPool {
     private pool = new Map<string, PoolEntry>();
     private ports: number[] | undefined;
     private storagePath: string | undefined;
+    private workspaceStore: WorkspaceStore | undefined;
 
     /** acquire() の競合防止ロック（ワークスペース単位） */
     private acquireLocks = new Map<string, Promise<CdpBridge>>();
@@ -41,6 +43,9 @@ export class CdpPool {
     constructor(ports?: number[], storagePath?: string) {
         this.ports = ports;
         this.storagePath = storagePath;
+        if (storagePath) {
+            this.workspaceStore = new WorkspaceStore(storagePath);
+        }
     }
 
     /** ポートファイルを再読取して最新のポートリストを取得 */
@@ -76,7 +81,14 @@ export class CdpPool {
         const pendingLock = this.acquireLocks.get(key);
         if (pendingLock) {
             logDebug(`CdpPool: waiting for pending acquire for workspace "${key}"`);
-            return pendingLock;
+            const result = await pendingLock;
+            // pendingLock 完了後に pool を再チェック（完了間に pool が更新された場合の安全弁）
+            const fresh = this.pool.get(key);
+            if (fresh) {
+                fresh.lastUsedAt = Date.now();
+                return fresh.cdp;
+            }
+            return result;
         }
 
         const acquirePromise = this.doAcquire(key, onAutoLaunch);
@@ -117,8 +129,8 @@ export class CdpPool {
             );
 
             if (!target) {
-                // ワークスペースが見つからない → workspacePaths 設定から自動起動を試みる
-                const wsPaths = getWorkspacePaths();
+                // ワークスペースが見つからない → 自動学習データまたは手動設定からフォルダパスを取得
+                const wsPaths = resolveWorkspacePaths(this.workspaceStore);
                 const folderPath = wsPaths[workspaceName];
                 if (folderPath) {
                     logDebug(`CdpPool: workspace "${workspaceName}" not found, auto-launching folder "${folderPath}"...`);
@@ -242,7 +254,73 @@ export class CdpPool {
         };
         this.pool.set(workspaceName, entry);
         logDebug(`CdpPool: pool size = ${this.pool.size} after acquiring "${workspaceName}"`);
+
+        // 接続成功後にフォルダパスを自動学習（バックグラウンド、失敗しても無視）
+        if (this.workspaceStore && workspaceName !== DEFAULT_WORKSPACE) {
+            this.learnFolderPath(cdp, workspaceName).catch(e =>
+                logDebug(`CdpPool: learnFolderPath failed for "${workspaceName}": ${e}`),
+            );
+        }
+
         return cdp;
+    }
+
+    // -------------------------------------------------------------------
+    // ワークスペースフォルダパスの自動学習
+    // -------------------------------------------------------------------
+
+    /**
+     * CDP 接続成功後にワークスペースのフォルダパスを推定し、WorkspaceStore に保存する。
+     * バックグラウンドで実行され、失敗しても接続処理には影響しない。
+     */
+    private async learnFolderPath(_cdp: CdpBridge, workspaceName: string): Promise<void> {
+        if (!this.workspaceStore) { return; }
+
+        // 既に学習済みで、そのパスが存在する場合はスキップ
+        const existing = this.workspaceStore.getFolderPath(workspaceName);
+        if (existing && require('fs').existsSync(existing)) {
+            logDebug(`CdpPool: folder path for "${workspaceName}" already known: "${existing}"`);
+            return;
+        }
+
+        // フォルダパス推定: ワークスペース名 = フォルダ名と仮定し、
+        // よくある開発ディレクトリから探索
+        const fs = require('fs') as typeof import('fs');
+        const pathModule = require('path') as typeof import('path');
+        const baseDirs = this.guessBaseDirs();
+
+        for (const baseDir of baseDirs) {
+            const candidate = pathModule.join(baseDir, workspaceName);
+            try {
+                if (fs.existsSync(candidate) && fs.statSync(candidate).isDirectory()) {
+                    this.workspaceStore.learn(workspaceName, candidate);
+                    logDebug(`CdpPool: learned folder path for "${workspaceName}": "${candidate}"`);
+                    return;
+                }
+            } catch { /* ignore */ }
+        }
+
+        logDebug(`CdpPool: could not determine folder path for "${workspaceName}" — will retry on next connection`);
+    }
+
+    /**
+     * ワークスペースフォルダの親ディレクトリ候補を推定する。
+     */
+    private guessBaseDirs(): string[] {
+        const pathModule = require('path') as typeof import('path');
+        const dirs: string[] = [];
+
+        // 環境変数 USERPROFILE から dev ディレクトリを推定
+        const userProfile = process.env.USERPROFILE || process.env.HOME;
+        if (userProfile) {
+            dirs.push(pathModule.join(userProfile, 'dev'));
+            dirs.push(pathModule.join(userProfile, 'projects'));
+            dirs.push(pathModule.join(userProfile, 'workspace'));
+            dirs.push(pathModule.join(userProfile, 'repos'));
+            dirs.push(pathModule.join(userProfile, 'src'));
+        }
+
+        return dirs;
     }
 
     // -------------------------------------------------------------------
@@ -292,17 +370,33 @@ export class CdpPool {
             }
         }
 
+        // エイリアス対策: 同一 PoolEntry を参照する全キーを収集して一括削除
+        const allKeysToDelete = new Set<string>();
+        const disconnected = new Set<PoolEntry>();
+
         for (const key of toRelease) {
             const entry = this.pool.get(key);
-            if (entry) {
+            if (entry && !disconnected.has(entry)) {
                 logDebug(`CdpPool: releasing idle workspace "${key}" (idle ${Math.round((now - entry.lastUsedAt) / 1000)}s)`);
                 entry.cdp.fullDisconnect();
-                this.pool.delete(key);
+                disconnected.add(entry);
             }
         }
 
-        if (toRelease.length > 0) {
-            logDebug(`CdpPool: released ${toRelease.length} idle connection(s), pool size = ${this.pool.size}`);
+        // 同一エントリを参照する全キーを削除（エイリアスも含む）
+        for (const entry of disconnected) {
+            for (const [k, v] of this.pool.entries()) {
+                if (v === entry) {
+                    allKeysToDelete.add(k);
+                }
+            }
+        }
+        for (const k of allKeysToDelete) {
+            this.pool.delete(k);
+        }
+
+        if (allKeysToDelete.size > 0) {
+            logDebug(`CdpPool: released ${allKeysToDelete.size} key(s) (${disconnected.size} connection(s)), pool size = ${this.pool.size}`);
         }
     }
 

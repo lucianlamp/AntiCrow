@@ -15,23 +15,23 @@ import { Message, TextChannel } from 'discord.js';
 import { CdpBridge } from './cdpBridge';
 import { CascadePanelError } from './errors';
 import { FileIpc } from './fileIpc';
-import { parseSkillJson, buildPlan } from './planParser';
+import { parsePlanJson, buildPlan } from './planParser';
 import { ChannelIntent, Plan } from './types';
 import { logDebug, logError, logWarn } from './logger';
 import { buildEmbed, EmbedColor, sanitizeErrorForDiscord } from './embedHelper';
 import { DiscordBot } from './discordBot';
 import { downloadAttachments } from './attachmentDownloader';
 import { BridgeContext } from './bridgeContext';
-import { getResponseTimeout, isUserAllowed, getMaxMessageLength } from './configHelper';
+import { getResponseTimeout, isUserAllowed, getMaxMessageLength, getWorkspacePaths } from './configHelper';
 import { getCurrentModel } from './cdpModels';
 import { getCurrentMode } from './cdpModes';
 
 // 委譲先モジュール
-import { buildSkillPrompt, buildConfirmMessage, countChoiceItems, cronToPrefix } from './promptBuilder';
+import { buildPlanPrompt, buildConfirmMessage, countChoiceItems, cronToPrefix } from './promptBuilder';
 import { resolveWorkspace } from './workspaceResolver';
 
 // Re-export for backward compatibility
-export { buildSkillPrompt, cronToPrefix } from './promptBuilder';
+export { buildPlanPrompt, cronToPrefix } from './promptBuilder';
 
 // ---------------------------------------------------------------------------
 // メッセージ処理キュー（ワークスペース毎の排他制御）
@@ -44,11 +44,44 @@ const workspaceQueueCount = new Map<string, number>();
 /** デフォルトキー（ワークスペース未特定時） */
 const DEFAULT_WS_KEY = '__default__';
 
+// ---------------------------------------------------------------------------
+// メッセージID 重複チェック（二重処理防止）
+// ---------------------------------------------------------------------------
+/** 最近処理したメッセージ ID → 処理開始時刻 */
+const recentMessageIds = new Map<string, number>();
+/** 重複チェックの保持期間（ms） */
+const MESSAGE_DEDUP_TTL_MS = 5 * 60 * 1000;
+
+/** 定期的に古いエントリを削除する */
+function cleanupRecentMessageIds(): void {
+    const now = Date.now();
+    for (const [id, ts] of recentMessageIds) {
+        if (now - ts > MESSAGE_DEDUP_TTL_MS) {
+            recentMessageIds.delete(id);
+        }
+    }
+}
+// 60秒毎にクリーンアップ
+setInterval(cleanupRecentMessageIds, 60_000);
+
 /** /reset コマンド用: 全ワークスペースのキューをリセットする */
 export function resetProcessingFlag(): void {
     workspaceQueueCount.clear();
     workspaceQueues.clear();
     logDebug('messageHandler: all workspace queues reset');
+}
+
+/** メッセージキューの状態を取得（/status コマンド用） */
+export function getMessageQueueStatus(): { total: number; perWorkspace: Map<string, number> } {
+    let total = 0;
+    const perWorkspace = new Map<string, number>();
+    for (const [wsKey, count] of workspaceQueueCount.entries()) {
+        if (count > 0) {
+            total += count;
+            perWorkspace.set(wsKey, count);
+        }
+    }
+    return { total, perWorkspace };
 }
 
 /**
@@ -61,6 +94,14 @@ export async function enqueueMessage(
     intent: ChannelIntent,
     channelName: string,
 ): Promise<void> {
+    // メッセージID 重複チェック（二重処理防止）
+    const msgId = message.id;
+    if (recentMessageIds.has(msgId)) {
+        logDebug(`messageHandler: duplicate message detected (id=${msgId}), skipping`);
+        return;
+    }
+    recentMessageIds.set(msgId, Date.now());
+
     // ワークスペース名をチャンネルのカテゴリーから解決
     const channel = message.channel as TextChannel;
     const wsKey = DiscordBot.resolveWorkspaceFromChannel(channel) || DEFAULT_WS_KEY;
@@ -171,7 +212,7 @@ export async function handleDiscordMessage(
     }
 
     // -----------------------------------------------------------------
-    // 計画生成: Skill プロンプトを Antigravity に送信
+    // 計画生成: Plan プロンプトを Antigravity に送信
     // -----------------------------------------------------------------
     const wsNameFromCategory = DiscordBot.resolveWorkspaceFromChannel(channel);
     const { bot, cdp, cdpPool, fileIpc, planStore, executor, executorPool, scheduler } = ctx;
@@ -231,9 +272,11 @@ export async function handleDiscordMessage(
                 getCurrentMode(activeCdp.ops).catch(() => null),
                 getCurrentModel(activeCdp.ops).catch(() => null),
             ]);
+            // Embed フッター用にモデル名を同期
+            if (currentModel) { ctx.bot?.setModelName(currentModel); }
             const parts = [currentMode, currentModel].filter(Boolean);
             const ackPrefix = parts.length > 0 ? `[${parts.join(' - ')}]` : '';
-            await channel.send({ embeds: [buildEmbed(`🔄 ${ackPrefix} 伝達中...`, EmbedColor.Info)] });
+            await channel.send({ embeds: [buildEmbed(`🔄 ${ackPrefix} 伝令中...`, EmbedColor.Info)] });
         } catch (sendErr) {
             logError('handleDiscordMessage: failed to send acknowledgement', sendErr);
         }
@@ -253,10 +296,14 @@ export async function handleDiscordMessage(
             }
         }
 
-        // Skill プロンプト生成
+        // ワークスペースパス解決（MEMORY.md 用）
+        const resolvedWsPath = wsNameFromCategory ? getWorkspacePaths()[wsNameFromCategory] : undefined;
+
+        // Plan プロンプト生成（進捗報告パスも渡す）
         const ipcDir = fileIpc.getIpcDir();
-        const { prompt: skillPrompt, tempFiles } = buildSkillPrompt(text || '（添付ファイルを確認してください）', intent, channelName, responsePath, attachmentPaths, ctx.extensionPath, ipcDir);
-        logDebug('handleDiscordMessage: sending skill prompt via CDP...');
+        const progressPath = fileIpc.createProgressPath(requestId);
+        const { prompt: planPrompt, tempFiles } = buildPlanPrompt(text || '（添付ファイルを確認してください）', intent, channelName, responsePath, attachmentPaths, ctx.extensionPath, ipcDir, resolvedWsPath, progressPath);
+        logDebug('handleDiscordMessage: sending plan prompt via CDP...');
 
         // typing indicator 開始
         const typingInterval = setInterval(async () => {
@@ -264,7 +311,7 @@ export async function handleDiscordMessage(
         }, 8_000);
         try { await channel.sendTyping(); } catch (e) { logDebug(`handleDiscordMessage: sendTyping failed: ${e}`); }
 
-        let skillResponse: string;
+        let planResponse: string;
         try {
             // CDP でプロンプト送信（自動起動直後は UI 初期化待ちのためリトライ）
             const maxRetries = autoLaunched ? 3 : 1;
@@ -274,7 +321,7 @@ export async function handleDiscordMessage(
                         logDebug(`handleDiscordMessage: retrying sendPrompt (attempt ${attempt}/${maxRetries})...`);
                         await new Promise(r => setTimeout(r, 5_000));
                     }
-                    await activeCdp.sendPrompt(skillPrompt);
+                    await activeCdp.sendPrompt(planPrompt);
                     break;
                 } catch (retryErr) {
                     if (retryErr instanceof CascadePanelError && attempt < maxRetries) {
@@ -286,16 +333,38 @@ export async function handleDiscordMessage(
             }
             logDebug('handleDiscordMessage: prompt sent, waiting for file response...');
 
-            // 伝達完了 → 計画生成中ステータスを送信
+            // 伝令完了 → 計画生成中ステータスを送信
             try {
-                await channel.send({ embeds: [buildEmbed('✅ 伝達完了。計画を練っています...', EmbedColor.Success)] });
+                await channel.send({ embeds: [buildEmbed('✅ 伝令完了。計画を練っています...', EmbedColor.Success)] });
             } catch (ackErr) {
                 logDebug(`handleDiscordMessage: failed to send plan-generation ack: ${ackErr}`);
             }
 
+            // 計画生成中の進捗報告（進捗ファイルの変更を監視して Discord に通知）
+            let lastPlanProgress = '';
+            const planProgressInterval = setInterval(async () => {
+                try {
+                    const progress = await fileIpc.readProgress(progressPath);
+                    if (progress) {
+                        const currentContent = JSON.stringify(progress);
+                        if (currentContent !== lastPlanProgress) {
+                            lastPlanProgress = currentContent;
+                            const percentStr = progress.percent !== undefined ? ` (${progress.percent}%)` : '';
+                            const detail = progress.detail ? `\n> ${progress.detail}` : '';
+                            await channel.send({ embeds: [buildEmbed(`⏳ ${progress.status || '処理中...'}${percentStr}${detail}`, EmbedColor.Progress)] });
+                        }
+                    }
+                } catch { /* ignore */ }
+            }, 3_000);
+
             // ファイル経由でレスポンスを待機
             const responseTimeout = getResponseTimeout();
-            skillResponse = await fileIpc.waitForResponse(responsePath, responseTimeout);
+            try {
+                planResponse = await fileIpc.waitForResponse(responsePath, responseTimeout);
+            } finally {
+                clearInterval(planProgressInterval);
+                fileIpc.cleanupProgress(progressPath).catch(() => { });
+            }
         } finally {
             clearInterval(typingInterval);
             // 一時ファイルのクリーンアップ
@@ -303,16 +372,16 @@ export async function handleDiscordMessage(
                 try { fs.unlinkSync(f); logDebug(`handleDiscordMessage: cleaned up temp file: ${f}`); } catch { /* ignore */ }
             }
         }
-        logDebug(`handleDiscordMessage: skill response received(${skillResponse.length} chars)`);
+        logDebug(`handleDiscordMessage: plan response received(${planResponse.length} chars)`);
 
         // パース
-        logDebug(`handleDiscordMessage: raw skill response: ${skillResponse.substring(0, 200)} `);
-        const skillOutput = parseSkillJson(skillResponse);
-        if (!skillOutput) {
-            logError('handleDiscordMessage: skill JSON parse failed');
+        logDebug(`handleDiscordMessage: raw plan response: ${planResponse.substring(0, 200)} `);
+        const planOutput = parsePlanJson(planResponse);
+        if (!planOutput) {
+            logError('handleDiscordMessage: plan JSON parse failed');
             // 生JSONをそのまま表示するのではなく、読みやすい形式に変換してフォールバック
-            const formatted = FileIpc.extractResult(skillResponse);
-            const isFormatted = formatted !== skillResponse;
+            const formatted = FileIpc.extractResult(planResponse);
+            const isFormatted = formatted !== planResponse;
             const warningHeader = '⚠️ Antigravity からの応答を解析できませんでした。';
             if (isFormatted) {
                 // 複雑なJSONを展開できた場合
@@ -324,7 +393,7 @@ export async function handleDiscordMessage(
                 });
             } else {
                 // 展開できなかった場合のフォールバック（Discordメッセージ文字数制限も考慮）
-                const preview = skillResponse.substring(0, 800);
+                const preview = planResponse.substring(0, 800);
                 await channel.send({
                     embeds: [buildEmbed(
                         `${warningHeader}\n応答:\n\`\`\`\n${preview}\n\`\`\``,
@@ -334,15 +403,34 @@ export async function handleDiscordMessage(
             }
             return;
         }
-        logDebug(`handleDiscordMessage: plan parsed — plan_id = ${skillOutput.plan_id}, cron = ${skillOutput.cron} `);
+        logDebug(`handleDiscordMessage: plan parsed — plan_id = ${planOutput.plan_id}, cron = ${planOutput.cron} `);
 
         // 通知先の決定
         const guild = message.guild;
-        const plan = buildPlan(skillOutput, channel.id, channel.id);
+        const plan = buildPlan(planOutput, channel.id, channel.id);
 
         // 添付ファイルパスを Plan に引き継ぐ
         if (attachmentPaths && attachmentPaths.length > 0) {
             plan.attachment_paths = attachmentPaths;
+        }
+
+        // 計画詳細を Discord に表示
+        try {
+            const summaryText = plan.action_summary
+                || plan.discord_templates.ack
+                || plan.human_summary
+                || plan.prompt.substring(0, 100) + (plan.prompt.length > 100 ? '...' : '');
+            const execType = plan.cron ? `定期: \`${plan.cron}\`` : '即時実行';
+            const confirmText = plan.requires_confirmation ? `要確認 (${plan.choice_mode || 'none'})` : '自動実行';
+
+            const detailLines = [
+                `📋 **実行計画**`,
+                `> **📝 概要:** ${summaryText}`,
+                `> **⏱️ 実行:** ${execType}　|　**🔐 確認:** ${confirmText}`,
+            ];
+            await channel.send({ embeds: [buildEmbed(detailLines.join('\n'), EmbedColor.Info)] });
+        } catch (detailErr) {
+            logDebug(`handleDiscordMessage: failed to send plan detail: ${detailErr}`);
         }
 
         // ACK 送信

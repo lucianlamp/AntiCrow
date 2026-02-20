@@ -18,7 +18,7 @@ import { getCurrentModel, getAvailableModels, selectModel } from './cdpModels';
 import { buildModeListEmbed, buildModeSwitchResultEmbed } from './modeButtons';
 import { getCurrentMode, getAvailableModes, selectMode } from './cdpModes';
 import { BridgeContext } from './bridgeContext';
-import { resetProcessingFlag } from './messageHandler';
+import { resetProcessingFlag, getMessageQueueStatus } from './messageHandler';
 import { getTimezone } from './configHelper';
 import { getRunningWsNames, buildWorkspaceListEmbed } from './workspaceHandler';
 import { fetchQuota } from './quotaProvider';
@@ -39,10 +39,24 @@ export async function handleManageSlash(
         const cdpOk = cdp ? await cdp.testConnection() : false;
         const botOk = bot?.isReady() || false;
         const scheduledIds = scheduler?.getRegisteredPlanIds() || [];
-        const queueLen = executor?.queueLength() || 0;
+        const execQueueLen = executor?.queueLength() || 0;
         const isRunning = executor?.isRunning() || false;
 
         const activeTarget = cdp?.getActiveTargetTitle() || '未接続';
+
+        // メッセージキュー（plan_generation フェーズ含む）の状態
+        const msgQueue = getMessageQueueStatus();
+
+        // キュー表示: メッセージキュー（処理待ち全体）と実行キュー（executor内）を統合表示
+        let queueDisplay: string;
+        if (msgQueue.total === 0 && execQueueLen === 0) {
+            queueDisplay = '0件 (待機)';
+        } else {
+            const parts: string[] = [];
+            if (msgQueue.total > 0) { parts.push(`メッセージ待ち: ${msgQueue.total}件`); }
+            if (execQueueLen > 0) { parts.push(`実行待ち: ${execQueueLen}件`); }
+            queueDisplay = `${parts.join(' / ')} ${isRunning ? '(実行中)' : ''}`;
+        }
 
         const statusMsg = [
             '📊 **AntiCrow 状態**',
@@ -50,7 +64,7 @@ export async function handleManageSlash(
             `- Antigravity 接続: ${cdpOk ? '🟢 接続済み' : '🔴 未接続'}`,
             `- アクティブターゲット: ${activeTarget}`,
             `- スケジュール中: ${scheduledIds.length}件`,
-            `- 実行キュー: ${queueLen}件 ${isRunning ? '(実行中)' : '(待機)'}`,
+            `- キュー: ${queueDisplay}`,
         ].join('\n');
 
         await interaction.reply({ embeds: [buildEmbed(statusMsg, EmbedColor.Info)] });
@@ -72,18 +86,32 @@ export async function handleManageSlash(
     if (commandName === 'cancel') {
         try {
             resetProcessingFlag();
+
+            // executor の状態を記録
+            const execRunning = executor?.isRunning() || false;
+            const poolRunning = ctx.executorPool?.isAnyRunning() || false;
+
             executor?.forceStop();
             ctx.executorPool?.forceStopAll();
 
-            // Antigravity のストップボタンをクリック
+            // Antigravity のキャンセルボタンをクリック
+            let cancelResult = 'CDP未接続';
             if (cdp) {
-                try { await cdp.clickStopButton(); } catch (e) {
-                    logWarn(`handleManageSlash: /cancel — clickStopButton failed (non-fatal): ${e instanceof Error ? e.message : e}`);
+                try {
+                    cancelResult = await cdp.clickCancelButton();
+                } catch (e) {
+                    cancelResult = `エラー: ${e instanceof Error ? e.message : e}`;
+                    logWarn(`handleManageSlash: /cancel — clickCancelButton failed: ${cancelResult}`);
                 }
             }
 
             logDebug('handleManageSlash: /cancel executed — current job stopped (executor + executorPool)');
-            await interaction.reply({ embeds: [buildEmbed('⏹️ キャンセルしました。\n- 実行中のジョブ → キャンセル\n- キュー内の待機ジョブ → 保持', EmbedColor.Success)] });
+            const debugInfo = [
+                `executor実行中: ${execRunning}`,
+                `pool実行中: ${poolRunning}`,
+                `Antigravity停止: ${cancelResult}`,
+            ].join('\n');
+            await interaction.reply({ embeds: [buildEmbed(`⏹️ キャンセルしました。\n- 実行中のジョブ → キャンセル\n- キュー内の待機ジョブ → 保持\n\n\`\`\`\n${debugInfo}\n\`\`\``, EmbedColor.Success)] });
         } catch (e) {
             const errMsg = e instanceof Error ? e.message : String(e);
             logError('handleManageSlash: /cancel failed', e);
@@ -294,6 +322,33 @@ export async function handleManageSlash(
             logError('handleManageSlash: /mode failed', e);
             await interaction.editReply({ embeds: [buildEmbed(`❌ モード一覧取得エラー: ${errMsg}`, EmbedColor.Error)] }).catch(() => { });
         }
+        return;
+    }
+
+    if (commandName === 'help') {
+        const helpMsg = [
+            '📖 **AntiCrow ヘルプ**',
+            '',
+            '**コマンド一覧**',
+            '`/status` — Bot・接続・キュー状態を表示',
+            '`/cancel` — 実行中のタスクをキャンセル',
+            '`/queue` — 実行キューの詳細を表示',
+            '`/schedules` — 定期実行の一覧・管理',
+            '`/newchat` — Antigravity で新しいチャットを開く',
+            '`/models` — AI モデルの一覧・切替',
+            '`/mode` — AI モード切替（Planning / Fast）',
+            '`/workspaces` — ワークスペース一覧を表示',
+            '`/templates` — テンプレート一覧・管理',
+            '`/help` — このヘルプを表示',
+            '',
+            '**使い方のコツ**',
+            '💡 1メッセージ = 1タスクで送信すると精度が上がります',
+            '📎 画像やテキストファイルを添付して指示できます',
+            '⏱️ 処理中に追加メッセージを送ると自動でキューに追加されます',
+            '⏹️ タスクをやめたい時は `/cancel` を使ってください',
+        ].join('\n');
+
+        await interaction.reply({ embeds: [buildEmbed(helpMsg, EmbedColor.Info)] });
         return;
     }
 

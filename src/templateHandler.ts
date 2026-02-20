@@ -18,11 +18,11 @@ import {
     TextInputBuilder,
     TextInputStyle,
 } from 'discord.js';
-import { parseSkillJson, buildPlan } from './planParser';
+import { parsePlanJson, buildPlan } from './planParser';
 import { logDebug, logError, logWarn } from './logger';
 import { buildEmbed, EmbedColor } from './embedHelper';
 import { BridgeContext } from './bridgeContext';
-import { buildSkillPrompt } from './messageHandler';
+import { buildPlanPrompt } from './messageHandler';
 import { getResponseTimeout } from './configHelper';
 
 import { TemplateStore } from './templateStore';
@@ -219,19 +219,19 @@ export async function handleTemplateButton(
         const tplIpcDir = fileIpc.getIpcDir();
         const expandedPrompt = TemplateStore.expandVariables(template.prompt);
         const { responsePath } = fileIpc.createRequestId();
-        const { prompt: tplSkillPrompt, tempFiles: tplTempFiles } = buildSkillPrompt(expandedPrompt, 'agent-chat', 'template-run', responsePath, undefined, undefined, tplIpcDir);
+        const { prompt: tplPlanPrompt, tempFiles: tplTempFiles } = buildPlanPrompt(expandedPrompt, 'agent-chat', 'template-run', responsePath, undefined, undefined, tplIpcDir);
         try {
-            await cdp.sendPrompt(tplSkillPrompt);
+            await cdp.sendPrompt(tplPlanPrompt);
             const responseTimeout = getResponseTimeout();
-            const skillResponse = await fileIpc.waitForResponse(responsePath, responseTimeout);
+            const planResponse = await fileIpc.waitForResponse(responsePath, responseTimeout);
 
-            const skillOutput = parseSkillJson(skillResponse);
-            if (!skillOutput) {
+            const planOutput = parsePlanJson(planResponse);
+            if (!planOutput) {
                 await interaction.editReply({ embeds: [buildEmbed('⚠️ 応答を解析できませんでした。', EmbedColor.Warning)] });
                 return;
             }
 
-            const plan = buildPlan(skillOutput, interaction.channelId, interaction.channelId);
+            const plan = buildPlan(planOutput, interaction.channelId, interaction.channelId);
             if (plan.discord_templates.ack) {
                 await interaction.editReply({ embeds: [buildEmbed(plan.discord_templates.ack, EmbedColor.Info)] });
             }

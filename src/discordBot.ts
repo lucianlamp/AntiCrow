@@ -21,7 +21,7 @@ import {
 import { ChannelIntent } from './types';
 import { splitForEmbeds, extractTableFields } from './discordFormatter';
 import { logDebug, logError, logWarn } from './logger';
-import { buildEmbed, EmbedColor } from './embedHelper';
+import { buildEmbed, EmbedColor, normalizeHeadings } from './embedHelper';
 
 // 委譲先モジュール
 import * as reactions from './discordReactions';
@@ -60,6 +60,12 @@ export class DiscordBot {
     private autocompleteHandler: AutocompleteHandler | null = null;
     private modalSubmitHandler: ModalSubmitHandler | null = null;
     private ready = false;
+    private currentModelName: string | null = null;
+
+    /** フッターに表示するモデル名を設定 */
+    setModelName(name: string | null): void {
+        this.currentModelName = name;
+    }
 
     constructor(token: string) {
         this.token = token;
@@ -214,6 +220,7 @@ export class DiscordBot {
             case 'templates': return 'admin';
             case 'models': return 'admin';
             case 'mode': return 'admin';
+            case 'help': return 'admin';
             default: return null;
         }
     }
@@ -253,14 +260,16 @@ export class DiscordBot {
     waitForReady(timeoutMs = 15_000): Promise<void> {
         if (this.ready) { return Promise.resolve(); }
         return new Promise((resolve, reject) => {
+            const onReady = () => {
+                clearTimeout(timer);
+                resolve();
+            };
             const timer = setTimeout(() => {
+                this.client.removeListener('ready', onReady);
                 reject(new Error('Discord bot ready timeout'));
             }, timeoutMs);
 
-            this.client.once('ready', () => {
-                clearTimeout(timer);
-                resolve();
-            });
+            this.client.once('ready', onReady);
         });
     }
 
@@ -305,12 +314,14 @@ export class DiscordBot {
     }
 
     /** Embed のブランドカラー (Cherry Pink) */
-    private static readonly EMBED_COLOR = 0x5865F2;
+    private static readonly EMBED_COLOR = EmbedColor.Info;
 
     /** TextChannel にメッセージ送信（すべて Embed で送信、テーブルは fields に変換） */
     async sendToTextChannel(channel: TextChannel, text: string, color?: number): Promise<void> {
+        // Discord Embed 非対応の見出し（#### 以上）を正規化
+        const normalizedText = normalizeHeadings(text);
         // Markdown テーブルを検出して fields に変換
-        const extracted = extractTableFields(text);
+        const extracted = extractTableFields(normalizedText);
 
         if (extracted.fields.length > 0) {
             // テーブルあり: description + fields の Embed で送信
@@ -333,17 +344,30 @@ export class DiscordBot {
                 }))
             );
 
+            // フッター（モデル名+タイムスタンプ）
+            if (this.currentModelName) {
+                embed.setFooter({ text: this.currentModelName });
+            }
+            embed.setTimestamp();
+
             await channel.send({ embeds: [embed] });
             return;
         }
 
         // テーブルなし: 従来の分割 Embed 送信
-        const embedGroups = splitForEmbeds(text);
+        const embedGroups = splitForEmbeds(normalizedText);
         for (const group of embedGroups) {
-            const embeds = group.map((desc) => {
+            const embeds = group.map((desc, idx) => {
                 const embed = new EmbedBuilder()
                     .setDescription(desc)
                     .setColor(color ?? DiscordBot.EMBED_COLOR);
+                // 最後の Embed にのみフッターとタイムスタンプを付与
+                if (idx === group.length - 1) {
+                    if (this.currentModelName) {
+                        embed.setFooter({ text: this.currentModelName });
+                    }
+                    embed.setTimestamp();
+                }
                 return embed;
             });
             await channel.send({ embeds });

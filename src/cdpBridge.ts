@@ -213,8 +213,8 @@ export class CdpBridge {
     private async doLaunchAntigravity(folderPath?: string): Promise<void> {
         // VS Code Terminal API 経由で起動
         // Extension Host から直接 spawn/exec した子プロセスは GUI ウィンドウを作成できないため、
-        // Terminal (pty) コンテキストで launch-antigravity.ps1 スクリプトを実行する
-        const scriptPath = path.join(__dirname, '..', 'scripts', 'launch-antigravity.ps1');
+        // Terminal (pty) コンテキストで anticrow.ps1 スクリプトを実行する
+        const scriptPath = path.join(__dirname, '..', 'scripts', 'anticrow.ps1');
 
         logDebug(`CDP: launchAntigravity called, folderPath="${folderPath || '(none)'}", scriptPath="${scriptPath}"`);
 
@@ -231,8 +231,19 @@ export class CdpBridge {
         });
         terminal.sendText(command);
 
-        // スクリプト完了後にターミナルを自動クリーンアップ
-        setTimeout(() => terminal.dispose(), 10000);
+        // ターミナル完了検知: onDidCloseTerminal で自動クリーンアップ
+        // フォールバック: 30秒後に強制 dispose（スクリプトが長時間かかる場合の安全弁）
+        const disposeTimer = setTimeout(() => {
+            logDebug('CDP: launch terminal fallback dispose (30s timeout)');
+            terminal.dispose();
+        }, 30_000);
+        const disposable = vscode.window.onDidCloseTerminal((t) => {
+            if (t === terminal) {
+                clearTimeout(disposeTimer);
+                disposable.dispose();
+                logDebug('CDP: launch terminal closed naturally');
+            }
+        });
         logDebug(`CDP: launch terminal created, command sent`);
     }
 
@@ -286,6 +297,50 @@ export class CdpBridge {
         this.cascadeContextId = world.executionContextId;
         logDebug(`CDP: cascade-panel context ID = ${this.cascadeContextId}`);
         return this.cascadeContextId;
+    }
+
+    /**
+     * Cascade パネル（Agent Panel）が表示されていることを保証する。
+     * パネルが見つからない場合、VSCode コマンドで自動オープンを試みる。
+     */
+    async ensureCascadePanel(): Promise<void> {
+        // 1. パネルの存在を確認
+        const frameId = await this.findCascadeFrameId();
+        if (frameId) { return; } // 既に開いている
+
+        logDebug('CDP: ensureCascadePanel — panel not found, attempting auto-open...');
+
+        // 2. VSCode コマンドで Agent Panel を開く（複数候補を順に試行）
+        const panelCommands = [
+            'antigravity.agentPanel.focus',
+            'antigravity.openAgentChat',
+            'antigravity.cascade.focus',
+            'workbench.panel.chat.view.copilot.focus',
+        ];
+        for (const cmd of panelCommands) {
+            try {
+                await vscode.commands.executeCommand(cmd);
+                logDebug(`CDP: ensureCascadePanel — executed command: ${cmd}`);
+                break;
+            } catch {
+                logDebug(`CDP: ensureCascadePanel — command not available: ${cmd}`);
+            }
+        }
+
+        // 3. パネルが開くまでポーリング待機（最大15秒）
+        const maxWaitMs = 15_000;
+        const pollMs = 1_000;
+        const deadline = Date.now() + maxWaitMs;
+        while (Date.now() < deadline) {
+            await this.sleep(pollMs);
+            const fid = await this.findCascadeFrameId();
+            if (fid) {
+                logDebug('CDP: ensureCascadePanel — panel opened successfully');
+                this.cascadeContextId = null; // コンテキストをリセット
+                return;
+            }
+        }
+        logWarn('CDP: ensureCascadePanel — panel did not open within timeout');
     }
 
     private async evaluateInCascade(expression: string): Promise<unknown> {
@@ -389,53 +444,170 @@ export class CdpBridge {
     }
 
     /**
-     * Antigravity のストップボタンをクリックして処理を停止する。
-     * Cascade iframe 内のストップボタン (aria-label="Stop") を探してクリック。
-     * 見つからない場合は Escape キーを送信してフォールバック。
+     * Antigravity のキャンセルボタンをクリックして処理を停止する。
+     * 複数戦略を順に試行し、結果を返す。
      */
-    async clickStopButton(): Promise<void> {
-        // 0. 優先: VSCode コマンド（UI変更に強い）
+    async clickCancelButton(): Promise<string> {
+        const results: string[] = [];
+
+        // 0. VSCode コマンド（UI変更に強いが効かない場合がある）
         try {
             await vscode.commands.executeCommand('antigravity.cancelCurrentTask');
-            logDebug('CDP: clickStopButton — used VSCode command (antigravity.cancelCurrentTask)');
-            return;
+            results.push('vscode-cmd:OK');
+            logDebug('CDP: clickCancelButton — used VSCode command');
         } catch {
-            logDebug('CDP: clickStopButton — VSCode command not available, trying CDP');
+            results.push('vscode-cmd:FAIL');
+            logDebug('CDP: clickCancelButton — VSCode command not available');
         }
 
-        await this.conn.connect();
-
-        // 1. Cascade iframe 内のストップボタンを探してクリック
+        // 1. CDP 接続して iframe 内のボタンを探す
         try {
-            const result = await this.clickElement({
-                selector: '[aria-label="Stop"]',
-                tag: 'button',
-                inCascade: true,
-            });
-            if (result.success) {
-                logDebug('CDP: clickStopButton — Stop button clicked');
-                return;
+            await this.conn.connect();
+        } catch (e) {
+            results.push(`cdp-connect:FAIL(${e instanceof Error ? e.message : e})`);
+            return results.join(', ');
+        }
+
+        // 2. Cascade iframe 内: テキスト入力エリア付近の停止ボタン（赤い■）を JS で探す
+        let buttonClicked = false;
+        try {
+            const stopBtnResult = await this.evaluateInCascade(`
+(function() {
+    // 戦略A: textbox の親要素内にある button で SVG rect/stop アイコンを持つもの
+    var textbox = document.querySelector('div[role="textbox"]');
+    if (textbox) {
+        var container = textbox.closest('form') || textbox.parentElement?.parentElement?.parentElement;
+        if (container) {
+            var buttons = container.querySelectorAll('button');
+            for (var i = 0; i < buttons.length; i++) {
+                var btn = buttons[i];
+                // SVG 内に rect（四角＝停止アイコン）がある、またはクラス/色が赤系のボタン
+                var hasSvgRect = btn.querySelector('svg rect') !== null;
+                var hasSvgStop = btn.querySelector('svg [data-icon="stop"]') !== null || btn.querySelector('svg .stop-icon') !== null;
+                var ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
+                var isStopBtn = hasSvgRect || hasSvgStop || ariaLabel.includes('stop') || ariaLabel.includes('cancel');
+                if (isStopBtn) {
+                    btn.click();
+                    return { found: true, method: 'svg-rect', ariaLabel: btn.getAttribute('aria-label'), text: btn.textContent?.trim() };
+                }
+            }
+        }
+    }
+
+    // 戦略B: ドキュメント全体から SVG rect を持つボタンを探す
+    var allButtons = document.querySelectorAll('button');
+    for (var j = 0; j < allButtons.length; j++) {
+        var b = allButtons[j];
+        var rect = b.querySelector('svg rect');
+        if (rect) {
+            var style = window.getComputedStyle(rect);
+            var fill = style.fill || rect.getAttribute('fill') || '';
+            // fill が赤系の場合（red, #f, rgb(2xx,0-50,0-50) 等）
+            if (fill.includes('red') || fill.match(/#[fF]/) || fill.match(/rgb\\(2[0-9]{2},\\s*[0-4]/)) {
+                b.click();
+                return { found: true, method: 'red-svg-rect', fill: fill, ariaLabel: b.getAttribute('aria-label') };
+            }
+        }
+    }
+
+    // 戦略C: aria-label/title 属性にマッチするボタン
+    for (var k = 0; k < allButtons.length; k++) {
+        var btn2 = allButtons[k];
+        var label = (btn2.getAttribute('aria-label') || '').toLowerCase();
+        var title = (btn2.getAttribute('title') || '').toLowerCase();
+        if (label.includes('stop') || label.includes('cancel') || title.includes('stop') || title.includes('cancel')) {
+            btn2.click();
+            return { found: true, method: 'aria-match', ariaLabel: btn2.getAttribute('aria-label'), title: btn2.getAttribute('title') };
+        }
+    }
+
+    // DOM 調査情報を返す（デバッグ用）
+    var buttonInfo = [];
+    for (var m = 0; m < allButtons.length && m < 20; m++) {
+        var bi = allButtons[m];
+        buttonInfo.push({
+            ariaLabel: bi.getAttribute('aria-label'),
+            title: bi.getAttribute('title'),
+            text: (bi.textContent || '').trim().substring(0, 30),
+            hasSvg: bi.querySelector('svg') !== null,
+            hasSvgRect: bi.querySelector('svg rect') !== null,
+            classes: bi.className?.substring?.(0, 50) || '',
+        });
+    }
+    return { found: false, method: 'none', buttonCount: allButtons.length, buttons: buttonInfo };
+})()
+            `) as { found: boolean; method: string;[key: string]: unknown } | null;
+
+            if (stopBtnResult?.found) {
+                results.push(`cascade-js:OK(${stopBtnResult.method})`);
+                logDebug(`CDP: clickCancelButton — stop button found via JS: ${JSON.stringify(stopBtnResult)}`);
+                buttonClicked = true;
+            } else {
+                const debugStr = stopBtnResult ? JSON.stringify(stopBtnResult).substring(0, 200) : 'null';
+                results.push(`cascade-js:NOT_FOUND(${debugStr})`);
+                logDebug(`CDP: clickCancelButton — JS search result: ${debugStr}`);
             }
         } catch (e) {
-            logDebug(`CDP: clickStopButton — Stop button not found, trying Escape: ${e instanceof Error ? e.message : e}`);
+            results.push(`cascade-js:ERROR(${e instanceof Error ? e.message : e})`);
         }
 
-        // 2. フォールバック: Escape キーを送信
-        await this.conn.send('Input.dispatchKeyEvent', {
-            type: 'keyDown',
-            windowsVirtualKeyCode: 27,
-            code: 'Escape',
-            key: 'Escape',
-        });
-        await this.sleep(50);
-        await this.conn.send('Input.dispatchKeyEvent', {
-            type: 'keyUp',
-            windowsVirtualKeyCode: 27,
-            code: 'Escape',
-            key: 'Escape',
-        });
-        logDebug('CDP: clickStopButton — sent Escape key as fallback');
-        await this.sleep(500);
+        // 3. フォールバック: aria-label/text ベースの clickElement
+        if (!buttonClicked) {
+            const stopCandidates: ClickOptions[] = [
+                { selector: '[aria-label="Cancel"]', tag: 'button', inCascade: true },
+                { selector: '[aria-label="Stop"]', tag: 'button', inCascade: true },
+                { text: 'Cancel', tag: 'button', inCascade: true },
+                { text: 'Stop', tag: 'button', inCascade: true },
+            ];
+            for (const candidate of stopCandidates) {
+                try {
+                    const result = await this.clickElement(candidate);
+                    if (result.success) {
+                        const label = candidate.selector || candidate.text || '';
+                        results.push(`button:OK(${label})`);
+                        logDebug(`CDP: clickCancelButton — button clicked (${label})`);
+                        buttonClicked = true;
+                        break;
+                    }
+                } catch (e) {
+                    // continue to next candidate
+                }
+            }
+            if (!buttonClicked) {
+                results.push('button:NOT_FOUND');
+            }
+        }
+
+        // 3. フォールバック: Escape キーを送信
+        if (!buttonClicked) {
+            try {
+                await this.conn.send('Input.dispatchKeyEvent', {
+                    type: 'keyDown',
+                    windowsVirtualKeyCode: 27,
+                    code: 'Escape',
+                    key: 'Escape',
+                });
+                await this.sleep(50);
+                await this.conn.send('Input.dispatchKeyEvent', {
+                    type: 'keyUp',
+                    windowsVirtualKeyCode: 27,
+                    code: 'Escape',
+                    key: 'Escape',
+                });
+                results.push('escape:SENT');
+                logDebug('CDP: clickCancelButton — sent Escape key as fallback');
+                await this.sleep(500);
+            } catch (e) {
+                results.push(`escape:FAIL(${e instanceof Error ? e.message : e})`);
+            }
+        }
+
+        return results.join(', ');
+    }
+
+    /** @deprecated clickCancelButton を使用してください */
+    async clickStopButton(): Promise<void> {
+        await this.clickCancelButton();
     }
 
     // -----------------------------------------------------------------------
@@ -487,8 +659,23 @@ export class CdpBridge {
             }
         }
 
-        const contextId = await this.getCascadeContext();
+        // Cascade パネルのコンテキスト取得（パネル未表示時は自動オープン試行）
+        let contextId: number;
+        try {
+            contextId = await this.getCascadeContext();
+        } catch (e) {
+            if (e instanceof CascadePanelError) {
+                logWarn('CDP: sendPrompt — Cascade panel not found, attempting auto-open...');
+                await this.ensureCascadePanel();
+                contextId = await this.getCascadeContext(); // リトライ（失敗時はそのままスロー）
+            } else {
+                throw e;
+            }
+        }
 
+        // NOTE: document.execCommand は W3C で非推奨（deprecated）だが、
+        // Electron の Chromium エンジンでは当面動作する。
+        // 将来的に InputEvent / beforeinput ベースの入力方式に移行を検討すること。
         const setInputJs = `
       (function() {
         const el = document.querySelector('div[role="textbox"]');

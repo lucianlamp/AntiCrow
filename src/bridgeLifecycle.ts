@@ -209,7 +209,27 @@ async function promoteToBotOwner(
 // Bridge 起動
 // ---------------------------------------------------------------------------
 
+/** startBridge 再入防止フラグ */
+let bridgeStarting = false;
+
 export async function startBridge(
+    ctx: BridgeContext,
+    context: vscode.ExtensionContext,
+): Promise<void> {
+    // 再入防止: autoStart と手動 start の並行呼び出しを防ぐ
+    if (bridgeStarting) {
+        logDebug('startBridge: already starting, skipping duplicate call');
+        return;
+    }
+    bridgeStarting = true;
+    try {
+        await startBridgeInternal(ctx, context);
+    } finally {
+        bridgeStarting = false;
+    }
+}
+
+async function startBridgeInternal(
     ctx: BridgeContext,
     context: vscode.ExtensionContext,
 ): Promise<void> {
@@ -311,11 +331,14 @@ export async function startBridge(
     } else {
         logDebug('Bridge: Bot startup skipped (another workspace owns the bot) — running in standby mode');
 
+        // 二重昇格防止フラグ（promoteToBotOwner 中に次の setInterval が発火するレース対策）
+        let promoting = false;
         ctx.lockWatchTimer = setInterval(async () => {
-            if (ctx.isBotOwner) { return; }
+            if (ctx.isBotOwner || promoting) { return; }
             const acquired = acquireLock(ctx.globalStoragePath);
             if (acquired) {
                 logDebug('Bridge: lock became available — auto-promoting to bot owner');
+                promoting = true;
                 if (ctx.lockWatchTimer) {
                     clearInterval(ctx.lockWatchTimer);
                     ctx.lockWatchTimer = null;
@@ -325,6 +348,8 @@ export async function startBridge(
                     updateStatusBar(ctx);
                 } catch (e) {
                     logError('Bridge: auto-promotion failed', e);
+                } finally {
+                    promoting = false;
                 }
             }
         }, 5_000);
@@ -398,11 +423,15 @@ export async function stopBridge(ctx: BridgeContext): Promise<void> {
     }
 
     ctx.scheduler?.stopAll();
-    ctx.cdpPool?.disconnectAll();
-    ctx.cdp?.fullDisconnect();
 
+    // 実行中ジョブを先に停止（CDP 切断前にジョブ停止を保証）
+    ctx.executor?.forceStop();
+    ctx.executorPool?.forceStopAll();
     // UIウォッチャー停止
     ctx.executor?.stopUIWatcher();
+
+    ctx.cdpPool?.disconnectAll();
+    ctx.cdp?.fullDisconnect();
 
     ctx.executorPool?.clear();
     await ctx.bot?.stop();

@@ -32,7 +32,10 @@ Markdown や自然文で書かないでください。
     "run_success_prefix": "string (optional)",
     "run_error": "string (optional)"
   },
-  "human_summary": "string (optional, Discordチャンネル名に使用。15文字以内の簡潔な要約)"
+  "human_summary": "string (optional, Discordチャンネル名に使用。15文字以内の簡潔な要約)",
+  "action_summary": "string (optional, 何をするか・なぜそうするかを具体的に記述。500文字以内。Discord の計画詳細表示に使用)",
+  "execution_summary": "string (optional, prompt フィールドの要約と解説。500文字以内。プロンプトで何を指示しているか、なぜその方法で実行するかをユーザー向けにわかりやすく説明する。Discord の実行フェーズ詳細表示に使用)",
+  "prompt_summary": "string (必須, 確認メッセージの「実行内容」セクションに表示する要約と解説。1,000文字以内。プロンプト全文の代わりに何をするか・なぜそうするかをユーザー向けにわかりやすく説明する。省略するとプロンプト全文がコードブロックで表示され読みにくくなるため、必ず含めること)"
 }
 \`\`\`
 
@@ -50,6 +53,7 @@ Markdown や自然文で書かないでください。
 3. メッセージ内容から即時実行か定期登録かを判断してください
 4. 曖昧な場合は requires_confirmation: true
 5. prompt は Antigravity にそのまま投げられる最終形
+6. **prompt_summary は必須。** 省略するとプロンプト全文がコードブロックで表示され、Markdown がレンダリングされず読みにくくなる。ユーザーが確認しやすいよう、何をするか・なぜそうするかを簡潔に説明すること。
 
 ## choice_mode の使い方
 
@@ -92,35 +96,83 @@ Discord にリアルタイム通知されます。
 - **変更ファイル**: 変更したファイル名一覧
 - **影響範囲**: 変更が影響する箇所
 - **テスト結果**: typecheck / test の結果
-- **注意点**: 破壊的変更・必要な追加設定など（該当する場合）`;
+- **注意点**: 破壊的変更・必要な追加設定など（該当する場合）
+
+## MEMORY.md 運用ルール
+
+エージェントの長期記憶として MEMORY.md が提供される場合があります。
+
+### 記憶の構成
+- **グローバル記憶** (\`~/.anticrow/MEMORY.md\`): 全プロジェクト共通の学び
+- **ワークスペース記憶** (\`{workspace}/.anticrow/MEMORY.md\`): プロジェクト固有の学び
+
+### 記録すべき内容
+- 重要な技術的決定とその理由
+- 繰り返し発生した問題の解決パターン
+- ユーザーの好み・作業スタイル（グローバル）
+- プロジェクト固有のビルド手順や注意点（ワークスペース）
+- 失敗した手法と代替策
+
+### 記録すべきでない内容
+- 一時的・使い捨ての情報
+- 他のファイルで管理すべき設定値（環境変数等）
+- 個人情報・セキュリティに関わる情報
+- 巨大なコードスニペット
+
+### フォーマット
+\\\`\\\`\\\`markdown
+### YYYY-MM-DD
+- **カテゴリ**: 内容の簡潔な説明
+  - 詳細があれば箇条書きで追記
+\\\`\\\`\\\`
+
+### 記憶の利用ルール
+- 記憶を参考にするが、盲信しない
+- 記憶と現在のコードが矛盾する場合は**現在のコードを優先**
+- 記憶にある教訓は積極的に活用する
+
+### 記憶の自動記録
+- 実行完了時、重要な学びや教訓があればレスポンスの末尾に HTML コメントで記録指示を埋め込むこと
+- フォーマット:
+  \`<!-- MEMORY:global: 記録内容 -->\` — 全プロジェクト共通の学び
+  \`<!-- MEMORY:workspace: 記録内容 -->\` — 現プロジェクト固有の学び
+- グローバル vs ワークスペースの判定:
+  - **グローバル**: ユーザーの好み、汎用的な技術パターン、ツールの使い方
+  - **ワークスペース**: ビルド手順、プロジェクト構成、固有のバグ回避策
+- 記録しない場合:
+  - 一時的・使い捨ての作業結果
+  - 既に記憶に存在する情報
+  - 単純な設定変更（学びがない場合）
+  - セキュリティ情報（APIキー等）
+- 1回の実行で最大3件まで`;
 
 /**
  * タイムゾーンプレースホルダーを実際の値で置換したプロンプトルールを返す。
  */
 export function getPromptRulesMd(timezone: string): string {
-    return PROMPT_RULES_MD.replace(/\{\{TIMEZONE\}\}/g, timezone);
+  return PROMPT_RULES_MD.replace(/\{\{TIMEZONE\}\}/g, timezone);
 }
 
 /** 実行プロンプトテンプレート（旧 .anticrow/templates/execution_prompt.json） */
 export const EXECUTION_PROMPT_TEMPLATE = JSON.stringify({
-    task: 'execution',
-    context: {
-        datetime_jst: '{{datetime}}',
+  task: 'execution',
+  context: {
+    datetime_jst: '{{datetime}}',
+  },
+  prompt: '{{user_prompt}}',
+  output: {
+    response_path: '{{response_path}}',
+    format: 'markdown',
+    constraint: 'すべての作業が完了してから write_to_file で Markdown 形式のレスポンスを1回だけ書き込む。途中経過・中間報告は書き込まない。ファイルに書き込んだ時点でレスポンス完了と見なされ、内容がそのまま Discord に送信される。Discord の Markdown 記法に準拠すること（**太字**, - 箇条書き, `コード` 等）。結果には何をしたか・変更内容・影響範囲・注意点などを具体的かつ詳細に記述すること。簡素すぎる報告は避ける。変更したファイル名・変更の概要・テスト結果・注意事項をすべて含めること。重要な学びがあればレスポンス末尾に <!-- MEMORY:global: 内容 --> または <!-- MEMORY:workspace: 内容 --> タグで記録指示を埋め込むこと。詳細はルールの「記憶の自動記録」参照。',
+  },
+  rules: '{{rules_content}}',
+  progress: {
+    path: '{{progress_path}}',
+    instruction: '進捗ファイルに JSON で進捗状況を定期的に書き込むこと（write_to_file, Overwrite: true）。Discord にリアルタイム通知される。処理の各段階（調査中・実装中・テスト中・デプロイ中など）で必ず進捗を更新する。目安: 30秒〜1分おきに percent と status を更新。長時間の無反応はユーザーに不安を与えるため避ける。',
+    format: {
+      status: '現在のステータス',
+      detail: '詳細（任意）',
+      percent: 50,
     },
-    prompt: '{{user_prompt}}',
-    output: {
-        response_path: '{{response_path}}',
-        format: 'markdown',
-        constraint: 'すべての作業が完了してから write_to_file で Markdown 形式のレスポンスを1回だけ書き込む。途中経過・中間報告は書き込まない。ファイルに書き込んだ時点でレスポンス完了と見なされ、内容がそのまま Discord に送信される。Discord の Markdown 記法に準拠すること（**太字**, - 箇条書き, `コード` 等）。結果には何をしたか・変更内容・影響範囲・注意点などを具体的かつ詳細に記述すること。簡素すぎる報告は避ける。変更したファイル名・変更の概要・テスト結果・注意事項をすべて含めること。',
-    },
-    rules: '{{rules_content}}',
-    progress: {
-        path: '{{progress_path}}',
-        instruction: '進捗ファイルに JSON で進捗状況を定期的に書き込むこと（write_to_file, Overwrite: true）。Discord にリアルタイム通知される。処理の各段階（調査中・実装中・テスト中・デプロイ中など）で必ず進捗を更新する。目安: 30秒〜1分おきに percent と status を更新。長時間の無反応はユーザーに不安を与えるため避ける。',
-        format: {
-            status: '現在のステータス',
-            detail: '詳細（任意）',
-            percent: 50,
-        },
-    },
+  },
 }, null, 4);

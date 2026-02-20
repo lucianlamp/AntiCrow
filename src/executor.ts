@@ -10,12 +10,14 @@ import { ExecutionJob, Plan, PlanExecution } from './types';
 import { CdpBridge } from './cdpBridge';
 import { FileIpc } from './fileIpc';
 import { PlanStore } from './planStore';
+import { readCombinedMemory, appendToGlobalMemory, appendToWorkspaceMemory, extractMemoryTags, stripMemoryTags } from './memoryStore';
 import { logDebug, logError, logWarn } from './logger';
 import { CdpConnectionError, IpcTimeoutError } from './errors';
 import { updateAnticrowMd, getAnticrowMdPath } from './anticrowCustomizer';
 import { getPromptRulesMd, EXECUTION_PROMPT_TEMPLATE } from './embeddedRules';
+import { EmbedColor } from './embedHelper';
 import * as vscode from 'vscode';
-import { getMaxRetries, getTimezone } from './configHelper';
+import { getMaxRetries, getTimezone, getWorkspacePaths } from './configHelper';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -75,7 +77,7 @@ export class Executor {
     private notifyDiscord: NotifyFunc;
     private sendTypingToChannel: SendTypingFunc;
     private queue: ExecutionJob[] = [];
-    private jobCompletionResolvers = new Map<string, () => void>();
+    private jobCompletionResolvers = new Map<string, (success: boolean) => void>();
     private running = false;
     private processing = false;
     private aborted = false;
@@ -84,11 +86,14 @@ export class Executor {
     private currentJobStartTime: number = 0;
     private recentlyExecutedPlanIds = new Set<string>();
     private uiWatcherTimer: ReturnType<typeof setInterval> | null = null;
+    private typingInterval: ReturnType<typeof setInterval> | null = null;
+    private progressInterval: ReturnType<typeof setInterval> | null = null;
     private readonly autoClickRules: AutoClickRule[] = [...DEFAULT_AUTO_CLICK_RULES];
     private extensionPath: string;
     private promptTemplate: string | null = null;
     private userGlobalRules: string | null = null;
     private promptRulesContent: string | null = null;
+    private userMemory: string | null = null;
 
     constructor(cdp: CdpBridge, fileIpc: FileIpc, planStore: PlanStore, timeoutMs: number, notifyDiscord: NotifyFunc, sendTyping: SendTypingFunc, extensionPath?: string) {
         this.cdp = cdp;
@@ -122,7 +127,7 @@ export class Executor {
     /** ユーザーグローバルルールを読み込む */
     private loadUserGlobalRules(): void {
         const homedir = os.homedir();
-        const filePath = path.join(homedir, '.anticrow', 'ANTICROW.md');
+        const filePath = path.join(homedir, '.anticrow', 'SOUL.md');
         try {
             const content = fs.readFileSync(filePath, 'utf-8');
             if (content.trim().length > 0) {
@@ -147,7 +152,7 @@ export class Executor {
             return Promise.resolve();
         }
         return new Promise<void>((resolve) => {
-            this.jobCompletionResolvers.set(job.plan.plan_id, resolve);
+            this.jobCompletionResolvers.set(job.plan.plan_id, () => resolve());
             this.queue.push(job);
             logDebug(`Executor: enqueued job for plan ${job.plan.plan_id} (trigger: ${job.triggerType})`);
             this.processQueue();
@@ -218,11 +223,11 @@ export class Executor {
                 }
             }
 
-            // ジョブ完了を通知
+            // ジョブ完了を通知（成功/失敗を伝令）
             const resolver = this.jobCompletionResolvers.get(job.plan.plan_id);
             if (resolver) {
                 this.jobCompletionResolvers.delete(job.plan.plan_id);
-                resolver();
+                resolver(success);
             }
             this.currentJob = null;
         }
@@ -280,8 +285,27 @@ export class Executor {
             logDebug(`Executor: sending start notification to channel ${notifyChannel}`);
             await this.safeNotify(notifyChannel, startMsg);
 
-            // 実行前にユーザーグローバルルールを再読み込み（ANTICROW.md 更新反映）
+            // 実行詳細通知（execution_summary = prompt の要約と解説）
+            try {
+                const detailParts: string[] = [];
+                const summary = plan.execution_summary || plan.action_summary || plan.human_summary;
+                if (summary) {
+                    detailParts.push(`📋 **実行内容**\n> ${summary.replace(/\n/g, '\n> ')}`);
+                }
+                if (detailParts.length > 0) {
+                    await this.safeNotify(notifyChannel, detailParts.join('\n\n'));
+                }
+            } catch { /* 詳細通知失敗は無視 */ }
+
+            // 実行前にユーザーグローバルルールを再読み込み（SOUL.md 更新反映）
             this.loadUserGlobalRules();
+
+            // MEMORY.md を読み込み（グローバル + ワークスペース）
+            {
+                const wsPaths = getWorkspacePaths();
+                const wsPath = plan.workspace_name ? wsPaths[plan.workspace_name] : undefined;
+                this.userMemory = readCombinedMemory(wsPath);
+            }
 
             logDebug(`Executor: executing plan ${plan.plan_id} — sending prompt via CDP (${plan.prompt.length} chars)`);
             this.running = true;
@@ -329,6 +353,10 @@ export class Executor {
                         tplObj.user_rules = this.userGlobalRules;
                         tplObj.user_rules_instruction = '出力のスタイルや口調に反映してください。';
                     }
+                    if (this.userMemory) {
+                        tplObj.memory = this.userMemory;
+                        tplObj.memory_instruction = 'これはエージェントの記憶です。過去の学びや教訓を参考にしてください。';
+                    }
                     finalPrompt = JSON.stringify(tplObj, null, 2);
                 } catch {
                     // JSON パース失敗時はテキストとしてそのまま使用（旧 .md 互換）
@@ -341,6 +369,9 @@ export class Executor {
                     }
                     if (this.userGlobalRules) {
                         finalPrompt += `\n\n## ユーザー設定\n${this.userGlobalRules}`;
+                    }
+                    if (this.userMemory) {
+                        finalPrompt += `\n\n## エージェントの記憶\n${this.userMemory}`;
                     }
                 }
             } else {
@@ -369,6 +400,10 @@ export class Executor {
                     promptObj.user_rules = this.userGlobalRules;
                     promptObj.user_rules_instruction = '出力のスタイルや口調に反映してください。';
                 }
+                if (this.userMemory) {
+                    promptObj.memory = this.userMemory;
+                    promptObj.memory_instruction = 'これはエージェントの記憶です。過去の学びや教訓を参考にしてください。';
+                }
                 finalPrompt = JSON.stringify(promptObj, null, 2);
             }
 
@@ -380,14 +415,14 @@ export class Executor {
             const cdpInstruction = `以下のファイルを view_file ツールで読み込み、その指示に従ってください。ファイルパス: ${tmpExecPath}`;
 
             // typing indicator 開始（実行中に「入力中...」を表示）
-            const typingInterval = setInterval(async () => {
+            this.typingInterval = setInterval(async () => {
                 try { await this.sendTypingToChannel(notifyChannel); } catch (e) { logDebug(`Executor: sendTyping failed: ${e}`); }
             }, RETRY_DELAY_MS);
             try { await this.sendTypingToChannel(notifyChannel); } catch (e) { logDebug(`Executor: sendTyping failed: ${e}`); }
 
             // 進捗監視ループ開始（3秒間隔）
             let lastProgressContent = '';
-            const progressInterval = setInterval(async () => {
+            this.progressInterval = setInterval(async () => {
                 try {
                     const progress = await this.fileIpc.readProgress(progressPath);
                     if (progress) {
@@ -398,7 +433,7 @@ export class Executor {
                             const detailStr = progress.detail ? `\n${progress.detail}` : '';
                             const progressMsg = `📊 **進捗${percentStr}:** ${progress.status}${detailStr}`;
                             logDebug(`Executor: progress update — ${progress.status}`);
-                            await this.safeNotify(notifyChannel, progressMsg);
+                            await this.safeNotify(notifyChannel, progressMsg, EmbedColor.Progress);
                         }
                     }
                 } catch {
@@ -437,18 +472,18 @@ export class Executor {
                 }
                 logDebug(`Executor: prompt sent, waiting for file response at ${responsePath}`);
 
-                // 伝達完了ステータスを Discord に通知
-                await this.safeNotify(notifyChannel, '✅ 指示を伝達しました。応答を待っています...');
+                // 伝令完了ステータスを Discord に通知
+                await this.safeNotify(notifyChannel, '✅ 指示を伝令しました。応答を待っています...');
 
                 // 一時プロンプトファイルを即時クリーンアップ（レビューUI被り防止）
-                await this.fileIpc.cleanupTmpFiles();
+                // ただし自身の tmp_exec ファイルは除外（Antigravity が読み取り中の可能性）
+                await this.fileIpc.cleanupTmpFiles([tmpExecPath]);
 
                 // ファイル経由でレスポンスを待機（AbortSignal 付き）
                 // （UIウォッチャーは bridgeLifecycle で常時動作しているため、ここでは起動/停止しない）
                 response = await this.fileIpc.waitForResponse(responsePath, this.timeoutMs, signal);
             } finally {
-                clearInterval(typingInterval);
-                clearInterval(progressInterval);
+                this.clearJobIntervals();
                 // 進捗ファイルクリーンアップ
                 await this.fileIpc.cleanupProgress(progressPath);
                 // 一時プロンプトファイル削除
@@ -464,18 +499,42 @@ export class Executor {
             const isMarkdown = responsePath.endsWith('.md');
             const content = isMarkdown ? response.trim() : FileIpc.extractResult(response);
 
+            // レスポンスから MEMORY タグを抽出して MEMORY.md に書き込み
+            try {
+                const memoryEntries = extractMemoryTags(content);
+                if (memoryEntries.length > 0) {
+                    const wsPaths = getWorkspacePaths();
+                    const wsPath = plan.workspace_name ? wsPaths[plan.workspace_name] : undefined;
+                    for (const entry of memoryEntries) {
+                        if (entry.scope === 'global') {
+                            appendToGlobalMemory(entry.content);
+                            logDebug(`Executor: auto-recorded global memory (${entry.content.length} chars)`);
+                        } else if (entry.scope === 'workspace' && wsPath) {
+                            appendToWorkspaceMemory(wsPath, entry.content);
+                            logDebug(`Executor: auto-recorded workspace memory (${entry.content.length} chars)`);
+                        }
+                    }
+                    logDebug(`Executor: extracted ${memoryEntries.length} memory entries from response`);
+                }
+            } catch (e) {
+                logDebug(`Executor: memory extraction failed: ${e instanceof Error ? e.message : e}`);
+            }
+
+            // MEMORY タグを除去してから Discord に送信
+            const cleanContent = stripMemoryTags(content);
+
             // 成功通知（重複タイトル防止: レスポンスが prefix と同等の内容で始まる場合はスキップ）
             const prefix = plan.discord_templates.run_success_prefix || '✅ 実行完了';
             // prefix のテキスト部分（絵文字・太字マーカーを除去）を取り出し、レスポンス先頭と比較
             const prefixCore = prefix.replace(/[\s*]/g, '').replace(/^[^\p{L}\p{N}]+/u, '');
-            const contentStart = content.substring(0, 100).replace(/[\s*]/g, '').replace(/^[^\p{L}\p{N}]+/u, '');
+            const contentStart = cleanContent.substring(0, 100).replace(/[\s*]/g, '').replace(/^[^\p{L}\p{N}]+/u, '');
             const isDuplicate = prefixCore.length > 0 && contentStart.startsWith(prefixCore);
-            const resultMsg = isDuplicate ? content : `${prefix}\n${content}`;
+            const resultMsg = isDuplicate ? cleanContent : `${prefix}\n${cleanContent}`;
             logDebug(`Executor: sending success notification to channel ${notifyChannel} (${resultMsg.length} chars, prefixSkipped=${isDuplicate}, markdown=${isMarkdown})`);
-            await this.safeNotify(notifyChannel, resultMsg, 0x00CED1);
+            await this.safeNotify(notifyChannel, resultMsg, EmbedColor.Response);
 
             // 実行履歴を記録
-            this.recordExecution(plan, true, durationMs, content);
+            this.recordExecution(plan, true, durationMs, cleanContent);
 
             // 即時実行の重複防止
             if (!plan.cron) {
@@ -539,10 +598,18 @@ export class Executor {
         this.processing = false;
         this.aborted = true;
         this.queue = [];
+        // typing / progress interval を即座に停止
+        this.clearJobIntervals();
         if (this.abortController) {
             this.abortController.abort();
             this.abortController = null;
         }
+        // pending な jobCompletionResolvers を全て resolve
+        for (const [planId, resolver] of this.jobCompletionResolvers.entries()) {
+            logDebug(`Executor: force-resolving pending job completion for plan ${planId} (reset)`);
+            resolver(false);
+        }
+        this.jobCompletionResolvers.clear();
         logDebug('Executor: force reset — running/processing/aborted flags set, queue emptied');
     }
 
@@ -552,13 +619,33 @@ export class Executor {
         this.processing = false;
         this.aborted = true;
         this.currentJob = null;
+        // typing / progress interval を即座に停止
+        this.clearJobIntervals();
         // AbortController で実行中の waitForResponse を即座にキャンセル
         if (this.abortController) {
             this.abortController.abort();
             this.abortController = null;
             logDebug('Executor: abortController triggered — waitForResponse cancelled');
         }
+        // pending な jobCompletionResolvers を全て resolve して呼び出し元のハングを防止
+        for (const [planId, resolver] of this.jobCompletionResolvers.entries()) {
+            logDebug(`Executor: force-resolving pending job completion for plan ${planId}`);
+            resolver(false);
+        }
+        this.jobCompletionResolvers.clear();
         logDebug('Executor: force stop — running/processing/aborted flags set, queue preserved');
+    }
+
+    /** typing / progress の interval タイマーをクリアする */
+    private clearJobIntervals(): void {
+        if (this.typingInterval) {
+            clearInterval(this.typingInterval);
+            this.typingInterval = null;
+        }
+        if (this.progressInterval) {
+            clearInterval(this.progressInterval);
+            this.progressInterval = null;
+        }
     }
 
     /** 現在実行中かどうか */
@@ -599,7 +686,8 @@ export class Executor {
      * bridgeLifecycle からブリッジ起動時に呼ばれる（常時動作）。
      */
     startUIWatcher(): void {
-        if (this.uiWatcherTimer) { return; } // 既に動作中
+        // 既存タイマーがあればクリアして再起動（多重起動によるリーク防止）
+        this.stopUIWatcher();
 
         logDebug('Executor: UI watcher started (command-first hybrid mode)');
 

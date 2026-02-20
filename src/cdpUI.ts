@@ -432,7 +432,48 @@ export async function dismissReviewUI(
 }
 
 // -----------------------------------------------------------------------
-// autoFollowOutput — AI出力追従（スクロール + 展開 + レビューUI消去）
+// dismissPermissionDialog — 権限確認ダイアログを自動承認
+// -----------------------------------------------------------------------
+
+export async function dismissPermissionDialog(
+    ops: CdpBridgeOps,
+): Promise<boolean> {
+    const PERMISSION_SCRIPT = `
+(function() {
+    var buttons = document.querySelectorAll('button');
+    var allowed = 0;
+    for (var i = 0; i < buttons.length; i++) {
+        var btn = buttons[i];
+        var text = (btn.textContent || '').trim();
+        var textLower = text.toLowerCase();
+        if (textLower === 'allow this conversation' ||
+            textLower === 'allow once') {
+            try {
+                btn.scrollIntoView({ block: 'center', behavior: 'instant' });
+                btn.click();
+                allowed++;
+            } catch(e) {}
+        }
+    }
+    return { allowed: allowed };
+})()
+`;
+
+    try {
+        const result = await ops.evaluateInCascade(PERMISSION_SCRIPT) as { allowed: number } | null;
+        if (result && result.allowed > 0) {
+            logDebug(`CDP: dismissPermissionDialog — allowed ${result.allowed} permission dialog(s)`);
+            return true;
+        }
+    } catch (e) {
+        logDebug(`CDP: dismissPermissionDialog failed — ${e instanceof Error ? e.message : e}`);
+    }
+
+    return false;
+}
+
+// -----------------------------------------------------------------------
+// autoFollowOutput — AI出力追従（スクロール + 展開 + レビューUI消去 + 権限承認）
 // -----------------------------------------------------------------------
 
 export async function autoFollowOutput(
@@ -446,6 +487,9 @@ export async function autoFollowOutput(
 
     // 3. レビューUI を自動 Dismiss
     await dismissReviewUI(ops);
+
+    // 4. 権限確認ダイアログを自動承認
+    await dismissPermissionDialog(ops);
 
     logDebug('CDP: autoFollowOutput completed');
 }

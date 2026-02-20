@@ -114,10 +114,15 @@ export class FileIpc {
             }
 
             const tryReadResponse = async (): Promise<boolean> => {
+                if (settled) { return true; }
                 try {
                     await fs.promises.access(responsePath, fs.constants.F_OK);
                     // ファイルが存在する → 少し待ってから読み取り（書き込み完了を待つ）
                     await this.sleep(WRITE_SETTLE_MS);
+
+                    // 二重解決防止: readFile 前に settled フラグを先行設定
+                    // （fs.watch とポーリングの同時検出レース対策）
+                    settled = true;
 
                     const content = await fs.promises.readFile(responsePath, 'utf-8');
 
@@ -126,13 +131,14 @@ export class FileIpc {
                     if (content.length > MAX_RESPONSE_SIZE) {
                         logError(`FileIpc: response file too large (${content.length} bytes > ${MAX_RESPONSE_SIZE}). Truncating.`);
                         try { await fs.promises.unlink(responsePath); } catch (e) { logDebug(`FileIpc: failed to unlink truncated response: ${e}`); }
-                        if (!settled) { settled = true; cleanup(); resolve(content.substring(0, MAX_RESPONSE_SIZE)); }
+                        cleanup(); resolve(content.substring(0, MAX_RESPONSE_SIZE));
                         return true;
                     }
 
                     // 空ファイルの場合はまだ書き込み中の可能性
                     if (content.trim().length === 0) {
                         logDebug('FileIpc: file exists but is empty, waiting...');
+                        settled = false; // 空ファイルの場合はフラグを戻す
                         return false;
                     }
 
@@ -146,10 +152,11 @@ export class FileIpc {
                         logWarn('FileIpc: failed to clean up response file');
                     }
 
-                    if (!settled) { settled = true; cleanup(); resolve(content); }
+                    cleanup(); resolve(content);
                     return true;
                 } catch {
-                    // ファイルがまだ存在しない
+                    // ファイルがまだ存在しない — settled を戻す
+                    settled = false;
                     return false;
                 }
             };
@@ -253,11 +260,16 @@ export class FileIpc {
     }
 
     /** tmp_* 系ファイルを即時クリーンアップ（プロンプト送信後に呼ぶ） */
-    async cleanupTmpFiles(): Promise<void> {
+    async cleanupTmpFiles(excludeFiles?: string[]): Promise<void> {
+        const excludeSet = excludeFiles ? new Set(excludeFiles.map(f => path.basename(f))) : null;
         try {
             const files = await fs.promises.readdir(this.ipcDir);
             for (const f of files) {
                 if (f.startsWith('tmp_')) {
+                    if (excludeSet && excludeSet.has(f)) {
+                        logDebug(`FileIpc: skipping excluded tmp file ${f}`);
+                        continue;
+                    }
                     const fp = path.join(this.ipcDir, f);
                     try {
                         await fs.promises.unlink(fp);

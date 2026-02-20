@@ -46,6 +46,10 @@ export const slashCommandDefinitions = [
         .setName('mode')
         .setDescription('AI モード切替（Planning / Fast）'),
 
+    new SlashCommandBuilder()
+        .setName('help')
+        .setDescription('AntiCrow のコマンド一覧と使い方を表示'),
+
 ];
 
 // -----------------------------------------------------------------------

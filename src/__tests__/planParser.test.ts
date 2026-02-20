@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// planParser.test.ts — parseSkillJson / buildPlan テスト
+// planParser.test.ts — parsePlanJson / buildPlan テスト
 // ---------------------------------------------------------------------------
 
 import { describe, it, expect, vi } from 'vitest';
@@ -19,10 +19,10 @@ vi.mock('vscode', () => ({
     },
 }));
 
-import { parseSkillJson, buildPlan } from '../planParser';
+import { parsePlanJson, buildPlan } from '../planParser';
 import { getTimezone } from '../configHelper';
 
-describe('parseSkillJson', () => {
+describe('parsePlanJson', () => {
     it('should parse valid JSON', () => {
         const raw = JSON.stringify({
             plan_id: 'test-001',
@@ -33,7 +33,7 @@ describe('parseSkillJson', () => {
             discord_templates: { ack: '✅ OK' },
             human_summary: 'テスト実行',
         });
-        const result = parseSkillJson(raw);
+        const result = parsePlanJson(raw);
         expect(result).not.toBeNull();
         expect(result!.plan_id).toBe('test-001');
         expect(result!.timezone).toBe('Asia/Tokyo');
@@ -53,7 +53,7 @@ describe('parseSkillJson', () => {
             requires_confirmation: false,
             discord_templates: { ack: 'ok' },
         }) + '\n```';
-        const result = parseSkillJson(raw);
+        const result = parsePlanJson(raw);
         expect(result).not.toBeNull();
         expect(result!.plan_id).toBe('fenced-001');
     });
@@ -70,7 +70,7 @@ describe('parseSkillJson', () => {
                 discord_templates: { ack: '📋 Plan created' },
             },
         });
-        const result = parseSkillJson(raw);
+        const result = parsePlanJson(raw);
         expect(result).not.toBeNull();
         expect(result!.plan_id).toBe('nested-001');
         expect(result!.requires_confirmation).toBe(true);
@@ -84,7 +84,7 @@ describe('parseSkillJson', () => {
             requires_confirmation: false,
             discord_templates: { ack: 'ok' },
         });
-        expect(parseSkillJson(raw)).toBeNull();
+        expect(parsePlanJson(raw)).toBeNull();
     });
 
     it('should return null for missing prompt', () => {
@@ -95,7 +95,7 @@ describe('parseSkillJson', () => {
             requires_confirmation: false,
             discord_templates: { ack: 'ok' },
         });
-        expect(parseSkillJson(raw)).toBeNull();
+        expect(parsePlanJson(raw)).toBeNull();
     });
 
     it('should return null for missing discord_templates', () => {
@@ -106,17 +106,17 @@ describe('parseSkillJson', () => {
             prompt: 'test',
             requires_confirmation: false,
         });
-        expect(parseSkillJson(raw)).toBeNull();
+        expect(parsePlanJson(raw)).toBeNull();
     });
 
     it('should return null for invalid JSON', () => {
-        expect(parseSkillJson('not valid json')).toBeNull();
+        expect(parsePlanJson('not valid json')).toBeNull();
     });
 
     it('should return null for non-object JSON', () => {
-        expect(parseSkillJson('"hello"')).toBeNull();
-        expect(parseSkillJson('42')).toBeNull();
-        expect(parseSkillJson('null')).toBeNull();
+        expect(parsePlanJson('"hello"')).toBeNull();
+        expect(parsePlanJson('42')).toBeNull();
+        expect(parsePlanJson('null')).toBeNull();
     });
 
     it('should parse optional fields', () => {
@@ -136,7 +136,7 @@ describe('parseSkillJson', () => {
             human_summary: '要約テスト',
             attachment_paths: ['/tmp/file.txt'],
         });
-        const result = parseSkillJson(raw);
+        const result = parsePlanJson(raw);
         expect(result).not.toBeNull();
         expect(result!.discord_templates.confirm).toBe('confirm?');
         expect(result!.discord_templates.run_start).toBe('starting...');
@@ -156,7 +156,7 @@ describe('parseSkillJson', () => {
             requires_confirmation: false,
             discord_templates: { ack: null, run_error: '❌ Error' },
         });
-        const result = parseSkillJson(raw);
+        const result = parsePlanJson(raw);
         expect(result).not.toBeNull();
         expect(result!.discord_templates.ack).toBeUndefined();
         expect(result!.discord_templates.run_error).toBe('❌ Error');
@@ -171,7 +171,7 @@ describe('parseSkillJson', () => {
             requires_confirmation: false,
             discord_templates: { run_start: '🔨 Starting' },
         });
-        const result = parseSkillJson(raw);
+        const result = parsePlanJson(raw);
         expect(result).not.toBeNull();
         expect(result!.discord_templates.ack).toBeUndefined();
     });
@@ -185,14 +185,14 @@ describe('parseSkillJson', () => {
             requires_confirmation: false,
             discord_templates: { ack: '' },
         });
-        const result = parseSkillJson(raw);
+        const result = parsePlanJson(raw);
         expect(result).not.toBeNull();
         expect(result!.discord_templates.ack).toBe('');
     });
 });
 
 describe('buildPlan', () => {
-    const baseSkill = {
+    const basePlanOutput = {
         plan_id: 'build-001',
         timezone: 'Asia/Tokyo',
         cron: 'now',
@@ -203,7 +203,7 @@ describe('buildPlan', () => {
     };
 
     it('should build immediate plan with null cron', () => {
-        const plan = buildPlan(baseSkill, 'ch-src', 'ch-notify');
+        const plan = buildPlan(basePlanOutput, 'ch-src', 'ch-notify');
         expect(plan.cron).toBeNull(); // 'now' → null
         expect(plan.status).toBe('active');
         expect(plan.source_channel_id).toBe('ch-src');
@@ -213,31 +213,31 @@ describe('buildPlan', () => {
     });
 
     it('should build scheduled plan preserving cron', () => {
-        const scheduled = { ...baseSkill, cron: '0 9 * * *' };
+        const scheduled = { ...basePlanOutput, cron: '0 9 * * *' };
         const plan = buildPlan(scheduled, 'ch-src', 'ch-notify');
         expect(plan.cron).toBe('0 9 * * *');
     });
 
     it('should set pending_confirmation for confirmation required', () => {
-        const confirming = { ...baseSkill, requires_confirmation: true };
+        const confirming = { ...basePlanOutput, requires_confirmation: true };
         const plan = buildPlan(confirming, 'ch-src', 'ch-notify');
         expect(plan.status).toBe('pending_confirmation');
     });
 
     it('should treat empty cron as immediate', () => {
-        const empty = { ...baseSkill, cron: '' };
+        const empty = { ...basePlanOutput, cron: '' };
         const plan = buildPlan(empty, 'ch-src', 'ch-notify');
         expect(plan.cron).toBeNull();
     });
 
     it('should treat "immediate" cron as immediate', () => {
-        const immediate = { ...baseSkill, cron: 'immediate' };
+        const immediate = { ...basePlanOutput, cron: 'immediate' };
         const plan = buildPlan(immediate, 'ch-src', 'ch-notify');
         expect(plan.cron).toBeNull();
     });
 
     it('should default timezone to getTimezone() when empty', () => {
-        const noTz = { ...baseSkill, timezone: '' };
+        const noTz = { ...basePlanOutput, timezone: '' };
         const plan = buildPlan(noTz, 'ch-src', 'ch-notify');
         expect(plan.timezone).toBe(getTimezone());
     });

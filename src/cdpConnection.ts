@@ -25,6 +25,7 @@ const CDP_COMMAND_TIMEOUT_MS = 30_000;
 interface PendingCallback {
     resolve: (val: unknown) => void;
     reject: (err: Error) => void;
+    timer: ReturnType<typeof setTimeout>;
 }
 
 /**
@@ -88,13 +89,16 @@ export class CdpConnection {
                 logWarn('CDP: WebSocket closed');
                 this.ws = null;
                 // 切断時に未完了のコールバックをすべて reject（デッドロック防止）
+                // コピーしてからクリアし、handleMessage とのレースを防止
                 if (this.pendingCallbacks.size > 0) {
                     const count = this.pendingCallbacks.size;
+                    const callbacks = new Map(this.pendingCallbacks);
+                    this.pendingCallbacks.clear();
                     const err = new CdpConnectionError('CDP WebSocket closed unexpectedly', this.activeTargetPort ?? 0);
-                    for (const [id, cb] of this.pendingCallbacks) {
+                    for (const [, cb] of callbacks) {
+                        clearTimeout(cb.timer);
                         cb.reject(err);
                     }
-                    this.pendingCallbacks.clear();
                     logWarn(`CDP: rejected ${count} pending callbacks due to close`);
                 }
             });
@@ -178,19 +182,28 @@ export class CdpConnection {
                 return;
             }
 
+            // msgId オーバーフロー防止: MAX_SAFE_INTEGER に近づいたらリセット
+            if (this.msgId >= Number.MAX_SAFE_INTEGER - 1) {
+                this.msgId = 0;
+            }
             const id = ++this.msgId;
-            this.pendingCallbacks.set(id, { resolve, reject });
 
-            const msg = JSON.stringify({ id, method, params });
-            this.ws.send(msg);
-
-            // 個別コマンドタイムアウト
-            setTimeout(() => {
+            // 個別コマンドタイムアウト（タイマーハンドルを保持してメモリリーク防止）
+            const timer = setTimeout(() => {
                 if (this.pendingCallbacks.has(id)) {
                     this.pendingCallbacks.delete(id);
                     reject(new CdpCommandError(`CDP command timeout: ${method}`, method));
                 }
             }, CDP_COMMAND_TIMEOUT_MS);
+
+            this.pendingCallbacks.set(id, {
+                resolve: (val) => { clearTimeout(timer); resolve(val); },
+                reject: (err) => { clearTimeout(timer); reject(err); },
+                timer,
+            });
+
+            const msg = JSON.stringify({ id, method, params });
+            this.ws.send(msg);
         });
     }
 
@@ -252,7 +265,10 @@ export class CdpConnection {
         // 既存接続をクリーンに切断
         this.disconnect();
 
-        // 状態をリセット
+        // 状態をリセット（タイマーもクリア）
+        for (const [, cb] of this.pendingCallbacks) {
+            clearTimeout(cb.timer);
+        }
         this.msgId = 0;
         this.pendingCallbacks.clear();
 

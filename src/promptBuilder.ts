@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// promptBuilder.ts — Skill プロンプト・確認メッセージ・cron ユーティリティ
+// promptBuilder.ts — Plan プロンプト・確認メッセージ・cron ユーティリティ
 // ---------------------------------------------------------------------------
 // messageHandler.ts から分離。プロンプト生成・確認UI生成を集約。
 // ---------------------------------------------------------------------------
@@ -13,18 +13,19 @@ import { logWarn, logDebug } from './logger';
 import { markdownToJson } from './mdToJson';
 import { getPromptRulesMd } from './embeddedRules';
 import { getTimezone } from './configHelper';
+import { readCombinedMemory } from './memoryStore';
 
 // ---------------------------------------------------------------------------
-// Skill プロンプト生成
+// Plan プロンプト生成
 // ---------------------------------------------------------------------------
 
-/** buildSkillPrompt の返り値 */
-export interface SkillPromptResult {
+/** buildPlanPrompt の返り値 */
+export interface PlanPromptResult {
     prompt: string;
     tempFiles: string[];
 }
 
-export function buildSkillPrompt(
+export function buildPlanPrompt(
     userMessage: string,
     intent: ChannelIntent,
     channelName: string,
@@ -32,7 +33,9 @@ export function buildSkillPrompt(
     attachmentPaths?: string[],
     extensionPath?: string,
     ipcDir?: string,
-): SkillPromptResult {
+    workspacePath?: string,
+    progressPath?: string,
+): PlanPromptResult {
     const now = new Date().toLocaleString('ja-JP', { timeZone: getTimezone() });
     const tempFiles: string[] = [];
 
@@ -130,9 +133,9 @@ export function buildSkillPrompt(
         promptObj.attachments_instruction = '添付ファイルを view_file ツールで確認し、prompt の中でも view_file で確認するよう指示を含めてください。';
     }
 
-    // ユーザーグローバルルール（~/.anticrow/ANTICROW.md）を Markdown → JSON 変換して一時ファイルに保存
+    // ユーザーグローバルルール（~/.anticrow/SOUL.md）を Markdown → JSON 変換して一時ファイルに保存
     try {
-        const globalRulesPath = path.join(os.homedir(), '.anticrow', 'ANTICROW.md');
+        const globalRulesPath = path.join(os.homedir(), '.anticrow', 'SOUL.md');
         const globalRulesMd = fs.readFileSync(globalRulesPath, 'utf-8').trim();
         if (globalRulesMd.length > 0) {
             const globalRulesJson = markdownToJson(globalRulesMd);
@@ -150,7 +153,28 @@ export function buildSkillPrompt(
             }
         }
     } catch (e) {
-        logDebug(`promptBuilder: global rules file (~/.anticrow/ANTICROW.md) not found: ${e instanceof Error ? e.message : e}`);
+        logDebug(`promptBuilder: global rules file (~/.anticrow/SOUL.md) not found: ${e instanceof Error ? e.message : e}`);
+    }
+
+    // MEMORY.md（グローバル + ワークスペース）を読み込んでプロンプトに注入
+    const combinedMemory = readCombinedMemory(workspacePath);
+    if (combinedMemory) {
+        promptObj.memory = combinedMemory;
+        promptObj.memory_instruction = 'これはエージェントの記憶です。過去の学びや教訓を参考にしてください。';
+        logDebug(`promptBuilder: injected combined memory (${combinedMemory.length} chars)`);
+    }
+
+    // 進捗報告パス（計画生成中もリアルタイム進捗通知を行う）
+    if (progressPath) {
+        promptObj.progress = {
+            path: progressPath,
+            instruction: '進捗ファイルに JSON で進捗状況を定期的に書き込むこと（write_to_file, Overwrite: true）。Discord にリアルタイム通知される。処理の各段階（調査中・実装中・テスト中・デプロイ中など）で必ず進捗を更新する。目安: 30秒〜1分おきに percent と status を更新。長時間の無反応はユーザーに不安を与えるため避ける。',
+            format: {
+                status: '現在のステータス',
+                detail: '詳細（任意）',
+                percent: 50,
+            },
+        };
     }
 
     // プロンプトを一時ファイルに書き出し、CDP には view_file 指示のみ返す
@@ -204,15 +228,24 @@ export function buildConfirmMessage(plan: Plan): string {
         lines.push(`**スケジュール:** \`${plan.cron}\` (${plan.timezone})`);
     }
 
-    // プロンプト内容（プレビュー）
-    const promptPreview = plan.prompt.length > 2000
-        ? plan.prompt.substring(0, 2000) + '…'
-        : plan.prompt;
+    // 実行内容（prompt_summary がある場合は要約、ない場合はプロンプト全文）
     lines.push('');
     lines.push('**実行内容:**');
-    lines.push('```');
-    lines.push(promptPreview);
-    lines.push('```');
+    if (plan.prompt_summary) {
+        // 要約をブロック引用で表示（読みやすい形式）
+        const summaryLines = plan.prompt_summary.split('\n');
+        for (const sl of summaryLines) {
+            lines.push(`> ${sl}`);
+        }
+    } else {
+        // フォールバック: プロンプト全文をコードブロックで表示
+        const promptPreview = plan.prompt.length > 2000
+            ? plan.prompt.substring(0, 2000) + '…'
+            : plan.prompt;
+        lines.push('```');
+        lines.push(promptPreview);
+        lines.push('```');
+    }
 
 
     // カスタム確認メッセージがあれば追加

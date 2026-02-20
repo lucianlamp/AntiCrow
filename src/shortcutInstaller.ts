@@ -53,7 +53,7 @@ export function createDesktopShortcut(extensionPath: string): void {
         return;
     }
 
-    const scriptPath = path.join(extensionPath, 'scripts', 'launch-antigravity.ps1');
+    const scriptPath = path.join(extensionPath, 'scripts', 'anticrow.ps1');
     const desktopPath = path.join(process.env.USERPROFILE || '', 'Desktop');
     const shortcutPath = path.join(desktopPath, 'AntiCrow.lnk');
     // VSIX パッケージに同梱済みの ICO ファイルを使用

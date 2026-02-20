@@ -1,19 +1,19 @@
 // ---------------------------------------------------------------------------
-// planParser.ts — Skill JSON バリデーション & Plan 構築
+// planParser.ts — Plan JSON バリデーション & Plan 構築
 // ---------------------------------------------------------------------------
 
-import { Plan, SkillOutput, DiscordTemplates, PlanStatus, ChoiceMode } from './types';
+import { Plan, PlanOutput, DiscordTemplates, PlanStatus, ChoiceMode } from './types';
 import { logWarn } from './logger';
 import { getTimezone } from './configHelper';
 
 /**
- * Skill が返した JSON 文字列をパースし、バリデーションする。
+ * Plan が返した JSON 文字列をパースし、バリデーションする。
  * Zod は依存を増やすので手動バリデーション（計画スキーマは固定なので十分）。
  */
-export function parseSkillJson(raw: string): SkillOutput | null {
+export function parsePlanJson(raw: string): PlanOutput | null {
     let obj: unknown;
     try {
-        // Skill が ```json ... ``` で囲って返す可能性に備える
+        // Plan が ```json ... ``` で囲って返す可能性に備える
         const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
         obj = JSON.parse(cleaned);
     } catch {
@@ -63,6 +63,9 @@ export function parseSkillJson(raw: string): SkillOutput | null {
         choice_mode: choiceMode,
         discord_templates: templates,
         human_summary: typeof o.human_summary === 'string' ? o.human_summary : undefined,
+        action_summary: typeof o.action_summary === 'string' ? o.action_summary : undefined,
+        execution_summary: typeof o.execution_summary === 'string' ? o.execution_summary : undefined,
+        prompt_summary: typeof o.prompt_summary === 'string' ? o.prompt_summary : undefined,
         attachment_paths: Array.isArray(o.attachment_paths) ? o.attachment_paths as string[] : undefined,
     };
 }
@@ -86,31 +89,34 @@ function truncateSummary(text: string | undefined, maxLen: number = 15): string 
 }
 
 /**
- * SkillOutput + メタデータ → 完全な Plan を組み立てる
+ * PlanOutput + メタデータ → 完全な Plan を組み立てる
  */
 export function buildPlan(
-    skill: SkillOutput,
+    output: PlanOutput,
     sourceChannelId: string,
     notifyChannelId: string,
 ): Plan {
-    const isImmediate = !skill.cron || skill.cron === '' || skill.cron === 'now' || skill.cron === 'immediate';
+    const isImmediate = !output.cron || output.cron === '' || output.cron === 'now' || output.cron === 'immediate';
 
-    const status: PlanStatus = skill.requires_confirmation
+    const status: PlanStatus = output.requires_confirmation
         ? 'pending_confirmation'
         : 'active';
 
     return {
-        plan_id: skill.plan_id,
-        timezone: skill.timezone || getTimezone(),
-        cron: isImmediate ? null : skill.cron,
-        prompt: skill.prompt,
-        requires_confirmation: skill.requires_confirmation,
-        choice_mode: skill.choice_mode,
+        plan_id: output.plan_id,
+        timezone: output.timezone || getTimezone(),
+        cron: isImmediate ? null : output.cron,
+        prompt: output.prompt,
+        requires_confirmation: output.requires_confirmation,
+        choice_mode: output.choice_mode,
         source_channel_id: sourceChannelId,
         notify_channel_id: notifyChannelId,
-        discord_templates: skill.discord_templates,
-        human_summary: truncateSummary(skill.human_summary),
-        attachment_paths: skill.attachment_paths,
+        discord_templates: output.discord_templates,
+        human_summary: truncateSummary(output.human_summary),
+        action_summary: output.action_summary,
+        execution_summary: output.execution_summary,
+        prompt_summary: output.prompt_summary,
+        attachment_paths: output.attachment_paths,
         status,
         created_at: new Date().toISOString(),
     };

@@ -31,7 +31,7 @@ export interface DiscordTemplates {
 /** 実行ターゲット（特殊フロー分岐用） */
 export type PlanTarget = 'anticrow_customization';
 
-/** Skill JSON 出力 / 永続化される計画 */
+/** Plan JSON 出力 / 永続化される計画 */
 export interface Plan {
     plan_id: string;
     timezone: string;               // "Asia/Tokyo"
@@ -45,6 +45,9 @@ export interface Plan {
     channel_id?: string;            // 自動作成された専用チャンネル ID（Schedules カテゴリー内）
     discord_templates: DiscordTemplates;
     human_summary?: string;
+    action_summary?: string;        // Discord 計画詳細表示用の要約（何をするか具体的に）
+    execution_summary?: string;      // Discord 実行フェーズ表示用の要約（prompt の要約と解説）
+    prompt_summary?: string;         // Discord 確認メッセージの「実行内容」表示用の要約と解説（1,000文字以内）
     attachment_paths?: string[];     // Discord 添付ファイルのローカルパス
     workspace_name?: string;        // 紐づくワークスペース名（カテゴリーベースルーティング用）
     status: PlanStatus;
@@ -54,8 +57,8 @@ export interface Plan {
     executions?: PlanExecution[];    // 直近10件
 }
 
-/** Skill が返す生の JSON（source/notify は拡張が後付け） */
-export interface SkillOutput {
+/** Plan が返す生の JSON（source/notify は拡張が後付け） */
+export interface PlanOutput {
     plan_id: string;
     timezone: string;
     cron: string;
@@ -65,6 +68,9 @@ export interface SkillOutput {
     target?: PlanTarget;             // 特殊フロー分岐（省略時は通常実行）
     discord_templates: DiscordTemplates;
     human_summary?: string;
+    action_summary?: string;        // Discord 計画詳細表示用の要約（何をするか具体的に）
+    execution_summary?: string;      // Discord 実行フェーズ表示用の要約（prompt の要約と解説）
+    prompt_summary?: string;         // Discord 確認メッセージの「実行内容」表示用の要約と解説（1,000文字以内）
     attachment_paths?: string[];     // Discord 添付ファイルのローカルパス（拡張が後付け）
 }
 
