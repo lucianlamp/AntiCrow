@@ -551,7 +551,30 @@ export async function selectConversation(ops: CdpBridgeOps, index: number): Prom
 export async function closePopup(ops: CdpBridgeOps): Promise<void> {
     await ops.conn.connect();
 
-    // 戦略0: history-tooltip を再クリックしてトグル
+    // 戦略0（最優先）: Escape キー送信
+    // cascade context リセットに影響されず最も安定した方法
+    try {
+        await ops.conn.send('Input.dispatchKeyEvent', {
+            type: 'keyDown',
+            windowsVirtualKeyCode: 27,
+            code: 'Escape',
+            key: 'Escape',
+        });
+        await ops.sleep(30);
+        await ops.conn.send('Input.dispatchKeyEvent', {
+            type: 'keyUp',
+            windowsVirtualKeyCode: 27,
+            code: 'Escape',
+            key: 'Escape',
+        });
+        logDebug('CDP: closePopup — sent Escape key');
+        await ops.sleep(300);
+        return;
+    } catch (e) {
+        logDebug(`CDP: closePopup — Escape failed: ${e instanceof Error ? e.message : e}`);
+    }
+
+    // 戦略1: history-tooltip を再クリックしてトグル（cascade context）
     const TOGGLE_CLOSE = `
 (function() {
     var btn = document.querySelector('[data-tooltip-id="history-tooltip"]');
@@ -570,33 +593,30 @@ export async function closePopup(ops: CdpBridgeOps): Promise<void> {
         };
 
         if (result?.success) {
-            logDebug(`CDP: closePopup — closed via ${result.method}`);
+            logDebug(`CDP: closePopup — closed via cascade ${result.method}`);
             await ops.sleep(300);
             return;
         }
     } catch (e) {
-        logDebug(`CDP: closePopup — toggle failed: ${e instanceof Error ? e.message : e}`);
+        logDebug(`CDP: closePopup — cascade toggle failed: ${e instanceof Error ? e.message : e}`);
     }
 
-    // 戦略1: Escape キーでフォールバック
+    // 戦略2: メインコンテキストでトグル（cascade context リセット後の対策）
     try {
-        await ops.conn.send('Input.dispatchKeyEvent', {
-            type: 'keyDown',
-            windowsVirtualKeyCode: 27,
-            code: 'Escape',
-            key: 'Escape',
-        });
-        await ops.sleep(30);
-        await ops.conn.send('Input.dispatchKeyEvent', {
-            type: 'keyUp',
-            windowsVirtualKeyCode: 27,
-            code: 'Escape',
-            key: 'Escape',
-        });
-        logDebug('CDP: closePopup — sent Escape (fallback)');
+        const result = await ops.conn.evaluate(TOGGLE_CLOSE) as {
+            success: boolean;
+            method?: string;
+        };
+
+        if (result?.success) {
+            logDebug(`CDP: closePopup — closed via main context (${result.method})`);
+            await ops.sleep(300);
+            return;
+        }
     } catch (e) {
-        logWarn(`CDP: closePopup — Escape fallback failed: ${e instanceof Error ? e.message : e}`);
+        logDebug(`CDP: closePopup — main context toggle failed: ${e instanceof Error ? e.message : e}`);
     }
 
+    logWarn('CDP: closePopup — all strategies failed');
     await ops.sleep(300);
 }

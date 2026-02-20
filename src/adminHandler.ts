@@ -20,7 +20,8 @@ import { getCurrentModel, getAvailableModels, selectModel } from './cdpModels';
 import { buildModeListEmbed, buildModeSwitchResultEmbed } from './modeButtons';
 import { getCurrentMode, getAvailableModes, selectMode } from './cdpModes';
 import { BridgeContext } from './bridgeContext';
-import { resetProcessingFlag, getMessageQueueStatus } from './messageHandler';
+import { resetProcessingFlag, getMessageQueueStatus, cancelPlanGeneration } from './messageHandler';
+import type { ProcessingPhase } from './messageHandler';
 import { getTimezone } from './configHelper';
 import { getRunningWsNames, buildWorkspaceListEmbed } from './workspaceHandler';
 import { fetchQuota } from './quotaProvider';
@@ -47,8 +48,8 @@ async function handleStatus(ctx: BridgeContext, interaction: ChatInputCommandInt
         queueDisplay = '0件 (待機)';
     } else {
         const parts: string[] = [];
-        if (msgQueue.total > 0) { parts.push(`メッセージ待ち: ${msgQueue.total}件`); }
-        if (execQueueLen > 0) { parts.push(`実行待ち: ${execQueueLen}件`); }
+        if (msgQueue.total > 0) { parts.push(`メッセージ処理中/待機: ${msgQueue.total}件`); }
+        if (execQueueLen > 0) { parts.push(`実行キュー: ${execQueueLen}件`); }
         queueDisplay = `${parts.join(' / ')} ${isRunning ? '(実行中)' : ''}`;
     }
 
@@ -80,6 +81,7 @@ async function handleCancel(ctx: BridgeContext, interaction: ChatInputCommandInt
     const { cdp, executor } = ctx;
     try {
         resetProcessingFlag();
+        cancelPlanGeneration();
         const execRunning = executor?.isRunning() || false;
         const poolRunning = ctx.executorPool?.isAnyRunning() || false;
 
@@ -156,8 +158,41 @@ async function handleQueue(ctx: BridgeContext, interaction: ChatInputCommandInte
         return;
     }
 
-    const lines: string[] = ['📋 **実行キュー**'];
+    const msgQueue = getMessageQueueStatus();
+    const hasAnything = !!(queueInfo.current || queueInfo.pending.length > 0 || msgQueue.total > 0 || msgQueue.processing.length > 0);
 
+    const phaseLabels: Record<ProcessingPhase, string> = {
+        connecting: '🔌 接続中',
+        plan_generating: '🧠 Plan 生成中',
+        confirming: '⏸️ 確認待ち',
+        dispatching: '📤 ディスパッチ中',
+    };
+
+    const lines: string[] = ['📋 **キュー状態**'];
+
+    // メッセージ処理パイプライン（前段）
+    if (msgQueue.processing.length > 0 || msgQueue.total > 0) {
+        const headerCount = msgQueue.total > 0 ? ` ${msgQueue.total}件` : '';
+        lines.push(`\n📨 **メッセージ処理中:**${headerCount}`);
+        // 処理中の詳細ステータス
+        for (const ps of msgQueue.processing) {
+            const elapsed = Math.round((Date.now() - ps.startTime) / 1000);
+            const minutes = Math.floor(elapsed / 60);
+            const seconds = elapsed % 60;
+            const timeStr = minutes > 0 ? `${minutes}分${seconds}秒` : `${seconds}秒`;
+            const label = phaseLabels[ps.phase] || ps.phase;
+            lines.push(`  - ${label}: ${ps.messagePreview} (${timeStr}経過)`);
+        }
+        // 追加の待機中メッセージ（処理中でないもの）
+        const waitingCount = msgQueue.total - msgQueue.processing.length;
+        if (waitingCount > 0) {
+            lines.push(`  - ⏳ 待機中: ${waitingCount}件`);
+        }
+    } else {
+        lines.push('\n📨 メッセージ処理キュー: なし');
+    }
+
+    // 実行キュー（パイプライン後段）
     if (queueInfo.current) {
         const elapsed = Math.round((Date.now() - queueInfo.current.startTime) / 1000);
         const minutes = Math.floor(elapsed / 60);
@@ -166,17 +201,21 @@ async function handleQueue(ctx: BridgeContext, interaction: ChatInputCommandInte
         const summary = queueInfo.current.plan.human_summary || queueInfo.current.plan.plan_id;
         lines.push(`\n🔄 **実行中:** ${summary} (${timeStr}経過)`);
     } else {
-        lines.push('\n✅ 現在実行中のタスクはありません。');
+        lines.push('\n🔄 実行中のタスク: なし');
     }
 
     if (queueInfo.pending.length > 0) {
-        lines.push(`\n⏳ **待機中:** ${queueInfo.pending.length}件`);
+        lines.push(`\n⏳ **実行待ち:** ${queueInfo.pending.length}件`);
         queueInfo.pending.forEach((p, i) => {
             const summary = p.human_summary || p.plan_id;
             lines.push(`${i + 1}. ${summary}`);
         });
     } else {
-        lines.push('\n待機中のタスクはありません。');
+        lines.push('⏳ 実行待ち: なし');
+    }
+
+    if (!hasAnything) {
+        lines.push('\n✅ すべてのキューが空です。');
     }
 
     await interaction.reply({ embeds: [buildEmbed(lines.join('\n'), EmbedColor.Info)] });

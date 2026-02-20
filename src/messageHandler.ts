@@ -13,6 +13,7 @@ import * as fs from 'fs';
 import * as vscode from 'vscode';
 import { Message, TextChannel } from 'discord.js';
 import { CdpBridge } from './cdpBridge';
+import { WorkspaceConnectionError } from './cdpPool';
 import { CascadePanelError } from './errors';
 import { FileIpc } from './fileIpc';
 import { parsePlanJson, buildPlan } from './planParser';
@@ -45,6 +46,34 @@ const workspaceQueueCount = new Map<string, number>();
 const DEFAULT_WS_KEY = '__default__';
 
 // ---------------------------------------------------------------------------
+// 処理ステータス追跡（/queue 表示用）
+// ---------------------------------------------------------------------------
+
+/** メッセージ処理パイプラインのステータス */
+export type ProcessingPhase = 'connecting' | 'plan_generating' | 'confirming' | 'dispatching';
+
+export interface ProcessingStatus {
+    wsKey: string;
+    phase: ProcessingPhase;
+    startTime: number;
+    messagePreview: string;
+}
+
+/** ワークスペース毎の現在処理中ステータス */
+const currentProcessingStatuses = new Map<string, ProcessingStatus>();
+
+// ---------------------------------------------------------------------------
+// Plan 生成キャンセル機構（/cancel 用）
+// ---------------------------------------------------------------------------
+
+/** Plan 生成中の AbortController（キャンセル可能にする） */
+let currentPlanAbortController: AbortController | null = null;
+/** Plan 生成中の typing interval（キャンセル時にクリア可能にする） */
+let currentPlanTypingInterval: ReturnType<typeof setInterval> | null = null;
+/** Plan 生成中の progress interval（キャンセル時にクリア可能にする） */
+let currentPlanProgressInterval: ReturnType<typeof setInterval> | null = null;
+
+// ---------------------------------------------------------------------------
 // メッセージID 重複チェック（二重処理防止）
 // ---------------------------------------------------------------------------
 /** 最近処理したメッセージ ID → 処理開始時刻 */
@@ -71,8 +100,32 @@ export function resetProcessingFlag(): void {
     logDebug('messageHandler: all workspace queues reset');
 }
 
-/** メッセージキューの状態を取得（/status コマンド用） */
-export function getMessageQueueStatus(): { total: number; perWorkspace: Map<string, number> } {
+/** Plan 生成をキャンセルする（/cancel コマンド用） */
+export function cancelPlanGeneration(): void {
+    if (currentPlanAbortController) {
+        currentPlanAbortController.abort();
+        currentPlanAbortController = null;
+        logDebug('messageHandler: plan generation AbortController triggered');
+    }
+    if (currentPlanTypingInterval) {
+        clearInterval(currentPlanTypingInterval);
+        currentPlanTypingInterval = null;
+        logDebug('messageHandler: plan typing interval cleared');
+    }
+    if (currentPlanProgressInterval) {
+        clearInterval(currentPlanProgressInterval);
+        currentPlanProgressInterval = null;
+        logDebug('messageHandler: plan progress interval cleared');
+    }
+    currentProcessingStatuses.clear();
+}
+
+/** メッセージキューの状態を取得（/queue, /status コマンド用） */
+export function getMessageQueueStatus(): {
+    total: number;
+    perWorkspace: Map<string, number>;
+    processing: ProcessingStatus[];
+} {
     let total = 0;
     const perWorkspace = new Map<string, number>();
     for (const [wsKey, count] of workspaceQueueCount.entries()) {
@@ -81,7 +134,8 @@ export function getMessageQueueStatus(): { total: number; perWorkspace: Map<stri
             perWorkspace.set(wsKey, count);
         }
     }
-    return { total, perWorkspace };
+    const processing = Array.from(currentProcessingStatuses.values());
+    return { total, perWorkspace, processing };
 }
 
 /**
@@ -204,7 +258,11 @@ async function acquireCdpConnection(
             return { cdp: activeCdp, autoLaunched: false };
         } catch (e) {
             logError(`handleDiscordMessage: failed to acquire CdpBridge for workspace "${wsNameFromCategory}"`, e);
-            await channel.send({ embeds: [buildEmbed(`⚠️ ワークスペース "${wsNameFromCategory}" への接続に失敗しました: ${sanitizeErrorForDiscord(e instanceof Error ? e.message : String(e))}`, EmbedColor.Warning)] });
+            // WorkspaceConnectionError の場合はユーザーフレンドリーな userMessage を直接表示
+            const displayMsg = (e instanceof WorkspaceConnectionError)
+                ? e.userMessage
+                : `ワークスペース "${wsNameFromCategory}" への接続に失敗しました: ${sanitizeErrorForDiscord(e instanceof Error ? e.message : String(e))}`;
+            await channel.send({ embeds: [buildEmbed(`⚠️ ${displayMsg}`, EmbedColor.Warning)] });
             return null;
         }
     }
@@ -250,8 +308,12 @@ async function generatePlan(
     );
     logDebug('handleDiscordMessage: sending plan prompt via CDP...');
 
-    // typing indicator 開始
-    const typingInterval = setInterval(async () => {
+    // AbortController 生成（/cancel でキャンセル可能にする）
+    const abortController = new AbortController();
+    currentPlanAbortController = abortController;
+
+    // typing indicator 開始（モジュールレベル変数に格納し /cancel でクリア可能にする）
+    currentPlanTypingInterval = setInterval(async () => {
         try { await channel.sendTyping(); } catch (e) { logDebug(`handleDiscordMessage: sendTyping failed: ${e}`); }
     }, 8_000);
     try { await channel.sendTyping(); } catch (e) { logDebug(`handleDiscordMessage: sendTyping failed: ${e}`); }
@@ -285,9 +347,9 @@ async function generatePlan(
             logDebug(`handleDiscordMessage: failed to send plan-generation ack: ${ackErr}`);
         }
 
-        // 計画生成中の進捗報告
+        // 計画生成中の進捗報告（モジュールレベル変数に格納）
         let lastPlanProgress = '';
-        const planProgressInterval = setInterval(async () => {
+        currentPlanProgressInterval = setInterval(async () => {
             try {
                 const progress = await fileIpc.readProgress(progressPath);
                 if (progress) {
@@ -304,13 +366,20 @@ async function generatePlan(
 
         const responseTimeout = getResponseTimeout();
         try {
-            planResponse = await fileIpc.waitForResponse(responsePath, responseTimeout);
+            planResponse = await fileIpc.waitForResponse(responsePath, responseTimeout, abortController.signal);
         } finally {
-            clearInterval(planProgressInterval);
+            if (currentPlanProgressInterval) {
+                clearInterval(currentPlanProgressInterval);
+                currentPlanProgressInterval = null;
+            }
             fileIpc.cleanupProgress(progressPath).catch(() => { });
         }
     } finally {
-        clearInterval(typingInterval);
+        if (currentPlanTypingInterval) {
+            clearInterval(currentPlanTypingInterval);
+            currentPlanTypingInterval = null;
+        }
+        currentPlanAbortController = null;
         for (const f of tempFiles) {
             try { fs.unlinkSync(f); logDebug(`handleDiscordMessage: cleaned up temp file: ${f}`); } catch { /* ignore */ }
         }
@@ -492,8 +561,17 @@ export async function handleDiscordMessage(
         return;
     }
 
+    // メッセージプレビュー（ステータス追跡用）
+    const msgPreview = text.substring(0, 50) + (text.length > 50 ? '...' : '') || '（添付ファイル）';
+    const wsKeyForStatus = DiscordBot.resolveWorkspaceFromChannel(channel) || DEFAULT_WS_KEY;
+
     try {
         logDebug(`handleDiscordMessage: processing #${channelName} (intent = ${intent}) message: (${text.length} chars)`);
+
+        // ステータス: 接続中
+        currentProcessingStatuses.set(wsKeyForStatus, {
+            wsKey: wsKeyForStatus, phase: 'connecting', startTime: Date.now(), messagePreview: msgPreview,
+        });
 
         // CDP 接続の取得
         const connResult = await acquireCdpConnection(ctx, channel, wsNameFromCategory, fileIpc);
@@ -526,6 +604,11 @@ export async function handleDiscordMessage(
         }
         const resolvedWsPath = wsNameFromCategory ? getWorkspacePaths()[wsNameFromCategory] : undefined;
 
+        // ステータス: Plan 生成中
+        currentProcessingStatuses.set(wsKeyForStatus, {
+            wsKey: wsKeyForStatus, phase: 'plan_generating', startTime: Date.now(), messagePreview: msgPreview,
+        });
+
         // Plan 生成
         const result = await generatePlan(
             activeCdp, autoLaunched, fileIpc, channel, text, intent, channelName,
@@ -557,9 +640,18 @@ export async function handleDiscordMessage(
 
         // 確認フロー
         if (plan.requires_confirmation) {
+            // ステータス: 確認待ち
+            currentProcessingStatuses.set(wsKeyForStatus, {
+                wsKey: wsKeyForStatus, phase: 'confirming', startTime: Date.now(), messagePreview: msgPreview,
+            });
             const confirmed = await handleConfirmation(plan, channel, bot);
             if (!confirmed) { return; }
         }
+
+        // ステータス: ディスパッチ中
+        currentProcessingStatuses.set(wsKeyForStatus, {
+            wsKey: wsKeyForStatus, phase: 'dispatching', startTime: Date.now(), messagePreview: msgPreview,
+        });
 
         // 即時実行 or 定期登録
         await dispatchPlan(ctx, plan, channel, activeCdp, wsNameFromCategory, guild);
@@ -568,5 +660,8 @@ export async function handleDiscordMessage(
         const errMsg = e instanceof Error ? e.message : String(e);
         logError('handleDiscordMessage failed', e);
         await channel.send({ embeds: [buildEmbed(`❌ エラー: ${sanitizeErrorForDiscord(errMsg)}`, EmbedColor.Error)] });
+    } finally {
+        // 処理完了時にステータスをクリア
+        currentProcessingStatuses.delete(wsKeyForStatus);
     }
 }

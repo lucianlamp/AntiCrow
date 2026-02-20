@@ -38,3 +38,35 @@ cdpHistory.ts 全面リライト完了（2026-02-20）: 全セレクタを実機
 
 ### 2026-02-20
 /history スラッシュコマンド実装（2026-02-20）: historyButtons.ts 新規作成（buildHistoryListEmbed + buildHistorySelectResultEmbed, 148行）。adminHandler.ts に handleHistory 追加（handleModels パターン）。slashHandler.ts に hist_select_/hist_refresh/hist_page_/hist_close ボタンハンドラ追加。slashCommands.ts に /history コマンド定義追加。mapCommandToIntent には既に history: admin が登録済みだった。
+
+
+### 2026-02-20
+closePopup の evaluateInCascade は selectConversation 後に動作しない（resetCascadeContext が原因）。conn.evaluate をフォールバックとして追加する必要がある。CDP 操作で cascade context リセット後は evaluateInCascade が使えなくなることに注意。
+
+
+### 2026-02-20
+closePopup の最優先戦略は Escape キー送信（cascade context リセットに影響されず最も安定）。DOM 操作（history-tooltip クリック）はフォールバックとして残す。ユーザー確認により Escape で履歴パネルが閉じることが判明（2026-02-20）。
+
+
+### 2026-02-20
+Anti-Crow には2つのキューシステムがある: (1) messageHandler の workspaceQueueCount（メッセージ処理パイプライン：Discord受信→Plan生成→確認→executor）と (2) executor の queue（実行パイプライン：Plan→Antigravity実行→結果）。/status は前者を、/queue は後者を表示。2つは異なるパイプラインステージであることに注意。
+
+
+### 2026-02-20
+/queue 表示バグ修正（2026-02-20）: messageHandler に ProcessingStatus 型と currentProcessingStatuses Map を追加し、handleDiscordMessage の各フェーズ（connecting/plan_generating/confirming/dispatching）でステータスを更新。getMessageQueueStatus() に processing フィールドを追加。adminHandler の handleQueue で各フェーズを絵文字付き表示。
+
+
+### 2026-02-20
+/cancel 後 typing 継続バグ修正（2026-02-20）: messageHandler の typingInterval と progressInterval をモジュールレベル変数に昇格し、AbortController を追加。cancelPlanGeneration() をエクスポートして handleCancel から呼び出すことで、Plan生成フェーズの typing/progress/waitForResponse を即座にキャンセル可能にした。
+
+
+### 2026-02-20
+learningsスキル大幅拡充（2026-02-20）: .agent/skills/learnings/SKILL.md を181行→約320行に拡充。新セクション: 自律更新ルール、よくある失敗パターンと対策（6件）、ユーザー指摘履歴（表形式）、設計原則・ベストプラクティス、IPC通信、キュー・キャンセル処理（2段パイプライン図解）。MEMORY.md の知見を体系的に統合。
+
+
+### 2026-02-20
+ワークスペース自動起動エラー修正（2026-02-20）: cdpPool.ts doAcquire() の cdp.connect() が Antigravity 未起動時に失敗してた問題を修正。launchAntigravity は vscode.window.createTerminal を使うため CDP 接続不要。connect を try-catch で囲みスキップ可能にした。WorkspaceConnectionError クラスを追加し、sanitizeErrorForDiscord に依存しないユーザーフレンドリーなエラーメッセージを実装。ポーリングループ内にも try-catch を追加して防御的コーディングを強化。
+
+
+### 2026-02-20
+ワークスペースパス自動検知改善（2026-02-20）: guessBaseDirs() に USERPROFILE の親ディレクトリ（C:\Users）と USERPROFILE 自体を追加。ホームディレクトリ名（ysk41 等）もワークスペースフォルダとして自動学習可能に。Antigravity タイトルにはフルパスが含まれないため、CDP evaluate による直接パス取得は不可。タイトルには「ワークスペース名 — Antigravity」形式でフォルダ basename のみ含まれる。

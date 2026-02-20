@@ -10,11 +10,25 @@
 
 import { CdpBridge, DiscoveredInstance } from './cdpBridge';
 import { getCdpPorts, resolveWorkspacePaths } from './configHelper';
-import { logDebug, logWarn } from './logger';
+import { logDebug, logError, logWarn } from './logger';
 import { WorkspaceStore } from './workspaceStore';
 
 /** デフォルトワークスペース名（カテゴリー未指定時のフォールバック） */
 export const DEFAULT_WORKSPACE = '__default__';
+
+/**
+ * ワークスペース関連のユーザー向けエラー。
+ * sanitizeErrorForDiscord に依存せず、安全なメッセージを持つ。
+ */
+export class WorkspaceConnectionError extends Error {
+    /** ユーザーに表示する安全なメッセージ */
+    readonly userMessage: string;
+    constructor(userMessage: string, internalDetail?: string) {
+        super(internalDetail || userMessage);
+        this.name = 'WorkspaceConnectionError';
+        this.userMessage = userMessage;
+    }
+}
 
 /** プール内のエントリ */
 interface PoolEntry {
@@ -140,10 +154,28 @@ export class CdpPool {
                         try { await onAutoLaunch(workspaceName); } catch (e) { logDebug(`CdpPool: onAutoLaunch callback failed: ${e}`); }
                     }
 
-                    await cdp.connect();  // launchAntigravity のために接続が必要
-                    await cdp.launchAntigravity(folderPath);
+                    // launchAntigravity は vscode.window.createTerminal を使うため CDP 接続不要。
+                    // ただし既存の Antigravity が起動していれば connect してから launch する。
+                    // 未起動の場合は connect を安全にスキップして launch のみ実行する。
+                    let connectedForLaunch = false;
+                    try {
+                        await cdp.connect();
+                        connectedForLaunch = true;
+                        logDebug(`CdpPool: connected to existing Antigravity for launch`);
+                    } catch (connectErr) {
+                        // Antigravity 未起動 — connect 失敗は想定内。launch のみで進める
+                        logDebug(`CdpPool: connect failed (Antigravity may not be running), proceeding with launch only: ${connectErr instanceof Error ? connectErr.message : connectErr}`);
+                    }
 
-                    // ターゲット発見ポーリングへ（固定待ちなし）
+                    try {
+                        await cdp.launchAntigravity(folderPath);
+                    } catch (launchErr) {
+                        logError(`CdpPool: launchAntigravity failed for "${workspaceName}"`, launchErr);
+                        throw new WorkspaceConnectionError(
+                            `ワークスペース "${workspaceName}" の起動に失敗しました。手動で Antigravity を起動してください。`,
+                            `launchAntigravity failed: ${launchErr instanceof Error ? launchErr.message : launchErr}`,
+                        );
+                    }
 
                     // ポーリングで新インスタンスを待機
                     const maxWaitMs = 30_000;
@@ -152,50 +184,134 @@ export class CdpPool {
                     let pollCount = 0;
                     while (Date.now() < deadline) {
                         await new Promise(r => setTimeout(r, pollMs));
-                        const freshPorts = this.getFreshPorts();
-                        const freshInstances = await CdpBridge.discoverInstances(freshPorts);
-                        target = freshInstances.find(
-                            i => CdpBridge.extractWorkspaceName(i.title) === workspaceName,
-                        );
-                        pollCount++;
-                        if (target) {
-                            logDebug(`CdpPool: auto-launched workspace "${workspaceName}" found (id=${target.id}) after ${pollCount} polls`);
-                            break;
+                        try {
+                            const freshPorts = this.getFreshPorts();
+                            const freshInstances = await CdpBridge.discoverInstances(freshPorts);
+                            target = freshInstances.find(
+                                i => CdpBridge.extractWorkspaceName(i.title) === workspaceName,
+                            );
+                            pollCount++;
+                            if (target) {
+                                logDebug(`CdpPool: auto-launched workspace "${workspaceName}" found (id=${target.id}) after ${pollCount} polls`);
+                                break;
+                            }
+                            logDebug(`CdpPool: polling for workspace "${workspaceName}"... (${pollCount})`);
+                        } catch (pollErr) {
+                            pollCount++;
+                            logDebug(`CdpPool: polling error (${pollCount}): ${pollErr instanceof Error ? pollErr.message : pollErr}`);
                         }
-                        logDebug(`CdpPool: polling for workspace "${workspaceName}"... (${pollCount})`);
                     }
                 } else {
-                    // workspacePaths 未設定 — 外部で起動された可能性があるためポーリングで待機
-                    logDebug(`CdpPool: workspace "${workspaceName}" not found, no folderPath configured. Polling for external launch...`);
-                    const maxWaitMs = 15_000;
-                    const pollMs = 3_000;
-                    const deadline = Date.now() + maxWaitMs;
-                    let pollCount = 0;
-                    while (Date.now() < deadline) {
-                        await new Promise(r => setTimeout(r, pollMs));
-                        const freshPorts = this.getFreshPorts();
-                        const freshInstances = await CdpBridge.discoverInstances(freshPorts);
-                        target = freshInstances.find(
-                            i => CdpBridge.extractWorkspaceName(i.title) === workspaceName,
-                        );
-                        pollCount++;
-                        if (target) {
-                            logDebug(`CdpPool: externally launched workspace "${workspaceName}" found (id=${target.id}) after ${pollCount} polls`);
-                            break;
+                    // workspacePaths 未設定 — まず guessBaseDirs でフォルダパスの推測を試みる
+                    const guessedPath = this.tryGuessAndLearn(workspaceName);
+                    if (guessedPath) {
+                        logDebug(`CdpPool: workspace "${workspaceName}" — guessed folder path "${guessedPath}", auto-launching...`);
+
+                        if (onAutoLaunch) {
+                            try { await onAutoLaunch(workspaceName); } catch (e) { logDebug(`CdpPool: onAutoLaunch callback failed: ${e}`); }
                         }
-                        logDebug(`CdpPool: polling for external workspace "${workspaceName}"... (${pollCount})`);
+
+                        let connectedForLaunch = false;
+                        try {
+                            await cdp.connect();
+                            connectedForLaunch = true;
+                            logDebug(`CdpPool: connected to existing Antigravity for guessed launch`);
+                        } catch (connectErr) {
+                            logDebug(`CdpPool: connect failed for guessed launch (Antigravity may not be running): ${connectErr instanceof Error ? connectErr.message : connectErr}`);
+                        }
+
+                        try {
+                            await cdp.launchAntigravity(guessedPath);
+                        } catch (launchErr) {
+                            logError(`CdpPool: launchAntigravity failed for guessed path "${guessedPath}"`, launchErr);
+                            throw new WorkspaceConnectionError(
+                                `ワークスペース "${workspaceName}" の起動に失敗しました。手動で Antigravity を起動してください。`,
+                                `launchAntigravity failed (guessed path): ${launchErr instanceof Error ? launchErr.message : launchErr}`,
+                            );
+                        }
+
+                        // ポーリングで新インスタンスを待機
+                        const maxWaitMs = 30_000;
+                        const pollMs = 2_000;
+                        const deadline = Date.now() + maxWaitMs;
+                        let pollCount = 0;
+                        while (Date.now() < deadline) {
+                            await new Promise(r => setTimeout(r, pollMs));
+                            try {
+                                const freshPorts = this.getFreshPorts();
+                                const freshInstances = await CdpBridge.discoverInstances(freshPorts);
+                                target = freshInstances.find(
+                                    i => CdpBridge.extractWorkspaceName(i.title) === workspaceName,
+                                );
+                                pollCount++;
+                                if (target) {
+                                    logDebug(`CdpPool: guessed-launch workspace "${workspaceName}" found (id=${target.id}) after ${pollCount} polls`);
+                                    break;
+                                }
+                                logDebug(`CdpPool: polling for guessed-launch workspace "${workspaceName}"... (${pollCount})`);
+                            } catch (pollErr) {
+                                pollCount++;
+                                logDebug(`CdpPool: guessed-launch polling error (${pollCount}): ${pollErr instanceof Error ? pollErr.message : pollErr}`);
+                            }
+                        }
+                    } else {
+                        // 推測も失敗 — 外部で起動された可能性があるためポーリングで待機
+                        logDebug(`CdpPool: workspace "${workspaceName}" not found, no folderPath configured or guessed. Polling for external launch...`);
+                        const maxWaitMs = 15_000;
+                        const pollMs = 3_000;
+                        const deadline = Date.now() + maxWaitMs;
+                        let pollCount = 0;
+                        while (Date.now() < deadline) {
+                            await new Promise(r => setTimeout(r, pollMs));
+                            try {
+                                const freshPorts = this.getFreshPorts();
+                                const freshInstances = await CdpBridge.discoverInstances(freshPorts);
+                                target = freshInstances.find(
+                                    i => CdpBridge.extractWorkspaceName(i.title) === workspaceName,
+                                );
+                                pollCount++;
+                                if (target) {
+                                    logDebug(`CdpPool: externally launched workspace "${workspaceName}" found (id=${target.id}) after ${pollCount} polls`);
+                                    break;
+                                }
+                                logDebug(`CdpPool: polling for external workspace "${workspaceName}"... (${pollCount})`);
+                            } catch (pollErr) {
+                                pollCount++;
+                                logDebug(`CdpPool: external polling error (${pollCount}): ${pollErr instanceof Error ? pollErr.message : pollErr}`);
+                            }
+                        }
                     }
                 }
 
                 if (!target) {
-                    // 最終チェック: 全ポートを再スキャンしてエラーメッセージに反映
-                    const finalPorts = this.getFreshPorts();
-                    const finalInstances = await CdpBridge.discoverInstances(finalPorts);
-                    throw new Error(
-                        `CdpPool: workspace "${workspaceName}" not found among ` +
-                        `${finalInstances.length} discovered instance(s): ` +
-                        finalInstances.map(i => `"${CdpBridge.extractWorkspaceName(i.title)}"`).join(', '),
+                    // 最終チェック: 全ポートを再スキャンして検出結果をログに記録
+                    let discoveredCount = 0;
+                    let discoveredNames: string[] = [];
+                    try {
+                        const finalPorts = this.getFreshPorts();
+                        const finalInstances = await CdpBridge.discoverInstances(finalPorts);
+                        discoveredCount = finalInstances.length;
+                        discoveredNames = finalInstances.map(i => CdpBridge.extractWorkspaceName(i.title));
+                    } catch (e) {
+                        logDebug(`CdpPool: final discovery failed: ${e instanceof Error ? e.message : e}`);
+                    }
+
+                    // 内部詳細はログに記録し、ユーザーには安全なメッセージを表示
+                    logWarn(
+                        `CdpPool: workspace "${workspaceName}" not found after polling. ` +
+                        `Discovered ${discoveredCount} instance(s): [${discoveredNames.join(', ')}]`,
                     );
+
+                    const hasFolder = !!resolveWorkspacePaths(this.workspaceStore)[workspaceName];
+                    if (hasFolder) {
+                        throw new WorkspaceConnectionError(
+                            `ワークスペース "${workspaceName}" の起動を試みましたが、接続できませんでした。Antigravity を手動で再起動してみてください。`,
+                        );
+                    } else {
+                        throw new WorkspaceConnectionError(
+                            `ワークスペース "${workspaceName}" が見つかりません。Antigravity でこのフォルダを開いてからもう一度試してください。`,
+                        );
+                    }
                 }
             }
 
@@ -270,6 +386,32 @@ export class CdpPool {
     // -------------------------------------------------------------------
 
     /**
+     * ワークスペース名からフォルダパスを推測し、見つかれば WorkspaceStore に保存して返す。
+     * doAcquire 内で即座にフォルダパスを取得するために使用（同期的）。
+     */
+    private tryGuessAndLearn(workspaceName: string): string | null {
+        if (!this.workspaceStore) { return null; }
+
+        const fs = require('fs') as typeof import('fs');
+        const pathModule = require('path') as typeof import('path');
+        const baseDirs = this.guessBaseDirs();
+
+        for (const baseDir of baseDirs) {
+            const candidate = pathModule.join(baseDir, workspaceName);
+            try {
+                if (fs.existsSync(candidate) && fs.statSync(candidate).isDirectory()) {
+                    this.workspaceStore.learn(workspaceName, candidate);
+                    logDebug(`CdpPool: tryGuessAndLearn — found and learned "${workspaceName}" → "${candidate}"`);
+                    return candidate;
+                }
+            } catch { /* ignore */ }
+        }
+
+        logDebug(`CdpPool: tryGuessAndLearn — could not guess folder path for "${workspaceName}"`);
+        return null;
+    }
+
+    /**
      * CDP 接続成功後にワークスペースのフォルダパスを推定し、WorkspaceStore に保存する。
      * バックグラウンドで実行され、失敗しても接続処理には影響しない。
      */
@@ -310,9 +452,18 @@ export class CdpPool {
         const pathModule = require('path') as typeof import('path');
         const dirs: string[] = [];
 
-        // 環境変数 USERPROFILE から dev ディレクトリを推定
         const userProfile = process.env.USERPROFILE || process.env.HOME;
         if (userProfile) {
+            // ホームの親ディレクトリ（例: C:\Users）を追加
+            // → ワークスペース名がユーザー名と一致する場合（ホームディレクトリ）を検知
+            const parentDir = pathModule.dirname(userProfile);
+            if (parentDir && parentDir !== userProfile) {
+                dirs.push(parentDir);
+            }
+            // ホームディレクトリ自体（例: C:\Users\ysk41）を追加
+            // → ホーム直下のサブフォルダを検知
+            dirs.push(userProfile);
+            // よくある開発ディレクトリ
             dirs.push(pathModule.join(userProfile, 'dev'));
             dirs.push(pathModule.join(userProfile, 'projects'));
             dirs.push(pathModule.join(userProfile, 'workspace'));
