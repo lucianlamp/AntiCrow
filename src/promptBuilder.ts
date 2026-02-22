@@ -196,10 +196,10 @@ export function buildPlanPrompt(
 // 確認メッセージ生成
 // ---------------------------------------------------------------------------
 
-/** confirm テンプレートから選択肢の数をカウントする */
+/** confirm テンプレートから選択肢の数をカウントする（最大3） */
 export function countChoiceItems(confirmText?: string): number {
     if (!confirmText) { return 0; }
-    const numberEmojis = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟'];
+    const numberEmojis = ['1️⃣', '2️⃣', '3️⃣'];
     let emojiCount = 0;
     for (const emoji of numberEmojis) {
         if (confirmText.includes(emoji)) { emojiCount++; }

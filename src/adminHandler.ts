@@ -171,7 +171,7 @@ async function handleQueue(ctx: BridgeContext, interaction: ChatInputCommandInte
     }
 
     const msgQueue = getMessageQueueStatus();
-    const hasAnything = !!(queueInfo.current || queueInfo.pending.length > 0 || msgQueue.total > 0 || msgQueue.processing.length > 0);
+    const hasAnything = !!(queueInfo.current || queueInfo.pending.length > 0 || msgQueue.processing.length > 0 || msgQueue.waiting.length > 0);
 
     const phaseLabels: Record<ProcessingPhase, string> = {
         connecting: '🔌 接続中',
@@ -182,10 +182,10 @@ async function handleQueue(ctx: BridgeContext, interaction: ChatInputCommandInte
 
     const lines: string[] = ['📋 **キュー状態**'];
 
-    // メッセージ処理パイプライン（前段）
-    if (msgQueue.processing.length > 0 || msgQueue.total > 0) {
-        const headerCount = msgQueue.total > 0 ? ` ${msgQueue.total}件` : '';
-        lines.push(`\n📨 **メッセージ処理中:**${headerCount}`);
+    // メッセージ処理パイプライン（前段）— processing/waiting 配列から直接表示
+    if (msgQueue.processing.length > 0 || msgQueue.waiting.length > 0) {
+        const totalCount = msgQueue.processing.length + msgQueue.waiting.length;
+        lines.push(`\n📨 **メッセージ処理中:** ${totalCount}件`);
         // 処理中の詳細ステータス
         for (const ps of msgQueue.processing) {
             const elapsed = Math.round((Date.now() - ps.startTime) / 1000);
@@ -205,11 +205,6 @@ async function handleQueue(ctx: BridgeContext, interaction: ChatInputCommandInte
                 const timeStr = minutes > 0 ? `${minutes}分${seconds}秒前` : `${seconds}秒前`;
                 const preview = w.preview || '(内容なし)';
                 lines.push(`    - ${preview}${preview.length >= 50 ? '...' : ''} (${timeStr})`);
-            }
-        } else {
-            const waitingCount = msgQueue.total - msgQueue.processing.length;
-            if (waitingCount > 0) {
-                lines.push(`  - ⏳ 待機中: ${waitingCount}件`);
             }
         }
     } else {
@@ -238,22 +233,42 @@ async function handleQueue(ctx: BridgeContext, interaction: ChatInputCommandInte
         lines.push('\n✅ すべてのキューが空です。');
     }
 
-    // 待機中メッセージがある場合は削除ボタンを追加
+    // 待機中メッセージがある場合はボタンを追加
     const components: ActionRowBuilder<ButtonBuilder>[] = [];
     if (msgQueue.waiting.length > 0) {
-        const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+        // 個別削除ボタン（最大5つ = Discord ActionRow の制約）
+        const maxIndividualButtons = Math.min(msgQueue.waiting.length, 5);
+        const individualRow = new ActionRowBuilder<ButtonBuilder>();
+        for (let i = 0; i < maxIndividualButtons; i++) {
+            const w = msgQueue.waiting[i];
+            // customId は100文字制限、ラベルは80文字制限
+            const idSuffix = w.id.length > 70 ? w.id.substring(0, 70) : w.id;
+            const label = w.preview
+                ? (w.preview.length > 15 ? w.preview.substring(0, 15) + '…' : w.preview)
+                : `#${i + 1}`;
+            individualRow.addComponents(
+                new ButtonBuilder()
+                    .setCustomId(`queue_remove_waiting_${idSuffix}`)
+                    .setLabel(`❌ ${label}`)
+                    .setStyle(ButtonStyle.Secondary),
+            );
+        }
+        components.push(individualRow);
+
+        // 全削除ボタン
+        const clearRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
             new ButtonBuilder()
                 .setCustomId('queue_clear_waiting')
                 .setLabel(`🗑️ 待機キュー全削除 (${msgQueue.waiting.length}件)`)
                 .setStyle(ButtonStyle.Danger),
         );
-        components.push(row);
+        components.push(clearRow);
     }
 
     await interaction.reply({ embeds: [buildEmbed(lines.join('\n'), EmbedColor.Info)], components: components as any });
 }
 
-async function handleTemplates(ctx: BridgeContext, interaction: ChatInputCommandInteraction): Promise<void> {
+async function handleTemplate(ctx: BridgeContext, interaction: ChatInputCommandInteraction): Promise<void> {
     const templateStore = ctx.templateStore;
     if (!templateStore) {
         await interaction.reply({ embeds: [buildEmbed('⚠️ TemplateStore が初期化されていません。', EmbedColor.Warning)], ephemeral: true });
@@ -559,7 +574,7 @@ const COMMAND_HANDLERS: Record<string, CommandHandler> = {
     newchat: handleNewchat,
     workspaces: handleWorkspaces,
     queue: handleQueue,
-    templates: handleTemplates,
+    template: handleTemplate,
     models: handleModels,
     mode: handleMode,
     history: handleHistory,

@@ -38,8 +38,15 @@ export function buildTemplateListPanel(
 ): { embeds: ReturnType<typeof buildEmbed>[]; components: ActionRowBuilder<ButtonBuilder>[] } {
     const templates = templateStore.getAll();
 
+    const guideText = [
+        '\n📖 **変数ガイド**',
+        '**組み込み変数:** `{{date}}` `{{time}}` `{{datetime}}` `{{year}}` `{{month}}` `{{day}}`',
+        '**環境変数:** `{{env:VARIABLE_NAME}}` — OS環境変数を展開',
+        '**カスタム引数:** `{{引数名}}` 形式で定義 → 実行時にモーダルで入力（最大5個）',
+    ].join('\n');
+
     if (templates.length === 0) {
-        const embed = buildEmbed('📋 **テンプレート一覧**\n\n保存済みテンプレートはありません。\n「➕ 新規作成」ボタンからテンプレートを追加できます。', EmbedColor.Info);
+        const embed = buildEmbed('📋 **テンプレート一覧**\n\n保存済みテンプレートはありません。\n「➕ 新規作成」ボタンからテンプレートを追加できます。' + guideText, EmbedColor.Info);
         const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
             new ButtonBuilder()
                 .setCustomId('tpl_new')
@@ -54,6 +61,7 @@ export function buildTemplateListPanel(
         const shortPrompt = t.prompt.length > 60 ? t.prompt.substring(0, 60) + '...' : t.prompt;
         lines.push(`**${i + 1}. ${t.name}**\n\`${shortPrompt}\``);
     });
+    lines.push(guideText);
 
     // 各テンプレートに ▶実行 / 🗑️削除 ボタンを追加（ActionRow 上限考慮: 新規作成ボタン用に4行まで）
     const rows: ActionRowBuilder<ButtonBuilder>[] = [];

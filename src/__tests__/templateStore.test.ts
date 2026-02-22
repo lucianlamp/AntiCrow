@@ -278,4 +278,80 @@ describe('TemplateStore', () => {
             expect(tmpl!.args![0].name).toBe('name');
         });
     });
+
+    // ----- 環境変数サポート ({{env:XXX}}) -----
+
+    describe('expandVariables — env variables', () => {
+        it('should expand {{env:XXX}} from process.env', () => {
+            const orig = process.env.TEST_EXPAND_VAR;
+            process.env.TEST_EXPAND_VAR = 'my-secret-key';
+            try {
+                const result = TemplateStore.expandVariables('Key is {{env:TEST_EXPAND_VAR}}');
+                expect(result).toBe('Key is my-secret-key');
+            } finally {
+                if (orig === undefined) { delete process.env.TEST_EXPAND_VAR; }
+                else { process.env.TEST_EXPAND_VAR = orig; }
+            }
+        });
+
+        it('should expand undefined env var to empty string', () => {
+            delete process.env.__ANTICROW_TEST_UNDEFINED__;
+            const result = TemplateStore.expandVariables('Value: {{env:__ANTICROW_TEST_UNDEFINED__}}');
+            expect(result).toBe('Value: ');
+        });
+
+        it('should expand multiple env vars', () => {
+            const origA = process.env.TEST_A;
+            const origB = process.env.TEST_B;
+            process.env.TEST_A = 'alpha';
+            process.env.TEST_B = 'beta';
+            try {
+                const result = TemplateStore.expandVariables('{{env:TEST_A}} and {{env:TEST_B}}');
+                expect(result).toBe('alpha and beta');
+            } finally {
+                if (origA === undefined) { delete process.env.TEST_A; } else { process.env.TEST_A = origA; }
+                if (origB === undefined) { delete process.env.TEST_B; } else { process.env.TEST_B = origB; }
+            }
+        });
+
+        it('should expand env vars alongside builtin vars and user args', () => {
+            const orig = process.env.TEST_API_KEY;
+            process.env.TEST_API_KEY = 'sk-abc123';
+            try {
+                const result = TemplateStore.expandVariables(
+                    '{{date}} — key: {{env:TEST_API_KEY}} — project: {{project}}',
+                    { project: 'anti-crow' },
+                );
+                expect(result).toMatch(/\d{4}-\d{2}-\d{2} — key: sk-abc123 — project: anti-crow/);
+            } finally {
+                if (orig === undefined) { delete process.env.TEST_API_KEY; } else { process.env.TEST_API_KEY = orig; }
+            }
+        });
+
+        it('should leave non-env unknown variables untouched', () => {
+            const result = TemplateStore.expandVariables('{{env:SOME_VAR}} and {{unknown}}');
+            // env:SOME_VAR → empty (undefined), unknown → untouched
+            expect(result).toBe(' and {{unknown}}');
+        });
+    });
+
+    describe('parseTemplateArgs — env exclusion', () => {
+        it('should exclude {{env:XXX}} from detected args', () => {
+            const args = parseTemplateArgs('Use {{env:API_KEY}} to search {{keyword}}');
+            expect(args.length).toBe(1);
+            expect(args[0].name).toBe('keyword');
+        });
+
+        it('should return empty when only env vars and builtins', () => {
+            const args = parseTemplateArgs('{{env:KEY}} at {{date}}');
+            expect(args.length).toBe(0);
+        });
+
+        it('should handle mixed env, builtin, and user args', () => {
+            const args = parseTemplateArgs('{{env:TOKEN}} {{date}} {{project}} {{env:SECRET}} {{target}}');
+            expect(args.length).toBe(2);
+            expect(args.map(a => a.name)).toEqual(['project', 'target']);
+        });
+    });
 });
+

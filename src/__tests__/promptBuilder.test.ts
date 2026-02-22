@@ -84,9 +84,9 @@ describe('countChoiceItems', () => {
         expect(countChoiceItems('1️⃣ Option A\n2️⃣ Option B\n3️⃣ Option C')).toBe(3);
     });
 
-    it('should count all 10 number emojis', () => {
+    it('should cap at 3 number emojis (4+ are ignored)', () => {
         const text = '1️⃣2️⃣3️⃣4️⃣5️⃣6️⃣7️⃣8️⃣9️⃣🔟';
-        expect(countChoiceItems(text)).toBe(10);
+        expect(countChoiceItems(text)).toBe(3);
     });
 
     it('should return 0 for text without number emojis', () => {

@@ -97,11 +97,12 @@ function cleanupRecentMessageIds(): void {
 // 60秒毎にクリーンアップ
 setInterval(cleanupRecentMessageIds, 60_000);
 
-/** /reset コマンド用: 全ワークスペースのキューをリセットする */
+/** 全ワークスペースのキューをリセットする（cancelPlanGeneration や内部リセットで使用） */
 export function resetProcessingFlag(): void {
     workspaceQueueCount.clear();
     workspaceQueues.clear();
     workspaceWaitingMessages.clear();
+    currentProcessingStatuses.clear();
     logDebug('messageHandler: all workspace queues reset');
 }
 
@@ -127,6 +128,9 @@ export function cancelPlanGeneration(): void {
         activePlanProgressIntervals.clear();
     }
     currentProcessingStatuses.clear();
+    // キュー状態も完全リセット（キャンセル後のゴーストカウント防止）
+    workspaceQueueCount.clear();
+    workspaceWaitingMessages.clear();
 }
 
 /** メッセージキューの状態を取得（/queue, /status コマンド用） */
@@ -136,19 +140,18 @@ export function getMessageQueueStatus(): {
     processing: ProcessingStatus[];
     waiting: { id: string; preview: string; enqueuedAt: number }[];
 } {
-    let total = 0;
-    const perWorkspace = new Map<string, number>();
-    for (const [wsKey, count] of workspaceQueueCount.entries()) {
-        if (count > 0) {
-            total += count;
-            perWorkspace.set(wsKey, count);
-        }
-    }
-    const processing = Array.from(currentProcessingStatuses.values());
-    // 全ワークスペースの待機メッセージを結合
+    const processing: ProcessingStatus[] = Array.from(currentProcessingStatuses.values());
     const waiting: { id: string; preview: string; enqueuedAt: number }[] = [];
     for (const msgs of workspaceWaitingMessages.values()) {
         waiting.push(...msgs);
+    }
+    // total は processing + waiting から算出（workspaceQueueCount との乖離を防止）
+    const total = processing.length + waiting.length;
+    const perWorkspace = new Map<string, number>();
+    for (const [wsKey, count] of workspaceQueueCount.entries()) {
+        if (count > 0) {
+            perWorkspace.set(wsKey, count);
+        }
     }
     return { total, perWorkspace, processing, waiting };
 }
@@ -167,6 +170,24 @@ export function clearWaitingMessages(): number {
     }
     logDebug(`messageHandler: cleared ${count} waiting messages`);
     return count;
+}
+
+/** 待機中メッセージを1件削除する（/queue 個別削除ボタン用） */
+export function removeWaitingMessage(msgId: string): boolean {
+    for (const [wsKey, msgs] of workspaceWaitingMessages.entries()) {
+        const idx = msgs.findIndex(w => w.id === msgId);
+        if (idx >= 0) {
+            msgs.splice(idx, 1);
+            // キューカウントも1つ減らす
+            const current = workspaceQueueCount.get(wsKey) ?? 0;
+            if (current > 0) {
+                workspaceQueueCount.set(wsKey, current - 1);
+            }
+            logDebug(`messageHandler: removed waiting message ${msgId}`);
+            return true;
+        }
+    }
+    return false;
 }
 
 /**
@@ -246,9 +267,14 @@ export async function enqueueMessage(
         } catch (e) {
             logError(`messageHandler: queued message processing failed (ws=${wsKey})`, e);
         } finally {
-            // キューカウンターをデクリメント
+            // キューカウンターをデクリメント（0 になったらエントリ削除）
             const count = workspaceQueueCount.get(wsKey) ?? 1;
-            workspaceQueueCount.set(wsKey, Math.max(0, count - 1));
+            const newCount = Math.max(0, count - 1);
+            if (newCount === 0) {
+                workspaceQueueCount.delete(wsKey);
+            } else {
+                workspaceQueueCount.set(wsKey, newCount);
+            }
         }
     });
     workspaceQueues.set(wsKey, task);

@@ -219,7 +219,7 @@ export class DiscordBot {
             case 'workspaces': return 'admin';
             case 'history': return 'admin';
             case 'queue': return 'admin';
-            case 'templates': return 'admin';
+            case 'template': return 'admin';
             case 'models': return 'admin';
             case 'mode': return 'admin';
             case 'help': return 'admin';

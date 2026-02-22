@@ -24,14 +24,19 @@ export interface PromptTemplate {
 /** 日時系の予約変数名 */
 const BUILTIN_VARS = new Set(['date', 'time', 'datetime', 'year', 'month', 'day']);
 
-/** プロンプト内の {{xxx}} からユーザー定義引数を自動検出 */
+/** プロンプト内の {{xxx}} からユーザー定義引数を自動検出
+ *  - BUILTIN_VARS (date, time 等) は除外
+ *  - {{env:XXX}} 形式の環境変数参照も除外（実行時に自動展開されるため）
+ */
 export function parseTemplateArgs(prompt: string): TemplateArg[] {
-    const regex = /\{\{([a-zA-Z_][a-zA-Z0-9_]*)\}\}/g;
+    const regex = /\{\{([a-zA-Z_][a-zA-Z0-9_:]*)\}\}/g;
     const seen = new Set<string>();
     const args: TemplateArg[] = [];
     let match: RegExpExecArray | null;
     while ((match = regex.exec(prompt)) !== null) {
         const name = match[1];
+        // env: プレフィックス付きは環境変数参照 → カスタム引数としない
+        if (name.startsWith('env:')) { continue; }
         if (!BUILTIN_VARS.has(name) && !seen.has(name)) {
             seen.add(name);
             args.push({ name, label: name, required: true });
@@ -83,7 +88,7 @@ export class TemplateStore {
         return deleted;
     }
 
-    /** プロンプト内の変数を置換（日時変数 + ユーザー定義引数） */
+    /** プロンプト内の変数を置換（日時変数 + 環境変数 + ユーザー定義引数） */
     static expandVariables(prompt: string, userArgs?: Record<string, string>): string {
         const now = new Date();
         const jst = new Date(now.toLocaleString('en-US', { timeZone: getTimezone() }));
@@ -100,6 +105,11 @@ export class TemplateStore {
             .replace(/\{\{year\}\}/g, String(year))
             .replace(/\{\{month\}\}/g, month)
             .replace(/\{\{day\}\}/g, day);
+
+        // 環境変数を展開: {{env:VARIABLE_NAME}} → process.env の値（未定義なら空文字列）
+        result = result.replace(/\{\{env:([a-zA-Z_][a-zA-Z0-9_]*)\}\}/g, (_match, varName: string) => {
+            return process.env[varName] ?? '';
+        });
 
         // ユーザー定義引数を展開
         if (userArgs) {

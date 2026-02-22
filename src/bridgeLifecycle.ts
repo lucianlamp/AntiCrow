@@ -611,7 +611,7 @@ export function updateStatusBar(ctx: BridgeContext): void {
         ctx.statusBarItem.text = `$(check) AntiCrow${licenseSuffix}`;
         ctx.statusBarItem.tooltip = `AntiCrow — Active (メッセージを処理中)\n${licenseTooltip}`;
     } else {
-        ctx.statusBarItem.text = `$(eye) AntiCrow (Standby)${licenseSuffix}`;
+        ctx.statusBarItem.text = `$(eye) AntiCrow${licenseSuffix}`;
         ctx.statusBarItem.tooltip = `AntiCrow — Standby (別ワークスペースが Bot 管理中)\n${licenseTooltip}`;
     }
     ctx.statusBarItem.command = 'anti-crow.stop';

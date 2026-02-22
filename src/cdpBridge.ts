@@ -491,7 +491,9 @@ export class CdpBridge {
         if (rect) {
             var style = window.getComputedStyle(rect);
             var fill = style.fill || rect.getAttribute('fill') || '';
-            if (fill.includes('red') || fill.match(/#[fF]/) || fill.match(/rgb\(2[0-9]{2},\s*[0-4]/)) {
+            var hexRedRe = new RegExp('#[fF]');
+            var rgbRedRe = new RegExp('rgb\\(2[0-9]{2},\\s*[0-4]');
+            if (fill.includes('red') || hexRedRe.test(fill) || rgbRedRe.test(fill)) {
                 b.click();
                 return { found: true, method: 'red-svg-rect', fill: fill, ariaLabel: b.getAttribute('aria-label') };
             }

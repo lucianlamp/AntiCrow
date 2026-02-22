@@ -1,18 +1,26 @@
 // ---------------------------------------------------------------------------
-// discordReactions.ts — リアクション収集・ユーザー確認
+// discordReactions.ts — ボタンベース確認 UI
 // ---------------------------------------------------------------------------
-// discordBot.ts から分離。Message に対するリアクション待ちロジックを集約。
+// リアクション方式を廃止し、discord.js ButtonBuilder / ActionRow を使用。
 // ---------------------------------------------------------------------------
 
-import { Message, ReactionCollector } from 'discord.js';
+import {
+    Message,
+    ActionRowBuilder,
+    ButtonBuilder,
+    ButtonStyle,
+    ComponentType,
+    InteractionCollector,
+    ButtonInteraction,
+} from 'discord.js';
 import { logDebug, logError } from './logger';
 
 // -----------------------------------------------------------------------
 // アクティブコレクタ管理（外部からのキャンセル用）
 // -----------------------------------------------------------------------
 
-/** channelId → アクティブな ReactionCollector（自動却下に使用） */
-const activeCollectors = new Map<string, ReactionCollector>();
+/** channelId → アクティブな InteractionCollector（自動却下に使用） */
+const activeCollectors = new Map<string, InteractionCollector<ButtonInteraction>>();
 
 /**
  * 指定チャンネルのアクティブな確認コレクタをキャンセルする。
@@ -34,53 +42,65 @@ export function cancelActiveConfirmation(channelId: string): boolean {
 // waitForConfirmation
 // -----------------------------------------------------------------------
 
-/** メッセージにリアクション待ちして確認を取る（タイムアウトなし） */
+/** メッセージにボタン待ちして確認を取る（タイムアウトなし） */
 export async function waitForConfirmation(
     message: Message,
     botUserId: string | undefined,
 ): Promise<boolean> {
-    const confirmEmoji = '✅';
-    const rejectEmoji = '❌';
+    const channelId = message.channelId;
 
     try {
-        await message.react(confirmEmoji);
-        await message.react(rejectEmoji);
-        logDebug(`waitForConfirmation: reactions added, waiting for user reaction (no timeout)`);
+        const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder()
+                .setCustomId('confirm_approve')
+                .setLabel('✅ 承認')
+                .setStyle(ButtonStyle.Success),
+            new ButtonBuilder()
+                .setCustomId('confirm_reject')
+                .setLabel('❌ 拒否')
+                .setStyle(ButtonStyle.Danger),
+        );
+
+        await message.edit({ components: [row] });
+        logDebug('waitForConfirmation: buttons added, waiting for user click (no timeout)');
     } catch (e) {
-        logError('waitForConfirmation: failed to add reactions', e);
+        logError('waitForConfirmation: failed to add buttons', e);
         return false;
     }
 
-    logDebug(`waitForConfirmation: bot ID = ${botUserId}`);
-    const channelId = message.channelId;
-
     return new Promise<boolean>((resolve) => {
-        const collector = message.createReactionCollector({
-            filter: (reaction, user) => {
-                const emojiName = reaction.emoji.name || '';
-                const isTargetEmoji = [confirmEmoji, rejectEmoji].includes(emojiName);
-                const isNotBot = user.id !== botUserId;
-                logDebug(`waitForConfirmation: reaction '${emojiName}' from user ${user.id} (bot=${!isNotBot}, targetEmoji=${isTargetEmoji})`);
-                return isTargetEmoji && isNotBot;
+        const collector = message.createMessageComponentCollector({
+            componentType: ComponentType.Button,
+            filter: (i) => {
+                const isNotBot = i.user.id !== botUserId;
+                logDebug(`waitForConfirmation: button '${i.customId}' from user ${i.user.id} (bot=${!isNotBot})`);
+                return isNotBot && ['confirm_approve', 'confirm_reject'].includes(i.customId);
             },
             max: 1,
         });
 
-        // アクティブコレクタに登録
         activeCollectors.set(channelId, collector);
 
-        collector.on('collect', (reaction, user) => {
-            const emoji = reaction.emoji.name;
-            logDebug(`waitForConfirmation: collected reaction '${emoji}' from user ${user.tag || user.id}`);
+        collector.on('collect', async (i) => {
+            logDebug(`waitForConfirmation: collected '${i.customId}' from user ${i.user.tag || i.user.id}`);
             activeCollectors.delete(channelId);
             collector.stop('received');
-            resolve(emoji === confirmEmoji);
+
+            // ボタンを無効化
+            try {
+                await i.deferUpdate();
+                await message.edit({ components: disableAllButtons(message) });
+            } catch { /* ignore */ }
+
+            resolve(i.customId === 'confirm_approve');
         });
 
         collector.on('end', (_collected, reason) => {
             logDebug(`waitForConfirmation: collector ended — reason: ${reason}`);
             activeCollectors.delete(channelId);
             if (reason !== 'received') {
+                // ボタンを無効化
+                message.edit({ components: disableAllButtons(message) }).catch(() => { /* ignore */ });
                 resolve(false); // 自動却下またはその他の理由
             }
         });
@@ -91,55 +111,71 @@ export async function waitForConfirmation(
 // waitForChoice
 // -----------------------------------------------------------------------
 
-/** 番号付き絵文字リアクションで選択を待つ（1️⃣~🔟 + ❌、タイムアウトなし） */
+/** ボタンクリックで選択を待つ（最大3つ + ❌、タイムアウトなし） */
 export async function waitForChoice(
     message: Message,
     botUserId: string | undefined,
     choiceCount: number,
 ): Promise<number> {
-    const numberEmojis = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟'];
-    const rejectEmoji = '❌';
-    const activeEmojis = numberEmojis.slice(0, Math.min(choiceCount, 10));
+    const numberLabels = ['1️⃣', '2️⃣', '3️⃣'];
+    const clipped = Math.min(choiceCount, 3);
 
     try {
-        for (const emoji of activeEmojis) {
-            await message.react(emoji);
+        const buttons: ButtonBuilder[] = [];
+        for (let i = 0; i < clipped; i++) {
+            buttons.push(
+                new ButtonBuilder()
+                    .setCustomId(`choice_${i + 1}`)
+                    .setLabel(numberLabels[i])
+                    .setStyle(ButtonStyle.Primary),
+            );
         }
-        await message.react(rejectEmoji);
-        logDebug(`waitForChoice: ${activeEmojis.length} choice reactions + ❌ added, waiting (no timeout)`);
+        buttons.push(
+            new ButtonBuilder()
+                .setCustomId('choice_reject')
+                .setLabel('❌ 拒否')
+                .setStyle(ButtonStyle.Danger),
+        );
+
+        const row = new ActionRowBuilder<ButtonBuilder>().addComponents(...buttons);
+        await message.edit({ components: [row] });
+        logDebug(`waitForChoice: ${clipped} choice buttons + ❌ added, waiting (no timeout)`);
     } catch (e) {
-        logError('waitForChoice: failed to add reactions', e);
+        logError('waitForChoice: failed to add buttons', e);
         return -1;
     }
 
-    const allEmojis = [...activeEmojis, rejectEmoji];
+    const validIds = Array.from({ length: clipped }, (_, i) => `choice_${i + 1}`).concat('choice_reject');
     const channelId = message.channelId;
 
     return new Promise<number>((resolve) => {
-        const collector = message.createReactionCollector({
-            filter: (reaction, user) => {
-                const emojiName = reaction.emoji.name || '';
-                const isTarget = allEmojis.includes(emojiName);
-                const isNotBot = user.id !== botUserId;
-                logDebug(`waitForChoice: reaction '${emojiName}' from user ${user.id} (bot=${!isNotBot}, target=${isTarget})`);
-                return isTarget && isNotBot;
+        const collector = message.createMessageComponentCollector({
+            componentType: ComponentType.Button,
+            filter: (i) => {
+                const isNotBot = i.user.id !== botUserId;
+                logDebug(`waitForChoice: button '${i.customId}' from user ${i.user.id} (bot=${!isNotBot})`);
+                return isNotBot && validIds.includes(i.customId);
             },
             max: 1,
         });
 
-        // アクティブコレクタに登録
         activeCollectors.set(channelId, collector);
 
-        collector.on('collect', (reaction, user) => {
-            const emoji = reaction.emoji.name || '';
-            logDebug(`waitForChoice: collected '${emoji}' from user ${user.tag || user.id}`);
+        collector.on('collect', async (i) => {
+            logDebug(`waitForChoice: collected '${i.customId}' from user ${i.user.tag || i.user.id}`);
             activeCollectors.delete(channelId);
             collector.stop('received');
-            if (emoji === rejectEmoji) {
+
+            try {
+                await i.deferUpdate();
+                await message.edit({ components: disableAllButtons(message) });
+            } catch { /* ignore */ }
+
+            if (i.customId === 'choice_reject') {
                 resolve(-1);
             } else {
-                const idx = activeEmojis.indexOf(emoji);
-                resolve(idx >= 0 ? idx + 1 : -1);
+                const num = parseInt(i.customId.replace('choice_', ''), 10);
+                resolve(num > 0 ? num : -1);
             }
         });
 
@@ -147,6 +183,7 @@ export async function waitForChoice(
             logDebug(`waitForChoice: collector ended — reason: ${reason}`);
             activeCollectors.delete(channelId);
             if (reason !== 'received') {
+                message.edit({ components: disableAllButtons(message) }).catch(() => { /* ignore */ });
                 resolve(-1);
             }
         });
@@ -158,7 +195,7 @@ export async function waitForChoice(
 // -----------------------------------------------------------------------
 
 /**
- * 複数選択待ち: 1️⃣~🔟 で複数選択 → ☑️ で確定、✅ で全選択、❌ で却下。
+ * 複数選択待ち: ボタントグルで複数選択 → ☑️ で確定、✅ で全選択、❌ で却下。
  * @returns 選択された番号の配列（1-indexed）。空配列 = 却下/自動却下。[-1] = 全選択。
  */
 export async function waitForMultiChoice(
@@ -166,76 +203,110 @@ export async function waitForMultiChoice(
     botUserId: string | undefined,
     choiceCount: number,
 ): Promise<number[]> {
-    const numberEmojis = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟'];
-    const confirmEmoji = '☑️';
-    const allEmoji = '✅';
-    const rejectEmoji = '❌';
-    const activeEmojis = numberEmojis.slice(0, Math.min(choiceCount, 10));
+    const numberLabels = ['1️⃣', '2️⃣', '3️⃣'];
+    const clipped = Math.min(choiceCount, 3);
+    const selected = new Set<number>();
+
+    /** 現在の選択状態に基づいてボタン行を構築 */
+    function buildRows(): ActionRowBuilder<ButtonBuilder>[] {
+        const choiceButtons: ButtonBuilder[] = [];
+        for (let i = 0; i < clipped; i++) {
+            const num = i + 1;
+            const isSelected = selected.has(num);
+            choiceButtons.push(
+                new ButtonBuilder()
+                    .setCustomId(`mchoice_${num}`)
+                    .setLabel(`${numberLabels[i]}${isSelected ? ' ✓' : ''}`)
+                    .setStyle(isSelected ? ButtonStyle.Primary : ButtonStyle.Secondary),
+            );
+        }
+        const choiceRow = new ActionRowBuilder<ButtonBuilder>().addComponents(...choiceButtons);
+
+        const controlRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder()
+                .setCustomId('mchoice_confirm')
+                .setLabel('☑️ 確定')
+                .setStyle(ButtonStyle.Success),
+            new ButtonBuilder()
+                .setCustomId('mchoice_all')
+                .setLabel('✅ 全選択')
+                .setStyle(ButtonStyle.Primary),
+            new ButtonBuilder()
+                .setCustomId('mchoice_reject')
+                .setLabel('❌ 拒否')
+                .setStyle(ButtonStyle.Danger),
+        );
+
+        return [choiceRow, controlRow];
+    }
 
     try {
-        for (const emoji of activeEmojis) {
-            await message.react(emoji);
-        }
-        await message.react(confirmEmoji);
-        await message.react(allEmoji);
-        await message.react(rejectEmoji);
-        logDebug(`waitForMultiChoice: ${activeEmojis.length} choices + ☑️/✅/❌ added (no timeout)`);
+        await message.edit({ components: buildRows() });
+        logDebug(`waitForMultiChoice: ${clipped} toggle buttons + ☑️/✅/❌ added (no timeout)`);
     } catch (e) {
-        logError('waitForMultiChoice: failed to add reactions', e);
+        logError('waitForMultiChoice: failed to add buttons', e);
         return [];
     }
 
-    const controlEmojis = [confirmEmoji, allEmoji, rejectEmoji];
-    const allValidEmojis = [...activeEmojis, ...controlEmojis];
+    const choiceIds = Array.from({ length: clipped }, (_, i) => `mchoice_${i + 1}`);
+    const controlIds = ['mchoice_confirm', 'mchoice_all', 'mchoice_reject'];
+    const allValidIds = [...choiceIds, ...controlIds];
     const channelId = message.channelId;
 
     return new Promise<number[]>((resolve) => {
-        const selected = new Set<number>();
-
-        const collector = message.createReactionCollector({
-            filter: (reaction, user) => {
-                const emojiName = reaction.emoji.name || '';
-                const isTarget = allValidEmojis.includes(emojiName);
-                const isNotBot = user.id !== botUserId;
-                logDebug(`waitForMultiChoice: reaction '${emojiName}' from user ${user.id} (bot=${!isNotBot}, target=${isTarget})`);
-                return isTarget && isNotBot;
+        const collector = message.createMessageComponentCollector({
+            componentType: ComponentType.Button,
+            filter: (i) => {
+                const isNotBot = i.user.id !== botUserId;
+                logDebug(`waitForMultiChoice: button '${i.customId}' from user ${i.user.id} (bot=${!isNotBot})`);
+                return isNotBot && allValidIds.includes(i.customId);
             },
         });
 
-        // アクティブコレクタに登録
         activeCollectors.set(channelId, collector);
 
-        collector.on('collect', (reaction, user) => {
-            const emoji = reaction.emoji.name || '';
+        collector.on('collect', async (i) => {
+            const customId = i.customId;
 
-            if (emoji === rejectEmoji) {
-                logDebug(`waitForMultiChoice: rejected by ${user.tag || user.id}`);
+            if (customId === 'mchoice_reject') {
+                logDebug(`waitForMultiChoice: rejected by ${i.user.tag || i.user.id}`);
                 activeCollectors.delete(channelId);
                 collector.stop('rejected');
+                try {
+                    await i.deferUpdate();
+                    await message.edit({ components: disableAllButtons(message) });
+                } catch { /* ignore */ }
                 resolve([]);
                 return;
             }
 
-            if (emoji === allEmoji) {
-                logDebug(`waitForMultiChoice: all selected by ${user.tag || user.id}`);
+            if (customId === 'mchoice_all') {
+                logDebug(`waitForMultiChoice: all selected by ${i.user.tag || i.user.id}`);
                 activeCollectors.delete(channelId);
                 collector.stop('all');
+                try {
+                    await i.deferUpdate();
+                    await message.edit({ components: disableAllButtons(message) });
+                } catch { /* ignore */ }
                 resolve([-1]);
                 return;
             }
 
-            if (emoji === confirmEmoji) {
-                logDebug(`waitForMultiChoice: confirmed [${[...selected].join(',')}] by ${user.tag || user.id}`);
+            if (customId === 'mchoice_confirm') {
+                logDebug(`waitForMultiChoice: confirmed [${[...selected].join(',')}] by ${i.user.tag || i.user.id}`);
                 activeCollectors.delete(channelId);
                 collector.stop('confirmed');
+                try {
+                    await i.deferUpdate();
+                    await message.edit({ components: disableAllButtons(message) });
+                } catch { /* ignore */ }
                 resolve([...selected].sort((a, b) => a - b));
                 return;
             }
 
-            // 番号リアクション — 選択/解除
-            const idx = activeEmojis.indexOf(emoji);
-            if (idx >= 0) {
-                const num = idx + 1;
+            // 番号ボタン — 選択/解除トグル
+            const num = parseInt(customId.replace('mchoice_', ''), 10);
+            if (num > 0) {
                 if (selected.has(num)) {
                     selected.delete(num);
                     logDebug(`waitForMultiChoice: deselected ${num}`);
@@ -243,6 +314,12 @@ export async function waitForMultiChoice(
                     selected.add(num);
                     logDebug(`waitForMultiChoice: selected ${num}`);
                 }
+
+                // トグル後のボタン状態を更新
+                try {
+                    await i.deferUpdate();
+                    await message.edit({ components: buildRows() });
+                } catch { /* ignore */ }
             }
         });
 
@@ -250,8 +327,31 @@ export async function waitForMultiChoice(
             logDebug(`waitForMultiChoice: collector ended — reason: ${reason}`);
             activeCollectors.delete(channelId);
             if (!['rejected', 'all', 'confirmed'].includes(reason || '')) {
+                message.edit({ components: disableAllButtons(message) }).catch(() => { /* ignore */ });
                 resolve([]); // 自動却下
             }
         });
+    });
+}
+
+// -----------------------------------------------------------------------
+// ユーティリティ
+// -----------------------------------------------------------------------
+
+/** メッセージの既存ボタンをすべて無効化した ActionRow を返す */
+function disableAllButtons(message: Message): ActionRowBuilder<ButtonBuilder>[] {
+    return message.components.map((row) => {
+        const newRow = new ActionRowBuilder<ButtonBuilder>();
+        for (const comp of (row as { components: { type: number; customId?: string | null; label?: string | null; style?: number }[] }).components) {
+            if (comp.type === ComponentType.Button && comp.customId) {
+                const btn = new ButtonBuilder()
+                    .setCustomId(comp.customId)
+                    .setDisabled(true);
+                if (comp.label) { btn.setLabel(comp.label); }
+                if (comp.style) { btn.setStyle(comp.style); }
+                newRow.addComponents(btn);
+            }
+        }
+        return newRow;
     });
 }

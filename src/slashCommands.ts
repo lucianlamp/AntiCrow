@@ -35,7 +35,7 @@ export const slashCommandDefinitions = [
         .setDescription('メッセージ処理キュー・実行キューの詳細を表示'),
 
     new SlashCommandBuilder()
-        .setName('templates')
+        .setName('template')
         .setDescription('テンプレート一覧を表示・管理'),
 
     new SlashCommandBuilder()
