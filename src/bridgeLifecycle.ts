@@ -32,6 +32,8 @@ import { enqueueMessage } from './messageHandler';
 import { handleSlashCommand, handleButtonInteraction, handleAutocomplete, handleModalSubmit } from './slashHandler';
 import { getConfig, getResponseTimeout, getTimezone, getArchiveDays, getWorkspacePaths, getClientId, getCdpPorts } from './configHelper';
 import { archiveOldCategories } from './categoryArchiver';
+import { getLicenseGate, getLicenseChecker } from './extension';
+import type { LicenseType } from './licensing';
 import * as fs from 'fs';
 
 // ---------------------------------------------------------------------------
@@ -260,16 +262,13 @@ async function startBridgeInternal(
     ctx.fileIpc = new FileIpc(storageUri);
     await ctx.fileIpc.init();
 
-    // 起動時 stale レスポンスリカバリー（cleanupOldFiles より先に実行）
+    // 起動時 stale レスポンスリカバリー（Phase 2: Bot 初期化後に Discord 再送）
+    // cleanupOldFiles より先にレスポンスを検出・保持し、後で再送する
+    let pendingStaleResponses: import('./fileIpc').StaleResponse[] = [];
     try {
-        const staleResponses = await ctx.fileIpc.recoverStaleResponses();
-        if (staleResponses.length > 0) {
-            logWarn(`Bridge: found ${staleResponses.length} stale response(s) at startup`);
-            for (const sr of staleResponses) {
-                logWarn(`Bridge: stale response — requestId=${sr.requestId}, format=${sr.format}, chars=${sr.content.length}`);
-                // Phase 1: ログ出力 + 安全削除のみ（Discord 再送は Phase 2 で検討）
-                await ctx.fileIpc.cleanupStaleResponse(sr.filePath);
-            }
+        pendingStaleResponses = await ctx.fileIpc.recoverStaleResponses();
+        if (pendingStaleResponses.length > 0) {
+            logWarn(`Bridge: found ${pendingStaleResponses.length} stale response(s) at startup — will re-deliver after bot init`);
         }
     } catch (e) {
         logWarn(`Bridge: stale response recovery failed: ${e instanceof Error ? e.message : e}`);
@@ -291,7 +290,11 @@ async function startBridgeInternal(
         if (ctx.bot) {
             await ctx.bot.sendTypingTo(channelId);
         }
-    }, context.extensionPath);
+    }, context.extensionPath, async (channelId, components, embed) => {
+        if (ctx.bot) {
+            await ctx.bot.sendComponentsToChannel(channelId, components, embed);
+        }
+    });
 
     // CdpPool 初期化
     ctx.cdpPool = new CdpPool(cdpPorts, storageUri.fsPath);
@@ -313,6 +316,11 @@ async function startBridgeInternal(
             }
         },
         context.extensionPath,
+        async (channelId, components, embed) => {
+            if (ctx.bot) {
+                await ctx.bot.sendComponentsToChannel(channelId, components, embed);
+            }
+        },
     );
 
     // TemplateStore 初期化
@@ -371,29 +379,90 @@ async function startBridgeInternal(
         }, 5_000);
     }
 
+    // -----------------------------------------------------------------
+    // Phase 2: stale response を Discord に再送
+    // Bot が稼働中なら #agent-chat に再送、そうでなければログ+削除
+    // -----------------------------------------------------------------
+    if (pendingStaleResponses.length > 0) {
+        for (const sr of pendingStaleResponses) {
+            try {
+                if (ctx.bot && ctx.bot.isReady()) {
+                    // 3段フォールバック: ① meta channelId → ② ワークスペース名でカテゴリ内 #agent-chat → ③ 最初の #agent-chat
+                    let targetChannelId = sr.channelId || null;
+                    let source = 'meta';
+                    if (!targetChannelId && sr.workspaceName) {
+                        targetChannelId = ctx.bot.findAgentChatChannelByWorkspace(sr.workspaceName);
+                        source = 'workspace';
+                    }
+                    if (!targetChannelId) {
+                        targetChannelId = ctx.bot.findFirstAgentChatChannelId();
+                        source = 'fallback';
+                    }
+                    if (targetChannelId) {
+                        // テキスト抽出
+                        let text: string;
+                        if (sr.format === 'md') {
+                            text = sr.content;
+                        } else {
+                            text = FileIpc.extractResult(sr.content);
+                        }
+
+                        // 再送メッセージにヘッダー付与
+                        const header = '⚠️ **前回のセッションで未配信だったレスポンスを再送します:**\n\n';
+                        await ctx.bot.sendToChannel(targetChannelId, header + text, 0xFFA500);
+                        logDebug(`Bridge: stale response re-delivered — requestId=${sr.requestId}, channelId=${targetChannelId} (source=${source}, workspace=${sr.workspaceName ?? 'none'})`);
+                    } else {
+                        logWarn(`Bridge: stale response found but no target channel — requestId=${sr.requestId}`);
+                    }
+                } else {
+                    logWarn(`Bridge: stale response found but bot not ready — requestId=${sr.requestId}, format=${sr.format}, chars=${sr.content.length}`);
+                }
+                // 再送成否に関わらずファイル+metaは削除（無限ループ防止）
+                await ctx.fileIpc.cleanupStaleResponse(sr.filePath, sr.metaFilePath);
+            } catch (e) {
+                logWarn(`Bridge: stale response re-delivery failed — requestId=${sr.requestId}: ${e instanceof Error ? e.message : e}`);
+                // エラーでもファイル削除を試行
+                try { await ctx.fileIpc.cleanupStaleResponse(sr.filePath, sr.metaFilePath); } catch { /* ignore */ }
+            }
+        }
+    }
+
     // 設定変更リスナー
     context.subscriptions.push(
         vscode.workspace.onDidChangeConfiguration(e => {
-            if (e.affectsConfiguration('antiCrow.autoOperation')) {
+            if (e.affectsConfiguration('antiCrow.autoAccept')) {
                 const autoOp = vscode.workspace.getConfiguration('antiCrow')
-                    .get<boolean>('autoOperation') ?? false;
+                    .get<boolean>('autoAccept') ?? false;
                 if (autoOp) {
-                    logDebug('Bridge: autoOperation enabled — starting UI watcher');
-                    ctx.executor?.startUIWatcher();
+                    // Pro 限定: Free プランではウォッチャーを起動しない
+                    const gate = getLicenseGate();
+                    if (gate && !gate.isFeatureAllowed('autoAccept')) {
+                        logDebug('Bridge: autoAccept enabled but blocked (Free plan)');
+                        return;
+                    }
+                    logDebug('Bridge: autoAccept enabled — starting UI watcher');
+                    const isProCheck = () => getLicenseGate()?.isFeatureAllowed('autoAccept') ?? true;
+                    ctx.executor?.startUIWatcher(isProCheck);
                 } else {
-                    logDebug('Bridge: autoOperation disabled — stopping UI watcher');
+                    logDebug('Bridge: autoAccept disabled — stopping UI watcher');
                     ctx.executor?.stopUIWatcher();
                 }
             }
         })
     );
 
-    // autoOperation が有効ならUIウォッチャーを常時起動
+    // autoAccept が有効ならUIウォッチャーを常時起動（Pro 限定）
     const autoOpEnabled = vscode.workspace.getConfiguration('antiCrow')
-        .get<boolean>('autoOperation') ?? false;
+        .get<boolean>('autoAccept') ?? false;
     if (autoOpEnabled) {
-        ctx.executor?.startUIWatcher();
-        logDebug('Bridge: UI watcher started (autoOperation enabled)');
+        const gate = getLicenseGate();
+        if (gate && !gate.isFeatureAllowed('autoAccept')) {
+            logDebug('Bridge: autoAccept enabled but blocked at startup (Free plan)');
+        } else {
+            const isProCheck = () => getLicenseGate()?.isFeatureAllowed('autoAccept') ?? true;
+            ctx.executor?.startUIWatcher(isProCheck);
+            logDebug('Bridge: UI watcher started (autoAccept enabled)');
+        }
     }
 
     // CDP ヘルスチェック（60秒間隔で接続状態を監視）
@@ -479,8 +548,9 @@ export async function stopBridge(ctx: BridgeContext): Promise<void> {
     ctx.executor = null;
     ctx.executorPool = null;
 
-    ctx.statusBarItem.text = '$(circle-slash) AntiCrow';
-    ctx.statusBarItem.tooltip = 'AntiCrow — Stopped';
+    const licenseSuffix = getLicenseSuffix();
+    ctx.statusBarItem.text = `$(circle-slash) AntiCrow${licenseSuffix}`;
+    ctx.statusBarItem.tooltip = `AntiCrow — Stopped\n${getLicenseTooltipLine()}`;
     ctx.statusBarItem.command = 'anti-crow.start';
 
     logDebug('Bridge stopped');
@@ -490,13 +560,59 @@ export async function stopBridge(ctx: BridgeContext): Promise<void> {
 // StatusBar 更新
 // ---------------------------------------------------------------------------
 
+/** ライセンスタイプからユーザー向けプラン名を返す */
+function getPlanName(type: LicenseType, trialDaysRemaining?: number): string {
+    switch (type) {
+        case 'monthly': return 'Pro';
+        case 'lifetime': return 'Pro';
+        case 'trial': {
+            const days = trialDaysRemaining ?? 0;
+            return days > 0 ? `Trial: 残り${days}日` : 'Trial';
+        }
+        case 'free': return 'Free';
+        default: return 'Free';
+    }
+}
+
+/** ステータスバー text 用のライセンスサフィックスを生成（例: " [Pro]"） */
+function getLicenseSuffix(): string {
+    const checker = getLicenseChecker();
+    if (!checker) { return ''; }
+    const status = checker.getCachedStatus();
+    const trialDays = checker.getTrialDaysRemaining?.() ?? undefined;
+    return ` [${getPlanName(status.type, trialDays)}]`;
+}
+
+/** ステータスバー tooltip 用のライセンス情報行を生成 */
+function getLicenseTooltipLine(): string {
+    const checker = getLicenseChecker();
+    if (!checker) { return ''; }
+    const status = checker.getCachedStatus();
+    const trialDays = checker.getTrialDaysRemaining?.() ?? undefined;
+    const planName = getPlanName(status.type, trialDays);
+
+    if (status.type === 'free' && status.reason === 'no_key') {
+        return `プラン: ${planName} — クリックして Pro にアップグレード`;
+    }
+    if (status.valid) {
+        const expiryText = status.expiresAt
+            ? ` (${new Date(status.expiresAt).toLocaleDateString('ja-JP')} まで)`
+            : '';
+        return `プラン: ${planName}${expiryText}`;
+    }
+    return `プラン: ライセンス問題あり — クリックして対処`;
+}
+
 export function updateStatusBar(ctx: BridgeContext): void {
+    const licenseSuffix = getLicenseSuffix();
+    const licenseTooltip = getLicenseTooltipLine();
+
     if (ctx.isBotOwner) {
-        ctx.statusBarItem.text = '$(check) AntiCrow';
-        ctx.statusBarItem.tooltip = 'AntiCrow — Active (メッセージを処理中)';
+        ctx.statusBarItem.text = `$(check) AntiCrow${licenseSuffix}`;
+        ctx.statusBarItem.tooltip = `AntiCrow — Active (メッセージを処理中)\n${licenseTooltip}`;
     } else {
-        ctx.statusBarItem.text = '$(eye) AntiCrow (Standby)';
-        ctx.statusBarItem.tooltip = 'AntiCrow — Standby (別ワークスペースが Bot 管理中)';
+        ctx.statusBarItem.text = `$(eye) AntiCrow (Standby)${licenseSuffix}`;
+        ctx.statusBarItem.tooltip = `AntiCrow — Standby (別ワークスペースが Bot 管理中)\n${licenseTooltip}`;
     }
     ctx.statusBarItem.command = 'anti-crow.stop';
 }

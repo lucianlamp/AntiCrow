@@ -11,7 +11,7 @@ import * as fs from 'fs';
 // ---------------------------------------------------------------------------
 
 import * as vscode from 'vscode';
-import { Message, TextChannel } from 'discord.js';
+import { Message, TextChannel, EmbedBuilder } from 'discord.js';
 import { CdpBridge } from './cdpBridge';
 import { WorkspaceConnectionError } from './cdpPool';
 import { CascadePanelError } from './errors';
@@ -19,7 +19,8 @@ import { FileIpc } from './fileIpc';
 import { parsePlanJson, buildPlan } from './planParser';
 import { ChannelIntent, Plan } from './types';
 import { logDebug, logError, logWarn } from './logger';
-import { buildEmbed, EmbedColor, sanitizeErrorForDiscord } from './embedHelper';
+import { buildEmbed, EmbedColor, sanitizeErrorForDiscord, normalizeHeadings } from './embedHelper';
+import { splitForEmbeds } from './discordFormatter';
 import { DiscordBot } from './discordBot';
 import { downloadAttachments } from './attachmentDownloader';
 import { BridgeContext } from './bridgeContext';
@@ -30,6 +31,7 @@ import { getCurrentMode } from './cdpModes';
 // 委譲先モジュール
 import { buildPlanPrompt, buildConfirmMessage, countChoiceItems, cronToPrefix } from './promptBuilder';
 import { resolveWorkspace } from './workspaceResolver';
+import { cancelActiveConfirmation } from './discordReactions';
 
 // Re-export for backward compatibility
 export { buildPlanPrompt, cronToPrefix } from './promptBuilder';
@@ -42,6 +44,8 @@ export { buildPlanPrompt, cronToPrefix } from './promptBuilder';
 const workspaceQueues = new Map<string, Promise<void>>();
 /** ワークスペース毎のキュー待ち件数 */
 const workspaceQueueCount = new Map<string, number>();
+/** ワークスペース毎の待機中メッセージ情報（/queue 表示用） */
+const workspaceWaitingMessages = new Map<string, { id: string; preview: string; enqueuedAt: number }[]>();
 /** デフォルトキー（ワークスペース未特定時） */
 const DEFAULT_WS_KEY = '__default__';
 
@@ -68,10 +72,10 @@ const currentProcessingStatuses = new Map<string, ProcessingStatus>();
 
 /** Plan 生成中の AbortController（キャンセル可能にする） */
 let currentPlanAbortController: AbortController | null = null;
-/** Plan 生成中の typing interval（キャンセル時にクリア可能にする） */
-let currentPlanTypingInterval: ReturnType<typeof setInterval> | null = null;
-/** Plan 生成中の progress interval（キャンセル時にクリア可能にする） */
-let currentPlanProgressInterval: ReturnType<typeof setInterval> | null = null;
+/** Plan 生成中の typing interval Set（複数並行時の上書き防止） */
+const activePlanTypingIntervals = new Set<ReturnType<typeof setInterval>>();
+/** Plan 生成中の progress interval Set（複数並行時の上書き防止） */
+const activePlanProgressIntervals = new Set<ReturnType<typeof setInterval>>();
 
 // ---------------------------------------------------------------------------
 // メッセージID 重複チェック（二重処理防止）
@@ -97,6 +101,7 @@ setInterval(cleanupRecentMessageIds, 60_000);
 export function resetProcessingFlag(): void {
     workspaceQueueCount.clear();
     workspaceQueues.clear();
+    workspaceWaitingMessages.clear();
     logDebug('messageHandler: all workspace queues reset');
 }
 
@@ -107,15 +112,19 @@ export function cancelPlanGeneration(): void {
         currentPlanAbortController = null;
         logDebug('messageHandler: plan generation AbortController triggered');
     }
-    if (currentPlanTypingInterval) {
-        clearInterval(currentPlanTypingInterval);
-        currentPlanTypingInterval = null;
-        logDebug('messageHandler: plan typing interval cleared');
+    for (const iv of activePlanTypingIntervals) {
+        clearInterval(iv);
     }
-    if (currentPlanProgressInterval) {
-        clearInterval(currentPlanProgressInterval);
-        currentPlanProgressInterval = null;
-        logDebug('messageHandler: plan progress interval cleared');
+    if (activePlanTypingIntervals.size > 0) {
+        logDebug(`messageHandler: cleared ${activePlanTypingIntervals.size} plan typing interval(s)`);
+        activePlanTypingIntervals.clear();
+    }
+    for (const iv of activePlanProgressIntervals) {
+        clearInterval(iv);
+    }
+    if (activePlanProgressIntervals.size > 0) {
+        logDebug(`messageHandler: cleared ${activePlanProgressIntervals.size} plan progress interval(s)`);
+        activePlanProgressIntervals.clear();
     }
     currentProcessingStatuses.clear();
 }
@@ -125,6 +134,7 @@ export function getMessageQueueStatus(): {
     total: number;
     perWorkspace: Map<string, number>;
     processing: ProcessingStatus[];
+    waiting: { id: string; preview: string; enqueuedAt: number }[];
 } {
     let total = 0;
     const perWorkspace = new Map<string, number>();
@@ -135,7 +145,28 @@ export function getMessageQueueStatus(): {
         }
     }
     const processing = Array.from(currentProcessingStatuses.values());
-    return { total, perWorkspace, processing };
+    // 全ワークスペースの待機メッセージを結合
+    const waiting: { id: string; preview: string; enqueuedAt: number }[] = [];
+    for (const msgs of workspaceWaitingMessages.values()) {
+        waiting.push(...msgs);
+    }
+    return { total, perWorkspace, processing, waiting };
+}
+
+/** 待機中メッセージを全削除する（/queue 削除ボタン用） */
+export function clearWaitingMessages(): number {
+    let count = 0;
+    for (const msgs of workspaceWaitingMessages.values()) {
+        count += msgs.length;
+    }
+    workspaceWaitingMessages.clear();
+    // キューカウントも待機分をリセット（処理中の分は残す）
+    for (const [wsKey, queueCount] of workspaceQueueCount.entries()) {
+        const processingCount = currentProcessingStatuses.has(wsKey) ? 1 : 0;
+        workspaceQueueCount.set(wsKey, processingCount);
+    }
+    logDebug(`messageHandler: cleared ${count} waiting messages`);
+    return count;
 }
 
 /**
@@ -164,17 +195,52 @@ export async function enqueueMessage(
     const prevCount = workspaceQueueCount.get(wsKey) ?? 0;
     workspaceQueueCount.set(wsKey, prevCount + 1);
 
-    // キューに待ちがある場合は通知
+    // 待機メッセージ情報を記録（/queue 表示用）
+    const preview = (message.content || '').substring(0, 50);
     if (prevCount > 0) {
-        try {
-            await channel.send({ embeds: [buildEmbed(`📥 キューに追加しました（待ち: ${prevCount}件）。前のタスク完了後に処理します。`, EmbedColor.Info)] });
-        } catch (e) {
-            logDebug(`messageHandler: failed to send queue notification: ${e}`);
+        const waitingList = workspaceWaitingMessages.get(wsKey) ?? [];
+        waitingList.push({ id: msgId, preview, enqueuedAt: Date.now() });
+        workspaceWaitingMessages.set(wsKey, waitingList);
+    }
+
+    // キューに待ちがある場合
+    if (prevCount > 0) {
+        // 確認フェーズ中なら自動却下して新しいメッセージを優先
+        const currentStatus = currentProcessingStatuses.get(wsKey);
+        if (currentStatus?.phase === 'confirming') {
+            const channelId = channel.id;
+            const cancelled = cancelActiveConfirmation(channelId);
+            if (cancelled) {
+                logDebug(`messageHandler: auto-dismissed confirmation for channel ${channelId}`);
+                try {
+                    await channel.send({ embeds: [buildEmbed('🔄 前のタスクの確認を自動却下しました。新しいメッセージを処理します。', EmbedColor.Warning)] });
+                } catch (e) {
+                    logDebug(`messageHandler: failed to send auto-dismiss notification: ${e}`);
+                }
+            } else {
+                try {
+                    await channel.send({ embeds: [buildEmbed(`📥 キューに追加しました（待ち: ${prevCount}件）。前のタスク完了後に処理します。`, EmbedColor.Info)] });
+                } catch (e) {
+                    logDebug(`messageHandler: failed to send queue notification: ${e}`);
+                }
+            }
+        } else {
+            try {
+                await channel.send({ embeds: [buildEmbed(`📥 キューに追加しました（待ち: ${prevCount}件）。前のタスク完了後に処理します。`, EmbedColor.Info)] });
+            } catch (e) {
+                logDebug(`messageHandler: failed to send queue notification: ${e}`);
+            }
         }
     }
 
     const currentQueue = workspaceQueues.get(wsKey) ?? Promise.resolve();
     const task = currentQueue.then(async () => {
+        // 処理開始時に待機メッセージリストから該当エントリを削除
+        const waitingList = workspaceWaitingMessages.get(wsKey);
+        if (waitingList) {
+            const idx = waitingList.findIndex(w => w.id === msgId);
+            if (idx >= 0) { waitingList.splice(idx, 1); }
+        }
         try {
             await handleDiscordMessage(ctx, message, intent, channelName);
         } catch (e) {
@@ -300,6 +366,8 @@ async function generatePlan(
     resolvedWsPath: string | undefined,
 ): Promise<{ plan: Plan; guild: typeof import('discord.js').Guild.prototype | null } | null> {
     const { requestId, responsePath } = fileIpc.createRequestId();
+    const wsNameForMeta = DiscordBot.resolveWorkspaceFromChannel(channel) ?? undefined;
+    fileIpc.writeRequestMeta(requestId, channel.id, wsNameForMeta);
     const ipcDir = fileIpc.getIpcDir();
     const progressPath = fileIpc.createProgressPath(requestId);
     const { prompt: planPrompt, tempFiles } = buildPlanPrompt(
@@ -312,10 +380,11 @@ async function generatePlan(
     const abortController = new AbortController();
     currentPlanAbortController = abortController;
 
-    // typing indicator 開始（モジュールレベル変数に格納し /cancel でクリア可能にする）
-    currentPlanTypingInterval = setInterval(async () => {
+    // typing indicator 開始（Set で管理し、複数並行時の上書きを防止）
+    const myTypingInterval = setInterval(async () => {
         try { await channel.sendTyping(); } catch (e) { logDebug(`handleDiscordMessage: sendTyping failed: ${e}`); }
     }, 8_000);
+    activePlanTypingIntervals.add(myTypingInterval);
     try { await channel.sendTyping(); } catch (e) { logDebug(`handleDiscordMessage: sendTyping failed: ${e}`); }
 
     let planResponse: string;
@@ -347,9 +416,9 @@ async function generatePlan(
             logDebug(`handleDiscordMessage: failed to send plan-generation ack: ${ackErr}`);
         }
 
-        // 計画生成中の進捗報告（モジュールレベル変数に格納）
+        // 計画生成中の進捗報告（Set で管理し、複数並行時の上書きを防止）
         let lastPlanProgress = '';
-        currentPlanProgressInterval = setInterval(async () => {
+        const myProgressInterval = setInterval(async () => {
             try {
                 const progress = await fileIpc.readProgress(progressPath);
                 if (progress) {
@@ -363,22 +432,19 @@ async function generatePlan(
                 }
             } catch { /* ignore */ }
         }, 3_000);
+        activePlanProgressIntervals.add(myProgressInterval);
 
         const responseTimeout = getResponseTimeout();
         try {
             planResponse = await fileIpc.waitForResponse(responsePath, responseTimeout, abortController.signal);
         } finally {
-            if (currentPlanProgressInterval) {
-                clearInterval(currentPlanProgressInterval);
-                currentPlanProgressInterval = null;
-            }
+            clearInterval(myProgressInterval);
+            activePlanProgressIntervals.delete(myProgressInterval);
             fileIpc.cleanupProgress(progressPath).catch(() => { });
         }
     } finally {
-        if (currentPlanTypingInterval) {
-            clearInterval(currentPlanTypingInterval);
-            currentPlanTypingInterval = null;
-        }
+        clearInterval(myTypingInterval);
+        activePlanTypingIntervals.delete(myTypingInterval);
         currentPlanAbortController = null;
         for (const f of tempFiles) {
             try { fs.unlinkSync(f); logDebug(`handleDiscordMessage: cleaned up temp file: ${f}`); } catch { /* ignore */ }
@@ -390,15 +456,20 @@ async function generatePlan(
     logDebug(`handleDiscordMessage: raw plan response: ${planResponse.substring(0, 200)} `);
     const planOutput = parsePlanJson(planResponse);
     if (!planOutput) {
-        logError('handleDiscordMessage: plan JSON parse failed');
+        // Plan JSON として解析できなかった → Markdown テキストとして Discord に送信
+        logWarn('handleDiscordMessage: plan JSON parse failed, forwarding as markdown');
         const formatted = FileIpc.extractResult(planResponse);
-        const isFormatted = formatted !== planResponse;
-        const warningHeader = '⚠️ Antigravity からの応答を解析できませんでした。';
-        if (isFormatted) {
-            await channel.send({ embeds: [buildEmbed(`${warningHeader}\n応答内容:\n${formatted}`, EmbedColor.Warning)] });
-        } else {
-            const preview = planResponse.substring(0, 800);
-            await channel.send({ embeds: [buildEmbed(`${warningHeader}\n応答:\n\`\`\`\n${preview}\n\`\`\``, EmbedColor.Warning)] });
+        const content = formatted !== planResponse ? formatted : planResponse;
+        // normalizeHeadings + splitForEmbeds で長文分割 Embed 送信
+        const normalized = normalizeHeadings(content);
+        const embedGroups = splitForEmbeds(normalized);
+        for (const group of embedGroups) {
+            const embeds = group.map((desc) =>
+                new EmbedBuilder()
+                    .setDescription(desc)
+                    .setColor(EmbedColor.Info)
+            );
+            await channel.send({ embeds });
         }
         return null;
     }
@@ -411,22 +482,29 @@ async function generatePlan(
     return { plan, guild: channel.guild };
 }
 
+/** handleConfirmation の返り値 */
+interface ConfirmationResult {
+    confirmed: boolean;
+    /** single/multi で選択された番号（1-indexed）。全選択は [-1]。none/all は undefined。 */
+    selectedChoices?: number[];
+}
+
 /**
  * 確認フロー: choice_mode に応じてユーザーの承認を待つ。
- * 承認されたら true、却下されたら false を返す。
+ * 承認されたら confirmed: true と選択結果を返す。却下されたら confirmed: false。
  */
 async function handleConfirmation(
     plan: Plan,
     channel: TextChannel,
     bot: DiscordBot,
-): Promise<boolean> {
+): Promise<ConfirmationResult> {
     const choiceMode = plan.choice_mode || 'none';
     const confirmMsg = buildConfirmMessage(plan);
 
     if (choiceMode === 'all') {
         await channel.send({ embeds: [buildEmbed(confirmMsg, EmbedColor.Info)] });
         plan.status = 'active';
-        return true;
+        return { confirmed: true };
     }
     if (choiceMode === 'multi') {
         const choiceCount = countChoiceItems(plan.discord_templates.confirm);
@@ -434,7 +512,7 @@ async function handleConfirmation(
         const choices = await bot.waitForMultiChoice(sentMsg, choiceCount);
         if (choices.length === 0) {
             await channel.send({ embeds: [buildEmbed('❌ 却下しました。', EmbedColor.Error)] });
-            return false;
+            return { confirmed: false };
         }
         if (choices[0] === -1) {
             await channel.send({ embeds: [buildEmbed('✅ 全て選択しました。', EmbedColor.Success)] });
@@ -442,7 +520,7 @@ async function handleConfirmation(
             await channel.send({ embeds: [buildEmbed(`✅ 選択肢 ${choices.join(', ')} を選択しました。`, EmbedColor.Success)] });
         }
         plan.status = 'active';
-        return true;
+        return { confirmed: true, selectedChoices: choices };
     }
     if (choiceMode === 'single') {
         const choiceCount = countChoiceItems(plan.discord_templates.confirm);
@@ -450,21 +528,34 @@ async function handleConfirmation(
         const choice = await bot.waitForChoice(sentMsg, choiceCount);
         if (choice === -1) {
             await channel.send({ embeds: [buildEmbed('❌ 却下しました。', EmbedColor.Error)] });
-            return false;
+            return { confirmed: false };
         }
         await channel.send({ embeds: [buildEmbed(`✅ 選択肢 ${choice} を承認しました。`, EmbedColor.Success)] });
         plan.status = 'active';
-        return true;
+        return { confirmed: true, selectedChoices: [choice] };
     }
     // choiceMode === 'none'
     const sentMsg = await channel.send({ embeds: [buildEmbed(confirmMsg, EmbedColor.Warning)] });
     const confirmed = await bot.waitForConfirmation(sentMsg);
     if (!confirmed) {
         await channel.send({ embeds: [buildEmbed('❌ 却下しました。', EmbedColor.Error)] });
-        return false;
+        return { confirmed: false };
     }
     plan.status = 'active';
-    return true;
+    return { confirmed: true };
+}
+
+/**
+ * 選択結果を plan.prompt の先頭に付加する。
+ * single/multi の場合のみ。全選択（[-1]）の場合は修正不要。
+ */
+function applyChoiceSelection(plan: Plan, selectedChoices?: number[]): void {
+    if (!selectedChoices || selectedChoices.length === 0) { return; }
+    // 全選択（[-1]）の場合は prompt 修正不要
+    if (selectedChoices.length === 1 && selectedChoices[0] === -1) { return; }
+    const choiceStr = selectedChoices.join(', ');
+    plan.prompt = `【重要】ユーザーは以下のリストから選択肢 ${choiceStr} を選びました。選択された項目のみを実行してください。他の項目は無視してください。\n\n${plan.prompt}`;
+    logDebug(`messageHandler: applied choice selection [${choiceStr}] to plan prompt`);
 }
 
 /**
@@ -644,8 +735,9 @@ export async function handleDiscordMessage(
             currentProcessingStatuses.set(wsKeyForStatus, {
                 wsKey: wsKeyForStatus, phase: 'confirming', startTime: Date.now(), messagePreview: msgPreview,
             });
-            const confirmed = await handleConfirmation(plan, channel, bot);
-            if (!confirmed) { return; }
+            const confirmResult = await handleConfirmation(plan, channel, bot);
+            if (!confirmResult.confirmed) { return; }
+            applyChoiceSelection(plan, confirmResult.selectedChoices);
         }
 
         // ステータス: ディスパッチ中
@@ -664,4 +756,146 @@ export async function handleDiscordMessage(
         // 処理完了時にステータスをクリア
         currentProcessingStatuses.delete(wsKeyForStatus);
     }
+}
+
+// ---------------------------------------------------------------------------
+// 提案ボタンからのプロンプト処理（handleDiscordMessage の簡易版）
+// ---------------------------------------------------------------------------
+
+/**
+ * 提案ボタンクリック時に呼ばれる。channelId とプロンプトテキストを受け取り、
+ * メッセージパイプライン（Plan 生成→確認→実行）に流す。
+ */
+export async function processSuggestionPrompt(
+    ctx: BridgeContext,
+    channelId: string,
+    promptText: string,
+    userId: string,
+): Promise<void> {
+    // 認証チェック
+    const authResult = isUserAllowed(userId);
+    if (!authResult.allowed) {
+        logWarn(`processSuggestionPrompt: user ${userId} not allowed — ${authResult.reason}`);
+        return;
+    }
+
+    // Bot & FileIpc チェック
+    const { bot, fileIpc, cdpPool, cdp: fallbackCdp } = ctx;
+    if (!bot || !fileIpc) {
+        logWarn('processSuggestionPrompt: bot or fileIpc not initialized');
+        return;
+    }
+
+    const client = (bot as any).client;
+    if (!client) {
+        logWarn('processSuggestionPrompt: bot client not available');
+        return;
+    }
+
+    let channel: TextChannel;
+    try {
+        const fetched = await client.channels.fetch(channelId);
+        if (!fetched || !(fetched instanceof TextChannel)) {
+            logWarn(`processSuggestionPrompt: channel ${channelId} not found or not text channel`);
+            return;
+        }
+        channel = fetched;
+    } catch (e) {
+        logWarn(`processSuggestionPrompt: failed to fetch channel ${channelId}: ${e instanceof Error ? e.message : e}`);
+        return;
+    }
+
+    const channelName = channel.name;
+    logDebug(`processSuggestionPrompt: processing suggestion in #${channelName} (${promptText.length} chars)`);
+
+    // ワークスペース解決
+    const wsKey = DiscordBot.resolveWorkspaceFromChannel(channel) || DEFAULT_WS_KEY;
+
+    // キューに追加して直列処理
+    const prevCount = workspaceQueueCount.get(wsKey) ?? 0;
+    workspaceQueueCount.set(wsKey, prevCount + 1);
+
+    const currentQueue = workspaceQueues.get(wsKey) ?? Promise.resolve();
+    const task = currentQueue.then(async () => {
+        try {
+            // ACK 送信
+            try {
+                await channel.send({ embeds: [buildEmbed('💡 提案されたタスクを実行中...', EmbedColor.Info)] });
+            } catch { /* ignore */ }
+
+            // ワークスペース解決（カテゴリーから特定）
+            const wsNameFromCategory = DiscordBot.resolveWorkspaceFromChannel(channel);
+
+            // CdpBridge 取得
+            currentProcessingStatuses.set(wsKey, {
+                wsKey, phase: 'connecting', startTime: Date.now(),
+                messagePreview: promptText.substring(0, 50),
+            });
+
+            let activeCdp: CdpBridge;
+            if (wsNameFromCategory && cdpPool) {
+                try {
+                    activeCdp = await cdpPool.acquire(wsNameFromCategory);
+                } catch (e) {
+                    logError(`processSuggestionPrompt: failed to acquire CdpBridge for workspace "${wsNameFromCategory}"`, e);
+                    const displayMsg = (e instanceof WorkspaceConnectionError)
+                        ? e.userMessage
+                        : `ワークスペース "${wsNameFromCategory}" への接続に失敗しました: ${sanitizeErrorForDiscord(e instanceof Error ? e.message : String(e))}`;
+                    await channel.send({ embeds: [buildEmbed(`⚠️ ${displayMsg}`, EmbedColor.Warning)] });
+                    return;
+                }
+            } else if (fallbackCdp) {
+                activeCdp = fallbackCdp;
+            } else {
+                await channel.send({ embeds: [buildEmbed('⚠️ Bridge が未接続です。`/status` を確認してください。', EmbedColor.Warning)] });
+                return;
+            }
+
+            // Plan 生成ステータス
+            currentProcessingStatuses.set(wsKey, {
+                wsKey, phase: 'plan_generating', startTime: Date.now(),
+                messagePreview: promptText.substring(0, 50),
+            });
+
+            const wsPaths = getWorkspacePaths();
+            const resolvedWsPath = wsNameFromCategory ? wsPaths[wsNameFromCategory] : undefined;
+
+            const result = await generatePlan(
+                activeCdp, false, fileIpc, channel,
+                promptText, 'agent-chat', channelName,
+                undefined, ctx.extensionPath, resolvedWsPath,
+            );
+            if (!result) { return; }
+
+            const { plan, guild } = result;
+
+            // 確認フロー
+            if (plan.requires_confirmation) {
+                currentProcessingStatuses.set(wsKey, {
+                    wsKey, phase: 'confirming', startTime: Date.now(),
+                    messagePreview: promptText.substring(0, 50),
+                });
+                const confirmResult = await handleConfirmation(plan, channel, bot);
+                if (!confirmResult.confirmed) { return; }
+                applyChoiceSelection(plan, confirmResult.selectedChoices);
+            }
+
+            // ディスパッチ
+            currentProcessingStatuses.set(wsKey, {
+                wsKey, phase: 'dispatching', startTime: Date.now(),
+                messagePreview: promptText.substring(0, 50),
+            });
+
+            await dispatchPlan(ctx, plan, channel, activeCdp, wsNameFromCategory ?? undefined, guild);
+        } catch (e) {
+            logError('processSuggestionPrompt failed', e);
+            const errMsg = e instanceof Error ? e.message : String(e);
+            await channel.send({ embeds: [buildEmbed(`❌ エラー: ${sanitizeErrorForDiscord(errMsg)}`, EmbedColor.Error)] });
+        } finally {
+            const count = workspaceQueueCount.get(wsKey) ?? 1;
+            workspaceQueueCount.set(wsKey, Math.max(0, count - 1));
+            currentProcessingStatuses.delete(wsKey);
+        }
+    });
+    workspaceQueues.set(wsKey, task);
 }

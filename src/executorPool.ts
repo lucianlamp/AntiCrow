@@ -11,7 +11,7 @@ import { Plan } from './types';
 import { CdpBridge } from './cdpBridge';
 import { FileIpc } from './fileIpc';
 import { PlanStore } from './planStore';
-import { Executor, NotifyFunc, SendTypingFunc } from './executor';
+import { Executor, NotifyFunc, SendTypingFunc, PostSuggestionsFunc } from './executor';
 import { CdpPool, DEFAULT_WORKSPACE } from './cdpPool';
 import { logDebug, logWarn } from './logger';
 
@@ -31,6 +31,7 @@ export class ExecutorPool {
     private notifyDiscord: NotifyFunc;
     private sendTyping: SendTypingFunc;
     private extensionPath: string;
+    private postSuggestions: PostSuggestionsFunc | null;
 
     constructor(
         cdpPool: CdpPool,
@@ -40,6 +41,7 @@ export class ExecutorPool {
         notifyDiscord: NotifyFunc,
         sendTyping: SendTypingFunc,
         extensionPath?: string,
+        postSuggestions?: PostSuggestionsFunc,
     ) {
         this.cdpPool = cdpPool;
         this.fileIpc = fileIpc;
@@ -48,6 +50,7 @@ export class ExecutorPool {
         this.notifyDiscord = notifyDiscord;
         this.sendTyping = sendTyping;
         this.extensionPath = extensionPath || '';
+        this.postSuggestions = postSuggestions ?? null;
     }
 
     // -------------------------------------------------------------------
@@ -80,6 +83,7 @@ export class ExecutorPool {
             this.notifyDiscord,
             this.sendTyping,
             this.extensionPath,
+            this.postSuggestions ?? undefined,
         );
 
         this.pool.set(key, executor);

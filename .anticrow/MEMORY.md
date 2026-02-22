@@ -70,3 +70,131 @@ learningsスキル大幅拡充（2026-02-20）: .agent/skills/learnings/SKILL.md
 
 ### 2026-02-20
 ワークスペースパス自動検知改善（2026-02-20）: guessBaseDirs() に USERPROFILE の親ディレクトリ（C:\Users）と USERPROFILE 自体を追加。ホームディレクトリ名（ysk41 等）もワークスペースフォルダとして自動学習可能に。Antigravity タイトルにはフルパスが含まれないため、CDP evaluate による直接パス取得は不可。タイトルには「ワークスペース名 — Antigravity」形式でフォルダ basename のみ含まれる。
+
+
+### 2026-02-20
+docs/features.md（約12KB、222行）は Discord のメッセージ長制限（約4,000文字 = Embed含め約6,000文字相当）を超えるため、そのまま送信すると本文が届かない場合がある。長文ドキュメントの Discord 送信はセクション分割が必要。Anti-Crow 側の maxMessageLength 設定（デフォルト6,000）も影響する可能性あり。
+
+
+### 2026-02-20
+parsePlanJson失敗時のフォールバック改善（2026-02-21）: 警告メッセージ表示→通常メッセージ（Info, splitForEmbeds）送信に変更。messageHandler.ts の import に EmbedBuilder, splitForEmbeds, normalizeHeadings を追加。
+
+
+### 2026-02-20
+Anti-Crow差別化ロードマップ（2026-02-21）: ユーザーとの議論で優先順位決定。Phase1: テンプレート引数（パラメータ化テンプレート、{{変数}}でプレースホルダ置換、Discord モーダルで入力）→ Phase2: Workflow Pipeline（連鎖実行）→ Phase3: Git連携（/gitスラッシュコマンド）→ Phase4: プロジェクトダッシュボード → Phase5: インテリジェント提案（非侵入設計必須: 手動トリガー+定時レポート方式）。インテリジェント提案は作業中の割り込み感に注意。
+
+
+### 2026-02-20
+Anti-Crow UI設計原則（2026-02-21）: ユーザーの明確な方針としてスラッシュコマンドのサブコマンド方式は避け、ボタン中心UIを採用。3層構造: (1) スラッシュコマンド=エントリーポイントのみ、(2) Embed+ボタン=操作分岐・選択、(3) モーダル=テキスト入力。既存の /models, /modes, /history, 承認フローが既にこのパターン。新機能（テンプレート引数、Git連携等）もすべてこの方針で設計する。
+
+
+### 2026-02-20
+テンプレート引数（パラメータ化テンプレート）機能実装完了（2026-02-21）: templateStore.ts に TemplateArg 型、parseTemplateArgs()（{{xxx}}自動検出、BUILTIN_VARS除外、重複除去）、expandVariables に userArgs パラメータ追加。templateHandler.ts に tpl_modal_args_{name} モーダルと handleModalSubmit 拡張。save() で引数自動検出。Discord モーダル TextInput 最大5個制限あり。181テスト全パス（新規15件追加）。
+
+
+### 2026-02-21
+Anti-Crow 配布方法: VSIX 直接配布が最も安全で手軽。.vscodeignore がホワイトリスト方式でソースコード除外済み。受け取り側は (1) Discord Bot 作成（Message Content Intent + Server Members Intent）、(2) antigravity --install-extension で VSIX インストール、(3) AntiCrow: Set Bot Token でトークン設定、(4) clientId + allowedUserIds を設定。GitHub Actions での自動 VSIX リリースも可能（release.yml テンプレートあり）。
+
+
+### 2026-02-21
+Anti-Crow 販売方法（2026-02-21）: VS Code Marketplace は有料販売非対応。外部プラットフォーム（Lemonsqueezy推奨: 5%手数料+税金自動処理、Gumroad: 10%手数料）でライセンスキー発行→拡張機能内でAPI検証する方式が標準。類似拡張の価格帯: Cursor Pro $20/月、Copilot $10/月、Cline Teams $20/月。Anti-Crow推奨価格: 買い切り$29-49またはサブスク$5-10/月。フリーミアムモデル（基本無料+高度機能有料）が最適。
+
+
+### 2026-02-21
+Anti-Crow ライセンス強制戦略（2026-02-21）: VSIX 単体コピー対策として Discord Bot 側でのゲートキーピングが最も効果的。Bot トークンは per-user で allowedUserIds による制限が既に存在するため、追加でライセンスキー→Discord ID 紐付け検証を Bot 側に実装するだけで十分。拡張機能側の Lemonsqueezy API 検証はオプションの二重防御。サブスクモデルなら解約時に自動失効で管理コストも最小。
+
+
+### 2026-02-21
+autoOperation Pro限定化（2026-02-21）: PRO_ONLY_FEATURES セットを licenseGate.ts に新設し autoOperation を登録。uiWatcher.ts に isProCheck コールバックを注入する設計で循環依存を回避。extension.ts に getLicenseGate() アクセサを追加し bridgeLifecycle.ts から参照。Free プランでは autoOperation 設定 ON でもダイアログ自動クリックが無効化される。
+
+
+### 2026-02-21
+開発者ID全機能解放（2026-02-21）: licenseGate.ts に developerOverride フラグ + setDeveloperOverride() メソッドを追加。isPro() で開発者オーバーライド時は常に true を返し全ゲート（isFeatureAllowed, isCommandAllowed, canSaveTemplate, canAddWorkspace, requirePro）を自動バイパス。extension.ts の activate 時に allowedUserIds に isDeveloper() 該当 ID があれば永続オーバーライド設定。一般ユーザー環境では発動しない。
+
+
+### 2026-02-21
+確認フロー改善（2026-02-21）: discordReactions.ts に activeCollectors Map と cancelActiveConfirmation() を追加。3つの waitFor 関数（waitForConfirmation, waitForChoice, waitForMultiChoice）からタイムアウト（300秒）を完全削除し、コレクタを Map に登録して外部キャンセル可能に。messageHandler.ts の enqueueMessage で confirming フェーズ検出時に cancelActiveConfirmation を呼び出して自動却下。discordBot.ts のラッパーメソッドからも timeoutMs パラメータを削除。
+
+
+### 2026-02-21
+/suggest スラッシュコマンド実装（2026-02-21）: slashCommands.ts にコマンド定義追加、discordBot.ts に mapCommandToIntent 追加、adminHandler.ts に handleSuggest 追加。Bot 自身のメッセージは author.bot チェックで無視されるため、チャンネルへのメッセージ送信方式は不可。代わりに合成 Message オブジェクト（interaction.user を author に設定）を作成して enqueueMessage に直接フィードする方式を採用。これにより通常のメッセージパイプライン（Plan生成→確認→実行→提案抽出）がそのまま動く。
+
+
+### 2026-02-21
+choice_mode=single/multi 選択結果反映バグ修正（2026-02-21）: handleConfirmation の返り値を boolean → ConfirmationResult（{ confirmed, selectedChoices? }）に拡張。applyChoiceSelection ヘルパー関数で selectedChoices がある場合に plan.prompt の先頭に「【重要】選択肢 N のみ実行」指示を付加。呼び出し元2箇所（handleDiscordMessage, processSuggestionPrompt）で applyChoiceSelection を呼び出し。全選択（[-1]）は prompt 修正不要。283テスト全パス。
+
+
+### 2026-02-21
+clickCancelButton メインフレームフォールバック追加（2026-02-21）: evaluateInCascade が iframe コンテキスト取得に失敗した場合に conn.evaluate（メインフレーム全体）で同じ CANCEL_BUTTON_JS を実行するフォールバック戦略（main-js）を追加。clickElement フォールバックにも inCascade: false 候補と tooltip-id セレクタを追加。戦略は6段階: vscode-cmd → cascade-js → main-js → button:cascade → button:main → escape。handleCancel のレスポンスで escape のみの場合を明示。
+
+
+### 2026-02-21
+parsePlanJson バリデーション緩和（2026-02-21）: cron フィールドは null を許容（即時実行の正当な値として '' に変換）。requires_confirmation フィールドは欠落時に false をデフォルト使用。これにより plan_generation レスポンスが不必要にリジェクトされてテキスト表示される問題を防止。
+
+
+### 2026-02-21
+typing interval リーク修正（2026-02-21）: messageHandler.ts の currentPlanTypingInterval / currentPlanProgressInterval をモジュールレベル単一変数から Set<NodeJS.Timeout> に変更。generatePlan 内でローカル変数を使い Set に追加、finally で自分の interval のみ削除。複数メッセージ並行処理時の interval 上書き・リーク問題を解消。cancelPlanGeneration は Set 全体をクリア。
+
+
+### 2026-02-21
+.env管理実装（2026-02-21）: esbuild.js に dotenv + define オプションを追加し、PURCHASE_URL と LEMON_API_BASE をビルド時注入方式で.envから読み込み可能にした。.env がなくてもデフォルト値でフォールバック。licenseGate.ts で PURCHASE_URL を export し licenseCommands.ts から import 参照に統一（ハードコード3箇所を解消）。dotenv は devDependencies。
+
+
+### 2026-02-21
+Pro限定コマンド解除（2026-02-21）: PRO_ONLY_COMMANDS を空Set化（models/mode/history を削除）、PRO_ONLY_FEATURES から suggestions を削除。現在 Pro 限定なのは autoOperation のみ。Free プランのリソース制限（テンプレート3個、ワークスペース1個）は維持。将来 Pro 限定に戻す場合は Set に追加するだけで復元可能。
+
+
+### 2026-02-21
+ExecutorPool に postSuggestions コールバック未設定バグ修正（2026-02-21）: executorPool.ts の constructor と getOrCreate() に PostSuggestionsFunc パラメータを追加。bridgeLifecycle.ts の ExecutorPool 初期化に sendComponentsToChannel コールバックを追加。単体 Executor には元々渡されていたが ExecutorPool 経由のパスで欠落していた。今後 Executor に新しいオプション引数を追加する場合は ExecutorPool にも忘れず追加すること。
+
+
+### 2026-02-21
+WebView購入・ライセンス認証パネル実装（2026-02-21）: licenseWebview.ts を新規作成。VS Code WebviewPanel API でダーク系テーマの2ステップUI（購入ページ→キー入力）を実装。postMessage で拡張との通信、成功時3秒後自動クローズ。getWebviewHtml() をテスト可能な純関数として分離。licensePurchase コマンドを QuickPick から WebView に置き換え。CSP に lemonsqueezy.com を許可。Lemonsqueezy が iframe をブロックする場合に備え「ブラウザで開く」方式を採用。
+
+
+### 2026-02-21
+プラン別購入ボタン実装（2026-02-21）: iframe/Lemon.js方式を検討したが、VS Code WebViewのサンドボックス制約（Cookie/リダイレクト制限）とセキュリティ（決済ページのiframe埋め込みはフィッシング対策的に非推奨）の理由で取りやめ。openExternal方式を維持し、プラン別ボタン（PURCHASE_URL_MONTHLY/PURCHASE_URL_LIFETIME）を追加。getWebviewHtmlにmonthlyUrl/lifetimeUrlパラメータを追加。CSPからframe-srcを削除。298テスト全パス。
+
+
+### 2026-02-21
+/license スラッシュコマンドを /pro にリネーム（2026-02-21）: slashCommands.ts (.setName('pro'))、discordBot.ts (mapCommandToIntent)、adminHandler.ts (handlePro)。handlePro は Embed+ActionRow ボタン方式（Monthly/Lifetime LinkButton + 情報ボタン + キー入力モーダルボタン）。Discord モーダルからのキー入力は BridgeContext.setLicenseKeyFn コールバック経由で SecretStorage 保存→LS API 検証。slashHandler.ts に pro_info/pro_key_input ボタンと pro_key_modal モーダルハンドラを追加。convex/ フォルダと scripts/setup-licensing.ts は削除済み。
+
+
+### 2026-02-21
+Phase 4 トライアル機能実装完了（2026-02-21）: licenseChecker.ts に TRIAL_DURATION_MS（14日）と GLOBAL_STATE_TRIAL_START 定数、initTrial()/getTrialDaysRemaining()/isTrialActive() メソッドを追加。LicenseType に 'trial'、LicenseReason に 'trial_active'/'trial_expired' を追加。check() のキーなし分岐でトライアル判定（globalState に開始日記録、14日以内なら valid:true/type:trial/reason:trial_active）。isPro() に trial 対応。bridgeContext.ts に getTrialDaysRemaining コールバック追加、extension.ts で接続、adminHandler.ts の /pro コマンドでトライアル残り日数表示。package.json に antiCrow.licenseStatus 読み取り専用設定を追加。
+
+
+### 2026-02-21
+licenseChecker トライアルテスト追加（2026-02-21）: licenseChecker.test.ts 新規作成、25テスト。vi.useFakeTimers + globalState モックで時刻制御。発見: FREE_STATUS.valid は true なので trial_expired でも valid=true。Math.ceil(0) の -0 問題あり。全323テスト全パス。
+
+
+### 2026-02-21
+提案ボタン description フィールド追加（2026-02-21）: SuggestionItem に description?: string を追加。suggestionButtons.ts に buildSuggestionContent() 関数追加（description ある場合は絵文字付きリスト表示、なければ従来の見出しのみ）。embeddedRules.ts の constraint で description を「省略可だが推奨」として案内。後方互換あり。
+
+
+### 2026-02-21
+stale response Phase 2 再送実装完了（2026-02-22）: bridgeLifecycle.ts の recoverStaleResponses 後に、Bot 初期化完了後 #agent-chat チャンネルへ未配信レスポンスを再送する機能を実装。discordBot.ts に findFirstAgentChatChannelId() メソッドを追加。format=md はそのまま、json は extractResult() で整形。再送成否に関わらずファイル削除（無限ループ防止）。Bot 未初期化時はログ+削除にフォールバック。
+
+
+### 2026-02-21
+DOM実機調査（2026-02-22）: cancel ボタン（input-send-button-cancel-tooltip）は BUTTON ではなく DIV 要素。clickElement フォールバックの tag: 'button' では一切マッチしない。また audio-tooltip（マイクボタン）が SVG rect を含むため、CANCEL_BUTTON_JS の戦略A（SVG rect 検出）で誤検出リスクあり。CANCEL_BUTTON_JS 戦略0（querySelector直接 + click）は DIV でも動作するが、evaluateInCascade のコンテキスト問題の可能性残る。
+
+
+### 2026-02-21
+clickCancelButton 4箇所修正完了（2026-02-22）: (1) 戦略0 offsetParent チェック撤廃→DIV でも即クリック、レスポンスに tag/visible 追加 (2) 戦略A/B にマイクボタン除外フィルタ（audio-tooltip + record aria-label）追加 (3) デバッグ返り値に cancelTooltipExists/Tag/Visible + textboxFound + 各ボタン tooltipId 追加 (4) clickElement フォールバックの tooltip-id 候補から tag: 'button' 削除（DIV 対応）。根本原因: cancel ボタンは BUTTON ではなく DIV 要素だった。
+
+
+### 2026-02-21
+Allow / Always Allow ボタン自動承認追加（2026-02-22）: uiWatcher.ts の DEFAULT_AUTO_CLICK_RULES に allow-browser（text:'Allow'）と always-allow-browser（text:'Always Allow'）を追加。Cancel ボタンと違い、Allow ボタンは標準 BUTTON 要素＋テキストラベルなので DOM 実機調査は不要。既存の「Always run」「Continue」と同じテキストマッチパターンで動作する。
+
+
+### 2026-02-22
+ステータスバー統合完了（2026-02-22）: LicenseStatusBar（Right, priority=90）を廃止し、メインステータスバー（Left, priority=100）にライセンス情報を統合。bridgeLifecycle.ts に getPlanName/getLicenseSuffix/getLicenseTooltipLine を新設。extension.ts で LicenseChecker.onChange → updateStatusBar を呼び出してリアクティブ更新。trial タイプの getPlanName ケースも追加（残り日数付き）。getLicenseChecker() アクセサを extension.ts に追加。
+
+
+### 2026-02-22
+/queue コマンド改善（2026-02-22）: messageHandler.ts に workspaceWaitingMessages Map（待機メッセージ追跡）と clearWaitingMessages() を追加。getMessageQueueStatus に waiting フィールド追加。adminHandler.ts の handleQueue で空セクション（実行中のタスク: なし、実行待ち: なし）を削除し、待機中メッセージの内容・経過時間表示と削除ボタン（queue_clear_waiting）を追加。slashHandler.ts にボタンハンドラ追加。
+
+
+### 2026-02-22
+/history 時間表示日本語化+ワークスペース名表示（2026-02-22）: historyButtons.ts に formatTimeAgoJa() を追加（m→分前、h→時間前、d→日前、w→週間前、mo→ヶ月前、y→年前）。buildHistoryListEmbed に workspaceName パラメータ追加。adminHandler.ts と slashHandler.ts で cdp.getActiveTargetTitle() からワークスペース名を抽出（「— Antigravity」除去）。cdpHistory.ts に debugConversationAttributes() デバッグ関数を追加し、会話アイテム BUTTON の全属性を収集。ワークスペースフィルタリングは Phase B のデバッグ結果次第。

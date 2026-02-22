@@ -4,10 +4,9 @@
 
 import * as vscode from 'vscode';
 import { LicenseChecker, LicenseType } from './licenseChecker';
+import { PURCHASE_URL } from './licenseGate';
+import { openLicenseWebview } from './licenseWebview';
 import { logDebug, logError } from '../logger';
-
-/** Checkout URL を生成するためのベース URL */
-const CHECKOUT_BASE_URL = 'https://anti-crow.dev';
 
 /**
  * ライセンス関連の VS Code コマンドを登録する。
@@ -22,7 +21,7 @@ export function registerLicenseCommands(
             try {
                 const status = await checker.check(true);
 
-                if (status.valid) {
+                if (status.valid && status.type !== 'free') {
                     const planName = getPlanDisplayName(status.type);
                     const expiryText = status.expiresAt
                         ? `\n有効期限: ${new Date(status.expiresAt).toLocaleDateString('ja-JP')}`
@@ -34,16 +33,16 @@ export function registerLicenseCommands(
                     );
                 } else {
                     const selection = await vscode.window.showWarningMessage(
-                        `AntiCrow: ${getReasonText(status.reason)}`,
-                        'プランを確認',
-                        'ログイン',
+                        `AntiCrow: ${getReasonText(status.reason)}\n月額$5/買い切り$50 で全機能が使えます！`,
+                        'Pro にアップグレード',
+                        'ライセンスキーを入力',
                         'キャンセル',
                     );
 
-                    if (selection === 'プランを確認') {
-                        vscode.env.openExternal(vscode.Uri.parse(`${CHECKOUT_BASE_URL}/pricing`));
-                    } else if (selection === 'ログイン') {
-                        vscode.commands.executeCommand('anti-crow.licenseLogin');
+                    if (selection === 'Pro にアップグレード') {
+                        openLicenseWebview(context, checker);
+                    } else if (selection === 'ライセンスキーを入力') {
+                        vscode.commands.executeCommand('anti-crow.setLicenseKey');
                     }
                 }
             } catch (e) {
@@ -53,91 +52,85 @@ export function registerLicenseCommands(
         }),
     );
 
-    // ライセンスログイン
+    // ライセンスキー入力
     context.subscriptions.push(
-        vscode.commands.registerCommand('anti-crow.licenseLogin', async () => {
-            const clerkId = await vscode.window.showInputBox({
-                prompt: 'Clerk ユーザー ID を入力してください',
-                placeHolder: 'user_xxxxxxxxxxxxxxxx',
+        vscode.commands.registerCommand('anti-crow.setLicenseKey', async () => {
+            const key = await vscode.window.showInputBox({
+                prompt: 'Lemonsqueezy のライセンスキーを入力してください',
+                placeHolder: 'XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX',
                 password: false,
+                ignoreFocusOut: true,
             });
 
-            if (!clerkId || !clerkId.startsWith('user_')) {
-                vscode.window.showWarningMessage('有効な Clerk ユーザー ID を入力してください（user_ で始まる）');
-                return;
-            }
+            if (!key) return;
 
             // SecretStorage に保存
-            await context.secrets.store('clerk-user-id', clerkId);
-            checker.setClerkId(clerkId);
-            logDebug(`License: Clerk ID set — ${clerkId.substring(0, 12)}...`);
+            await context.secrets.store('license-key', key.trim());
 
-            // 即座にチェック
+            // 設定にもフラグを立てる（SecretStorage は同期されないため存在フラグのみ）
+            await vscode.workspace.getConfiguration('antiCrow')
+                .update('licenseKey', true, vscode.ConfigurationTarget.Global);
+
+            checker.setLicenseKey(key.trim());
+            logDebug('License: key set');
+
+            // 即座に検証
             const status = await checker.check(true);
-            if (status.valid) {
+            if (status.valid && status.type !== 'free') {
                 vscode.window.showInformationMessage(
-                    `AntiCrow: ライセンス認証成功！プラン: ${getPlanDisplayName(status.type)}`,
+                    `✅ AntiCrow: ライセンス認証成功！ プラン: ${getPlanDisplayName(status.type)}`,
                 );
+                checker.startAutoCheck();
             } else {
                 const selection = await vscode.window.showWarningMessage(
-                    `AntiCrow: 有効なライセンスが見つかりません。プランを購入しますか？`,
-                    'プランを確認',
+                    `AntiCrow: ライセンスキーが無効です。正しいキーを入力してください。`,
+                    '購入ページを開く',
                     'キャンセル',
                 );
-                if (selection === 'プランを確認') {
-                    vscode.env.openExternal(vscode.Uri.parse(`${CHECKOUT_BASE_URL}/pricing`));
+                if (selection === '購入ページを開く') {
+                    openLicenseWebview(context, checker);
                 }
             }
         }),
     );
 
-    // 購入ページを開く
+    // 購入・ライセンス認証 WebView を開く
     context.subscriptions.push(
-        vscode.commands.registerCommand('anti-crow.licensePurchase', async () => {
-            const plans = [
-                { label: '$(calendar) Monthly — 月額プラン', url: `${CHECKOUT_BASE_URL}/checkout/monthly` },
-                { label: '$(star-full) Annual — 年額プラン（お得！）', url: `${CHECKOUT_BASE_URL}/checkout/annual` },
-                { label: '$(infinity) Lifetime — 買い切りプラン', url: `${CHECKOUT_BASE_URL}/checkout/lifetime` },
-            ];
-
-            const selected = await vscode.window.showQuickPick(plans, {
-                placeHolder: '購入するプランを選択してください',
-            });
-
-            if (selected) {
-                vscode.env.openExternal(vscode.Uri.parse(selected.url));
-            }
+        vscode.commands.registerCommand('anti-crow.licensePurchase', () => {
+            openLicenseWebview(context, checker);
         }),
     );
 
-    // ライセンスログアウト
+    // ライセンスキー削除（ログアウト）
     context.subscriptions.push(
         vscode.commands.registerCommand('anti-crow.licenseLogout', async () => {
-            await context.secrets.delete('clerk-user-id');
-            checker.setClerkId('');
+            await context.secrets.delete('license-key');
+            await vscode.workspace.getConfiguration('antiCrow')
+                .update('licenseKey', undefined, vscode.ConfigurationTarget.Global);
+            checker.setLicenseKey('');
             await checker.check(true);
-            logDebug('License: logged out');
-            vscode.window.showInformationMessage('AntiCrow: ライセンスからログアウトしました');
+            logDebug('License: key removed');
+            vscode.window.showInformationMessage('AntiCrow: ライセンスキーを削除しました（Free プランに戻りました）');
         }),
     );
 }
 
 function getPlanDisplayName(type: LicenseType | null): string {
     switch (type) {
-        case 'monthly': return 'Monthly（月額）';
-        case 'annual': return 'Annual（年額）';
-        case 'lifetime': return 'Lifetime（買い切り）';
-        case 'beta': return 'Beta Access（ベータ）';
+        case 'monthly': return 'Pro（月額 $5）';
+        case 'lifetime': return 'Pro（永久ライセンス）';
+        case 'free': return 'Free';
         default: return 'Free';
     }
 }
 
 function getReasonText(reason: string): string {
     switch (reason) {
-        case 'not_authenticated': return 'ログインが必要です';
-        case 'user_not_found': return 'ユーザーが見つかりません。先にサインアップしてください。';
-        case 'no_active_license': return '有効なライセンスがありません';
-        case 'check_failed': return 'ライセンス確認に失敗しました（ネットワークエラー）';
+        case 'no_key': return '現在 Free プランです';
+        case 'expired': return 'ライセンスの期限が切れました';
+        case 'invalid_key': return 'ライセンスキーが無効です';
+        case 'check_failed': return 'ライセンス確認に失敗しました';
+        case 'offline_grace': return 'オフライン猶予期間中です';
         default: return reason;
     }
 }

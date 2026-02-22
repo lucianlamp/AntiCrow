@@ -16,6 +16,24 @@ import {
 /** 1ページあたりの表示件数 */
 const PAGE_SIZE = 5;
 
+/** 英語短縮形の timeAgo を日本語に変換する */
+export function formatTimeAgoJa(timeAgo: string): string {
+    // 「数字 + 単位」の形式を解析
+    const match = timeAgo.match(/^(\d+)\s*(mo|m|h|d|w|y)$/i);
+    if (!match) { return timeAgo; }
+    const num = parseInt(match[1], 10);
+    const unit = match[2].toLowerCase();
+    const unitMap: Record<string, string> = {
+        m: '分前',
+        h: '時間前',
+        d: '日前',
+        w: '週間前',
+        mo: 'ヶ月前',
+        y: '年前',
+    };
+    return `${num}${unitMap[unit] || timeAgo}`;
+}
+
 // -----------------------------------------------------------------------
 // 会話一覧 Embed + 切替ボタン
 // -----------------------------------------------------------------------
@@ -29,9 +47,11 @@ const PAGE_SIZE = 5;
 export function buildHistoryListEmbed(
     conversations: { title: string; index: number; timeAgo?: string }[],
     page: number = 0,
+    workspaceName?: string,
 ): { embeds: EmbedBuilder[]; components: ActionRowBuilder<ButtonBuilder>[] } {
+    const wsLabel = workspaceName ? ` — ${workspaceName}` : '';
     const embed = new EmbedBuilder()
-        .setTitle('📜 会話履歴')
+        .setTitle(`📜 会話履歴${wsLabel}`)
         .setColor(0x5865F2)
         .setTimestamp();
 
@@ -59,7 +79,7 @@ export function buildHistoryListEmbed(
         const title = conv.title.length > 50
             ? conv.title.substring(0, 47) + '...'
             : conv.title;
-        const time = conv.timeAgo ? ` — _${conv.timeAgo}_` : '';
+        const time = conv.timeAgo ? ` — _${formatTimeAgoJa(conv.timeAgo)}_` : '';
         return `**${globalIdx + 1}.** ${title}${time}`;
     }).join('\n');
 

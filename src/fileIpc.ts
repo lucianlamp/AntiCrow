@@ -29,6 +29,12 @@ export interface StaleResponse {
     content: string;
     format: 'json' | 'md';
     filePath: string;
+    /** 元の送信先チャンネルID（meta ファイルから取得） */
+    channelId?: string;
+    /** 元のワークスペース名（meta ファイルから取得、カテゴリ特定に使用） */
+    workspaceName?: string;
+    /** meta ファイルのパス（クリーンアップ用） */
+    metaFilePath?: string;
 }
 
 export class FileIpc {
@@ -70,6 +76,19 @@ export class FileIpc {
         const requestId = `req_${Date.now()}_${crypto.randomUUID().replace(/-/g, '').substring(0, 12)}`;
         const responsePath = path.join(this.ipcDir, `${requestId}_response.md`);
         return { requestId, responsePath };
+    }
+
+    /** リクエストメタデータ（channelId, workspaceName 等）をサイドカーファイルに書き込む */
+    writeRequestMeta(requestId: string, channelId: string, workspaceName?: string): void {
+        const metaPath = path.join(this.ipcDir, `${requestId}_meta.json`);
+        try {
+            const meta: Record<string, string> = { channelId };
+            if (workspaceName) { meta.workspaceName = workspaceName; }
+            fs.writeFileSync(metaPath, JSON.stringify(meta), 'utf-8');
+            logDebug(`FileIpc: wrote request meta: ${requestId} → channel ${channelId}, workspace ${workspaceName ?? 'none'}`);
+        } catch (e) {
+            logDebug(`FileIpc: failed to write request meta: ${e}`);
+        }
     }
 
     // -----------------------------------------------------------------
@@ -292,8 +311,29 @@ export class FileIpc {
                         logDebug(`FileIpc: skipping empty stale response: ${f}`);
                         continue;
                     }
-                    staleResponses.push({ requestId, content, format, filePath: fp });
-                    logWarn(`FileIpc: found stale response: ${f} (${content.length} chars)`);
+
+                    // メタデータファイルから channelId, workspaceName を読み取り
+                    let channelId: string | undefined;
+                    let workspaceName: string | undefined;
+                    let metaFilePath: string | undefined;
+                    const metaPath = path.join(this.ipcDir, `${requestId}_meta.json`);
+                    try {
+                        const metaContent = await fs.promises.readFile(metaPath, 'utf-8');
+                        const meta = JSON.parse(metaContent);
+                        if (meta && typeof meta.channelId === 'string') {
+                            channelId = meta.channelId;
+                            metaFilePath = metaPath;
+                        }
+                        if (meta && typeof meta.workspaceName === 'string') {
+                            workspaceName = meta.workspaceName;
+                        }
+                        logDebug(`FileIpc: stale response meta found — channelId=${channelId}, workspaceName=${workspaceName ?? 'none'}`);
+                    } catch {
+                        // meta ファイルなし（後方互換）
+                    }
+
+                    staleResponses.push({ requestId, content, format, filePath: fp, channelId, workspaceName, metaFilePath });
+                    logWarn(`FileIpc: found stale response: ${f} (${content.length} chars, channelId=${channelId ?? 'none'}, workspace=${workspaceName ?? 'none'})`);
                 } catch (e) {
                     logDebug(`FileIpc: failed to read stale response ${f}: ${e}`);
                 }
@@ -304,13 +344,21 @@ export class FileIpc {
         return staleResponses;
     }
 
-    /** stale レスポンスファイルを安全に削除する */
-    async cleanupStaleResponse(filePath: string): Promise<void> {
+    /** stale レスポンスファイルと関連 meta ファイルを安全に削除する */
+    async cleanupStaleResponse(filePath: string, metaFilePath?: string): Promise<void> {
         try {
             await fs.promises.unlink(filePath);
             logDebug(`FileIpc: cleaned up stale response: ${path.basename(filePath)}`);
         } catch (e) {
             logDebug(`FileIpc: failed to clean up stale response: ${e}`);
+        }
+        if (metaFilePath) {
+            try {
+                await fs.promises.unlink(metaFilePath);
+                logDebug(`FileIpc: cleaned up stale meta: ${path.basename(metaFilePath)}`);
+            } catch (e) {
+                logDebug(`FileIpc: failed to clean up stale meta: ${e}`);
+            }
         }
     }
 
@@ -368,8 +416,15 @@ export class FileIpc {
                         continue;
                     }
 
-                    // その他（response 以外）: 5分以上前のファイル
-                    if (!f.includes('_response.') && ageMs > 5 * 60 * 1000) {
+                    // req_*_meta.json: response と同じ 10分閾値で削除
+                    if (f.includes('_meta.json') && ageMs > 10 * 60 * 1000) {
+                        await fs.promises.unlink(fp);
+                        logDebug(`FileIpc: cleaned up old meta file ${f}`);
+                        continue;
+                    }
+
+                    // その他（response/meta 以外）: 5分以上前のファイル
+                    if (!f.includes('_response.') && !f.includes('_meta.json') && ageMs > 5 * 60 * 1000) {
                         await fs.promises.unlink(fp);
                         logDebug(`FileIpc: cleaned up old file ${f}`);
                     }

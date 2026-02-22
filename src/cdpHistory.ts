@@ -467,6 +467,96 @@ export async function cleanupHistoryObserver(ops: CdpBridgeOps): Promise<void> {
 }
 
 // -----------------------------------------------------------------------
+// debugConversationAttributes (DOM 属性調査用)
+// -----------------------------------------------------------------------
+
+/**
+ * 会話アイテム BUTTON 要素の全属性を収集するデバッグ関数。
+ * ワークスペースフィルタリングに使える属性がないか調査する。
+ */
+export async function debugConversationAttributes(ops: CdpBridgeOps): Promise<unknown> {
+    await ops.conn.connect();
+
+    const DEBUG_SCRIPT = `
+(function() {
+    var result = { buttonCount: 0, items: [] };
+    var deleteIcons = document.querySelectorAll('[data-tooltip-id*="delete-conversation"]');
+    if (deleteIcons.length === 0) return { error: 'no delete icons found' };
+
+    var buttons = [];
+    for (var i = 0; i < deleteIcons.length; i++) {
+        var btn = deleteIcons[i].closest('button');
+        if (btn && buttons.indexOf(btn) === -1) buttons.push(btn);
+    }
+    result.buttonCount = buttons.length;
+
+    for (var j = 0; j < Math.min(buttons.length, 5); j++) {
+        var button = buttons[j];
+        var attrs = {};
+        for (var k = 0; k < button.attributes.length; k++) {
+            var attr = button.attributes[k];
+            attrs[attr.name] = attr.value.substring(0, 200);
+        }
+        // 親要素の属性も収集
+        var parentAttrs = {};
+        if (button.parentElement) {
+            for (var m = 0; m < button.parentElement.attributes.length; m++) {
+                var pAttr = button.parentElement.attributes[m];
+                parentAttrs[pAttr.name] = pAttr.value.substring(0, 200);
+            }
+        }
+        // 祖父要素の属性も収集
+        var grandparentAttrs = {};
+        if (button.parentElement && button.parentElement.parentElement) {
+            var gp = button.parentElement.parentElement;
+            for (var n = 0; n < gp.attributes.length; n++) {
+                var gpAttr = gp.attributes[n];
+                grandparentAttrs[gpAttr.name] = gpAttr.value.substring(0, 200);
+            }
+        }
+        // タイトルテキスト取得
+        var titleEl = button.querySelector('div');
+        var title = titleEl ? (titleEl.textContent || '').trim().substring(0, 50) : '';
+
+        result.items.push({
+            index: j,
+            title: title,
+            buttonAttrs: attrs,
+            parentTag: button.parentElement ? button.parentElement.tagName : null,
+            parentAttrs: parentAttrs,
+            grandparentTag: button.parentElement && button.parentElement.parentElement ? button.parentElement.parentElement.tagName : null,
+            grandparentAttrs: grandparentAttrs,
+            ariaCurrent: button.getAttribute('aria-current'),
+            ariaSelected: button.getAttribute('aria-selected'),
+            ariaLabel: button.getAttribute('aria-label'),
+            hasDataWorkspace: !!button.dataset.workspace,
+            className: (button.className || '').substring(0, 200),
+        });
+    }
+
+    return result;
+})()
+    `.trim();
+
+    for (const [label, evaluator] of [
+        ['cascade', () => ops.evaluateInCascade(DEBUG_SCRIPT)],
+        ['main', () => ops.conn.evaluate(DEBUG_SCRIPT)],
+    ] as [string, () => Promise<unknown>][]) {
+        try {
+            const result = await evaluator();
+            if (result) {
+                logDebug(`CDP: debugConversationAttributes (${label}): ${JSON.stringify(result)}`);
+                return result;
+            }
+        } catch (e) {
+            logDebug(`CDP: debugConversationAttributes (${label}) failed: ${e instanceof Error ? e.message : e}`);
+        }
+    }
+
+    return { error: 'could not inspect conversation attributes' };
+}
+
+// -----------------------------------------------------------------------
 // selectConversation
 // -----------------------------------------------------------------------
 

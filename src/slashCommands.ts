@@ -12,11 +12,11 @@ import { logDebug, logError } from './logger';
 export const slashCommandDefinitions = [
     new SlashCommandBuilder()
         .setName('status')
-        .setDescription('Bridge の状態を表示'),
+        .setDescription('Bot・接続・キュー状態を一覧表示'),
 
     new SlashCommandBuilder()
         .setName('schedules')
-        .setDescription('インタラクティブなスケジュール管理パネルを表示'),
+        .setDescription('定期実行の一覧・管理パネルを表示'),
 
     new SlashCommandBuilder()
         .setName('cancel')
@@ -24,7 +24,7 @@ export const slashCommandDefinitions = [
 
     new SlashCommandBuilder()
         .setName('newchat')
-        .setDescription('Antigravity で新しいチャットを開く (Ctrl+Shift+L)'),
+        .setDescription('Antigravity で新しいチャットセッションを開始'),
 
     new SlashCommandBuilder()
         .setName('workspaces')
@@ -32,7 +32,7 @@ export const slashCommandDefinitions = [
 
     new SlashCommandBuilder()
         .setName('queue')
-        .setDescription('実行キューの状態を表示'),
+        .setDescription('メッセージ処理キュー・実行キューの詳細を表示'),
 
     new SlashCommandBuilder()
         .setName('templates')
@@ -51,8 +51,16 @@ export const slashCommandDefinitions = [
         .setDescription('Antigravity の会話履歴を表示・切り替え'),
 
     new SlashCommandBuilder()
+        .setName('suggest')
+        .setDescription('プロジェクトを分析して次にやることを提案します'),
+
+    new SlashCommandBuilder()
         .setName('help')
         .setDescription('AntiCrow のコマンド一覧と使い方を表示'),
+
+    new SlashCommandBuilder()
+        .setName('pro')
+        .setDescription('Pro ライセンスの管理・購入・キー入力'),
 
 ];
 

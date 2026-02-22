@@ -16,8 +16,12 @@ import {
     ActionRowBuilder,
     ButtonBuilder,
     ButtonStyle,
+    ModalBuilder,
+    TextInputBuilder,
+    TextInputStyle,
 } from 'discord.js';
 
+import * as vscode from 'vscode';
 import { ChannelIntent } from './types';
 import { logDebug, logError, logWarn } from './logger';
 import { buildEmbed, EmbedColor, sanitizeErrorForDiscord } from './embedHelper';
@@ -35,6 +39,8 @@ import { handleWorkspaceButton, getRunningWsNames } from './workspaceHandler';
 import { fetchQuota } from './quotaProvider';
 import { handleManageSlash } from './adminHandler';
 import { handleTemplateButton, buildTemplateListPanel, handleModalSubmit as handleTemplateModalSubmit } from './templateHandler';
+import { getSuggestion } from './suggestionButtons';
+import { processSuggestionPrompt } from './messageHandler';
 
 // Re-export for backward compatibility
 export { handleManageSlash } from './adminHandler';
@@ -368,12 +374,18 @@ export async function handleButtonInteraction(
             const conversations = await openHistoryAndGetList(cdp.ops);
             await closePopup(cdp.ops);
 
+            // ワークスペース名を CDP タイトルから抽出
+            const activeTitle = cdp.getActiveTargetTitle() || '';
+            const workspaceName = activeTitle.includes(' — ')
+                ? activeTitle.split(' — ')[0].trim()
+                : undefined;
+
             let page = 0;
             if (customId.startsWith('hist_page_')) {
                 page = parseInt(customId.replace('hist_page_', ''), 10) || 0;
             }
 
-            const { embeds, components } = buildHistoryListEmbed(conversations, page);
+            const { embeds, components } = buildHistoryListEmbed(conversations, page, workspaceName);
             await interaction.editReply({ embeds, components: components as any });
             return;
         }
@@ -390,6 +402,72 @@ export async function handleButtonInteraction(
         // ----- テンプレート関連ボタン -----
         if (customId.startsWith('tpl_')) {
             await handleTemplateButton(ctx, interaction, customId);
+            return;
+        }
+
+        // ----- Pro 関連ボタン -----
+        if (customId === 'pro_info') {
+            try {
+                // VS Code 側のライセンス情報コマンドを実行
+                await vscode.commands.executeCommand('anti-crow.licenseInfo');
+                await interaction.reply({
+                    embeds: [buildEmbed('📋 VS Code 側にライセンス情報を表示しました。', EmbedColor.Success)],
+                    ephemeral: true,
+                });
+            } catch (e) {
+                logError('pro_info button failed', e);
+                await interaction.reply({
+                    embeds: [buildEmbed('❌ ライセンス情報の取得に失敗しました。', EmbedColor.Error)],
+                    ephemeral: true,
+                });
+            }
+            return;
+        }
+
+        if (customId === 'pro_key_input') {
+            const modal = new ModalBuilder()
+                .setCustomId('pro_key_modal')
+                .setTitle('ライセンスキー入力');
+
+            const keyInput = new TextInputBuilder()
+                .setCustomId('license_key')
+                .setLabel('ライセンスキー')
+                .setPlaceholder('XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX')
+                .setStyle(TextInputStyle.Short)
+                .setRequired(true)
+                .setMinLength(8)
+                .setMaxLength(128);
+
+            modal.addComponents(
+                new ActionRowBuilder<TextInputBuilder>().addComponents(keyInput),
+            );
+
+            await interaction.showModal(modal);
+            return;
+        }
+
+        // ----- 待機キュー削除ボタン -----
+        if (customId === 'queue_clear_waiting') {
+            const { clearWaitingMessages } = await import('./messageHandler');
+            const count = clearWaitingMessages();
+            await interaction.reply({ embeds: [buildEmbed(`✅ ${count}件の待機メッセージを削除しました。`, EmbedColor.Success)] });
+            return;
+        }
+
+        // ----- 提案ボタン -----
+        if (customId.startsWith('suggest_')) {
+            const channelId = interaction.channelId;
+            const index = parseInt(customId.replace('suggest_', ''), 10);
+            const suggestion = getSuggestion(channelId, index);
+            if (!suggestion) {
+                await interaction.reply({ embeds: [buildEmbed('⚠️ この提案は既に無効です。', EmbedColor.Warning)], ephemeral: true });
+                return;
+            }
+            await interaction.reply({ embeds: [buildEmbed(`💡 **提案を実行:** ${suggestion.label}`, EmbedColor.Info)] });
+            // メッセージパイプラインに提案プロンプトを流す（非同期で実行）
+            processSuggestionPrompt(ctx, channelId, suggestion.prompt, interaction.user.id).catch((e: unknown) => {
+                logError('suggest button: processSuggestionPrompt failed', e);
+            });
             return;
         }
 
@@ -413,6 +491,50 @@ export async function handleModalSubmit(
     ctx: BridgeContext,
     interaction: ModalSubmitInteraction,
 ): Promise<void> {
+    // Pro ライセンスキー入力モーダル
+    if (interaction.customId === 'pro_key_modal') {
+        const key = interaction.fields.getTextInputValue('license_key').trim();
+        if (!key) {
+            await interaction.reply({
+                embeds: [buildEmbed('⚠️ ライセンスキーが空です。', EmbedColor.Warning)],
+                ephemeral: true,
+            });
+            return;
+        }
+
+        if (!ctx.setLicenseKeyFn) {
+            await interaction.reply({
+                embeds: [buildEmbed('⚠️ ライセンスシステムが初期化されていません。VS Code 側で `AntiCrow: Set License Key` コマンドを実行してください。', EmbedColor.Warning)],
+                ephemeral: true,
+            });
+            return;
+        }
+
+        try {
+            const result = await ctx.setLicenseKeyFn(key);
+            if (result.valid && result.planType !== 'free') {
+                await interaction.reply({
+                    embeds: [buildEmbed(`✅ ライセンス認証成功！\n\nプラン: **${result.planType}**\nキー: \`${key.substring(0, 8)}...\``, EmbedColor.Success)],
+                    ephemeral: true,
+                });
+            } else {
+                await interaction.reply({
+                    embeds: [buildEmbed(`⚠️ ライセンスキーが無効です。正しいキーを入力してください。\n\nキー: \`${key.substring(0, 8)}...\``, EmbedColor.Warning)],
+                    ephemeral: true,
+                });
+            }
+            logDebug(`pro_key_modal: license key set, valid=${result.valid}, plan=${result.planType}`);
+        } catch (e) {
+            logError('pro_key_modal: failed to set license key', e);
+            await interaction.reply({
+                embeds: [buildEmbed('❌ ライセンスキーの設定に失敗しました。VS Code 側で `AntiCrow: Set License Key` コマンドを実行してください。', EmbedColor.Error)],
+                ephemeral: true,
+            });
+        }
+        return;
+    }
+
+    // テンプレート系モーダルに委譲
     await handleTemplateModalSubmit(ctx, interaction);
 }
 

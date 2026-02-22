@@ -3,10 +3,14 @@
 // ---------------------------------------------------------------------------
 // 責務:
 //   /status, /schedules, /cancel, /newchat, /workspaces, /queue,
-//   /templates, /models, /mode コマンドの処理
+//   /templates, /models, /mode, /suggest, /pro コマンドの処理
 // ---------------------------------------------------------------------------
 import {
     ChatInputCommandInteraction,
+    TextChannel,
+    ActionRowBuilder,
+    ButtonBuilder,
+    ButtonStyle,
 } from 'discord.js';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -14,15 +18,16 @@ import { logDebug, logError, logWarn } from './logger';
 import { buildEmbed, EmbedColor } from './embedHelper';
 import { buildScheduleListEmbed, buildDeleteConfirmEmbed } from './scheduleButtons';
 import { buildHistoryListEmbed } from './historyButtons';
-import { openHistoryAndGetList, closePopup } from './cdpHistory';
+import { openHistoryAndGetList, closePopup, debugConversationAttributes } from './cdpHistory';
 import { buildModelListEmbed, buildModelSwitchResultEmbed } from './modelButtons';
 import { getCurrentModel, getAvailableModels, selectModel } from './cdpModels';
 import { buildModeListEmbed, buildModeSwitchResultEmbed } from './modeButtons';
 import { getCurrentMode, getAvailableModes, selectMode } from './cdpModes';
 import { BridgeContext } from './bridgeContext';
-import { resetProcessingFlag, getMessageQueueStatus, cancelPlanGeneration } from './messageHandler';
+import { resetProcessingFlag, getMessageQueueStatus, cancelPlanGeneration, enqueueMessage, clearWaitingMessages } from './messageHandler';
 import type { ProcessingPhase } from './messageHandler';
 import { getTimezone } from './configHelper';
+import { DiscordBot } from './discordBot';
 import { getRunningWsNames, buildWorkspaceListEmbed } from './workspaceHandler';
 import { fetchQuota } from './quotaProvider';
 import { buildTemplateListPanel } from './templateHandler';
@@ -104,7 +109,14 @@ async function handleCancel(ctx: BridgeContext, interaction: ChatInputCommandInt
             `pool実行中: ${poolRunning}`,
             `Antigravity停止: ${cancelResult}`,
         ].join('\n');
-        await interaction.reply({ embeds: [buildEmbed(`⏹️ キャンセルしました。\n- 実行中のジョブ → キャンセル\n- キュー内の待機ジョブ → 保持\n\n\`\`\`\n${debugInfo}\n\`\`\``, EmbedColor.Success)] });
+
+        // Escape フォールバックのみで停止した場合はメッセージを補足
+        const escapeOnly = cancelResult.includes('escape:SENT') && !cancelResult.includes(':OK');
+        const statusMsg = escapeOnly
+            ? '⏹️ キャンセルしました（Escape キーで停止）。\n- 実行中のジョブ → キャンセル\n- キュー内の待機ジョブ → 保持\n\n⚠️ キャンセルボタンが見つからず Escape キーで停止しました。'
+            : '⏹️ キャンセルしました。\n- 実行中のジョブ → キャンセル\n- キュー内の待機ジョブ → 保持';
+
+        await interaction.reply({ embeds: [buildEmbed(`${statusMsg}\n\n\`\`\`\n${debugInfo}\n\`\`\``, EmbedColor.Success)] });
     } catch (e) {
         const errMsg = e instanceof Error ? e.message : String(e);
         logError('handleCancel: /cancel failed', e);
@@ -183,16 +195,28 @@ async function handleQueue(ctx: BridgeContext, interaction: ChatInputCommandInte
             const label = phaseLabels[ps.phase] || ps.phase;
             lines.push(`  - ${label}: ${ps.messagePreview} (${timeStr}経過)`);
         }
-        // 追加の待機中メッセージ（処理中でないもの）
-        const waitingCount = msgQueue.total - msgQueue.processing.length;
-        if (waitingCount > 0) {
-            lines.push(`  - ⏳ 待機中: ${waitingCount}件`);
+        // 待機中メッセージの内容表示
+        if (msgQueue.waiting.length > 0) {
+            lines.push(`  - ⏳ **待機中: ${msgQueue.waiting.length}件**`);
+            for (const w of msgQueue.waiting) {
+                const elapsed = Math.round((Date.now() - w.enqueuedAt) / 1000);
+                const minutes = Math.floor(elapsed / 60);
+                const seconds = elapsed % 60;
+                const timeStr = minutes > 0 ? `${minutes}分${seconds}秒前` : `${seconds}秒前`;
+                const preview = w.preview || '(内容なし)';
+                lines.push(`    - ${preview}${preview.length >= 50 ? '...' : ''} (${timeStr})`);
+            }
+        } else {
+            const waitingCount = msgQueue.total - msgQueue.processing.length;
+            if (waitingCount > 0) {
+                lines.push(`  - ⏳ 待機中: ${waitingCount}件`);
+            }
         }
     } else {
         lines.push('\n📨 メッセージ処理キュー: なし');
     }
 
-    // 実行キュー（パイプライン後段）
+    // 実行キュー（パイプライン後段）— タスクがある場合のみ表示
     if (queueInfo.current) {
         const elapsed = Math.round((Date.now() - queueInfo.current.startTime) / 1000);
         const minutes = Math.floor(elapsed / 60);
@@ -200,8 +224,6 @@ async function handleQueue(ctx: BridgeContext, interaction: ChatInputCommandInte
         const timeStr = minutes > 0 ? `${minutes}分${seconds}秒` : `${seconds}秒`;
         const summary = queueInfo.current.plan.human_summary || queueInfo.current.plan.plan_id;
         lines.push(`\n🔄 **実行中:** ${summary} (${timeStr}経過)`);
-    } else {
-        lines.push('\n🔄 実行中のタスク: なし');
     }
 
     if (queueInfo.pending.length > 0) {
@@ -210,15 +232,25 @@ async function handleQueue(ctx: BridgeContext, interaction: ChatInputCommandInte
             const summary = p.human_summary || p.plan_id;
             lines.push(`${i + 1}. ${summary}`);
         });
-    } else {
-        lines.push('⏳ 実行待ち: なし');
     }
 
     if (!hasAnything) {
         lines.push('\n✅ すべてのキューが空です。');
     }
 
-    await interaction.reply({ embeds: [buildEmbed(lines.join('\n'), EmbedColor.Info)] });
+    // 待機中メッセージがある場合は削除ボタンを追加
+    const components: ActionRowBuilder<ButtonBuilder>[] = [];
+    if (msgQueue.waiting.length > 0) {
+        const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder()
+                .setCustomId('queue_clear_waiting')
+                .setLabel(`🗑️ 待機キュー全削除 (${msgQueue.waiting.length}件)`)
+                .setStyle(ButtonStyle.Danger),
+        );
+        components.push(row);
+    }
+
+    await interaction.reply({ embeds: [buildEmbed(lines.join('\n'), EmbedColor.Info)], components: components as any });
 }
 
 async function handleTemplates(ctx: BridgeContext, interaction: ChatInputCommandInteraction): Promise<void> {
@@ -345,14 +377,29 @@ async function handleHistory(ctx: BridgeContext, interaction: ChatInputCommandIn
             return;
         }
 
+        // ワークスペース名を CDP タイトルから抽出（「ワークスペース名 — Antigravity」形式）
+        const activeTitle = cdp.getActiveTargetTitle() || '';
+        const workspaceName = activeTitle.includes(' — ')
+            ? activeTitle.split(' — ')[0].trim()
+            : undefined;
+        logDebug(`handleHistory: workspaceName=${workspaceName || '(unknown)'}`);
+
         logDebug('handleHistory: starting openHistoryAndGetList');
         const conversations = await openHistoryAndGetList(cdp.ops);
         logDebug(`handleHistory: got ${conversations.length} conversations`);
 
+        // Phase B: DOM 属性調査（ワークスペースフィルタリング用）
+        try {
+            const debugResult = await debugConversationAttributes(cdp.ops);
+            logDebug(`handleHistory: DOM debug result: ${JSON.stringify(debugResult)}`);
+        } catch (e) {
+            logDebug(`handleHistory: DOM debug failed: ${e instanceof Error ? e.message : e}`);
+        }
+
         // 履歴パネルを閉じる（Antigravity UI を元に戻す）
         await closePopup(cdp.ops);
 
-        const { embeds, components } = buildHistoryListEmbed(conversations);
+        const { embeds, components } = buildHistoryListEmbed(conversations, 0, workspaceName);
         await interaction.editReply({ embeds, components: components as any });
     } catch (e) {
         const errMsg = e instanceof Error ? e.message : String(e);
@@ -376,6 +423,7 @@ async function handleHelp(_ctx: BridgeContext, interaction: ChatInputCommandInte
         '`/history` — 会話履歴を表示・切り替え',
         '`/workspaces` — ワークスペース一覧を表示',
         '`/templates` — テンプレート一覧・管理',
+        '`/pro` — Pro ライセンス管理・購入・キー入力',
         '`/help` — このヘルプを表示',
         '',
         '**使い方のコツ**',
@@ -386,6 +434,118 @@ async function handleHelp(_ctx: BridgeContext, interaction: ChatInputCommandInte
     ].join('\n');
 
     await interaction.reply({ embeds: [buildEmbed(helpMsg, EmbedColor.Info)] });
+}
+
+async function handlePro(ctx: BridgeContext, interaction: ChatInputCommandInteraction): Promise<void> {
+    try {
+        const { FREE_DAILY_TASK_LIMIT, FREE_WEEKLY_TASK_LIMIT, FREE_WORKSPACE_LIMIT, PRO_ONLY_FEATURES, PURCHASE_URL_MONTHLY, PURCHASE_URL_LIFETIME } = await import('./licensing');
+
+        const lines: string[] = [
+            '💎 **AntiCrow Pro**',
+            '',
+            '**💰 価格プラン**',
+            `🆓 **Free** — 無料（1日${FREE_DAILY_TASK_LIMIT}タスク、週${FREE_WEEKLY_TASK_LIMIT}タスク、WS ${FREE_WORKSPACE_LIMIT}個）`,
+            '📅 **Monthly** — $5/月（全機能無制限）',
+            '♾️ **Lifetime** — $50（買い切り永久）',
+            '',
+            '**🔒 Pro 限定機能**',
+            `${[...PRO_ONLY_FEATURES].map(f => f === 'autoAccept' ? '自動承認' : `\`${f}\``).join(', ')}、無制限タスク、マルチワークスペース`,
+        ];
+
+        // トライアル情報を追加
+        const trialDays = ctx.getTrialDaysRemaining?.();
+        if (trialDays !== undefined) {
+            if (trialDays > 0) {
+                lines.push('');
+                lines.push(`🆓 **Proトライアル期間**: 残り **${trialDays}** 日`);
+            } else {
+                lines.push('');
+                lines.push('⏰ **Proトライアル期間終了** — Pro にアップグレードして全機能を使い続けましょう！');
+            }
+        }
+
+        // --- ActionRow: 購入リンクボタン ---
+        const purchaseRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder()
+                .setLabel('📅 Monthly ($5/月)')
+                .setStyle(ButtonStyle.Link)
+                .setURL(PURCHASE_URL_MONTHLY),
+            new ButtonBuilder()
+                .setLabel('♾️ Lifetime ($50)')
+                .setStyle(ButtonStyle.Link)
+                .setURL(PURCHASE_URL_LIFETIME),
+        );
+
+        // --- ActionRow: 操作ボタン ---
+        const actionRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder()
+                .setCustomId('pro_info')
+                .setLabel('📋 ライセンス情報')
+                .setStyle(ButtonStyle.Secondary),
+            new ButtonBuilder()
+                .setCustomId('pro_key_input')
+                .setLabel('🔑 キー入力')
+                .setStyle(ButtonStyle.Primary),
+        );
+
+        await interaction.reply({
+            embeds: [buildEmbed(lines.join('\n'), EmbedColor.Info)],
+            components: [purchaseRow, actionRow],
+        });
+    } catch (e) {
+        const errMsg = e instanceof Error ? e.message : String(e);
+        logError('handlePro: failed', e);
+        await interaction.reply({ embeds: [buildEmbed(`❌ Pro 情報取得エラー: ${errMsg}`, EmbedColor.Error)], ephemeral: true });
+    }
+}
+
+// ---------------------------------------------------------------------------
+// /suggest
+// ---------------------------------------------------------------------------
+
+/** 定型の提案リクエストプロンプト */
+const SUGGEST_PROMPT =
+    '現在のプロジェクトの状態を分析して、次にやるべきタスクを3個提案してください。\n' +
+    '各提案は実行可能な具体的な指示として記述してください。\n\n' +
+    '提案は以下の形式でレスポンスの末尾に含めてください:\n' +
+    '```\n' +
+    '<!-- SUGGESTIONS: [\n' +
+    '  { "label": "ボタンに表示する短いラベル", "prompt": "実行するプロンプト", "description": "提案の説明" },\n' +
+    '  ...\n' +
+    '] -->\n' +
+    '```\n' +
+    '- label: 80文字以内の短いボタンラベル\n' +
+    '- prompt: そのタスクを実行するための具体的で詳細なプロンプト\n' +
+    '- description: ボタンの上に表示される説明テキスト（1行）\n' +
+    '- 必ず3個の提案を含めること\n' +
+    '- SUGGESTIONS タグはレスポンスの最後に配置すること';
+
+async function handleSuggest(ctx: BridgeContext, interaction: ChatInputCommandInteraction): Promise<void> {
+    const channel = interaction.channel;
+    if (!channel || !channel.isTextBased()) {
+        await interaction.reply({ embeds: [buildEmbed('⚠️ テキストチャンネルでのみ使用できます。', EmbedColor.Warning)], ephemeral: true });
+        return;
+    }
+
+    // スラッシュコマンドの応答としてエフェメラルで返す
+    await interaction.reply({ embeds: [buildEmbed('💡 プロジェクトを分析して提案を生成中なのだ…\nしばらく待ってほしいのだ！', EmbedColor.Info)], ephemeral: true });
+
+    // 合成 Message オブジェクトを作成して enqueueMessage に流す
+    const syntheticMessage = {
+        id: `suggest_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        content: SUGGEST_PROMPT,
+        channel,
+        author: interaction.user,
+        attachments: new Map(),
+        reference: null,
+    } as unknown as import('discord.js').Message;
+
+    try {
+        const wsName = DiscordBot.resolveWorkspaceFromChannel(channel as TextChannel) ?? 'agent-chat';
+        await enqueueMessage(ctx, syntheticMessage, 'agent-chat', wsName);
+    } catch (e) {
+        logError('handleSuggest: failed to enqueue synthetic message', e);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -403,7 +563,9 @@ const COMMAND_HANDLERS: Record<string, CommandHandler> = {
     models: handleModels,
     mode: handleMode,
     history: handleHistory,
+    suggest: handleSuggest,
     help: handleHelp,
+    pro: handlePro,
 };
 
 // ---------------------------------------------------------------------------

@@ -32,9 +32,13 @@ export interface BridgeContext {
     statusBarItem: vscode.StatusBarItem;
     lockWatchTimer: NodeJS.Timeout | null;
     categoryWatchTimer: NodeJS.Timeout | null;
-    autoOperationWatcherTimer: NodeJS.Timeout | null;
+    autoAcceptWatcherTimer: NodeJS.Timeout | null;
     healthCheckTimer: NodeJS.Timeout | null;
     cleanupTimer: NodeJS.Timeout | null;
+    /** Discord からライセンスキーを設定するためのコールバック（SecretStorage + LicenseChecker を橋渡し） */
+    setLicenseKeyFn: ((key: string) => Promise<{ valid: boolean; planType: string }>) | null;
+    /** トライアル残り日数を取得するコールバック */
+    getTrialDaysRemaining: (() => number | undefined) | null;
 }
 
 /** startBridge 完了後の状態。主要フィールドが non-null であることを型レベルで保証 */

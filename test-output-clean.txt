@@ -1,0 +1,221 @@
+
+ RUN  v4.0.18 C:/Users/ysk41/dev/anti-crow
+
+ ✓ src/__tests__/configHelper.test.ts (16 tests) 37ms
+ ✓ src/__tests__/planParser.test.ts (18 tests) 39ms
+ ✓ src/__tests__/botLock.test.ts (8 tests) 45ms
+ ✓ src/__tests__/scheduler.test.ts (13 tests) 50ms
+ ✓ src/__tests__/fileIpc.test.ts (34 tests) 147ms
+ ✓ src/__tests__/templateStore.test.ts (32 tests) 158ms
+ ✓ src/__tests__/suggestionParser.test.ts (17 tests) 13ms
+ ✓ src/__tests__/mdToJson.test.ts (11 tests) 11ms
+ ✓ src/__tests__/memoryStore.test.ts (15 tests) 20ms
+ ✓ src/__tests__/discordFormatter.test.ts (31 tests) 15ms
+ ✓ src/__tests__/licenseWebview.test.ts (15 tests) 10ms
+ ✓ src/__tests__/licenseChecker.test.ts (25 tests) 27ms
+ ❯ src/__tests__/executor.test.ts (18 tests | 10 failed) 152ms
+       ✓ should start with running = false 3ms
+       ✓ should start with empty queue 1ms
+       ✓ should start with null queue info 2ms
+       × should skip duplicate plan_id already in queue (pending) 25ms
+       × enqueueImmediate should set triggerType to immediate 20ms
+       × should remove a pending job from the queue 16ms
+       × should return current job and pending list 16ms
+       × should clear running and queue state 14ms
+       × should stop current job but preserve queue 16ms
+       ✓ isRunning should be false before any enqueue 1ms
+       × queueLength should count pending jobs only (not current) 15ms
+       × should process jobs sequentially and call notifyDiscord on completion 4ms
+       × should process multiple jobs in FIFO order 6ms
+       ✓ should notify on error and not crash 3ms
+       × should handle IPC timeout without retry 3ms
+       ✓ startUIWatcher should not throw 2ms
+       ✓ stopUIWatcher should not throw even when not started 1ms
+       ✓ startUIWatcher twice should stop previous watcher 1ms
+ ✓ src/__tests__/errors.test.ts (7 tests) 10ms
+ ✓ src/__tests__/embedHelper.test.ts (24 tests) 9ms
+ ✓ src/__tests__/logger.test.ts (6 tests) 7ms
+ ✓ src/__tests__/suggestionButtons.test.ts (13 tests) 8ms
+ ✓ src/__tests__/promptBuilder.test.ts (17 tests) 7ms
+ ✓ src/__tests__/discordUtils.test.ts (4 tests) 7ms
+ ✓ src/__tests__/accessControl.test.ts (6 tests) 6ms
+ ✓ src/__tests__/discordChannels.test.ts (12 tests) 6ms
+ ✓ src/__tests__/messageHandler.test.ts (11 tests) 10ms
+System.Management.Automation.RemoteException
+⎯⎯⎯⎯⎯⎯ Failed Tests 10 ⎯⎯⎯⎯⎯⎯⎯
+System.Management.Automation.RemoteException
+ FAIL  src/__tests__/executor.test.ts > Executor > enqueue — 重複防止 > should skip duplicate plan_id already in queue (pending)
+AssertionError: expected +0 to be 1 // Object.is equality
+System.Management.Automation.RemoteException
+- Expected
++ Received
+System.Management.Automation.RemoteException
+- 1
++ 0
+System.Management.Automation.RemoteException
+ ❯ src/__tests__/executor.test.ts:250:44
+    248|             // 2つ目をキューに追加（pending状態）
+    249|             executor.enqueue({ plan: planB, triggerType: 'immediate' }…
+    250|             expect(executor.queueLength()).toBe(1);
+       |                                            ^
+    251| 
+    252|             // 同じplan_idの3つ目はスキップされる
+System.Management.Automation.RemoteException
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/10]⎯
+System.Management.Automation.RemoteException
+ FAIL  src/__tests__/executor.test.ts > Executor > enqueueImmediate / enqueueScheduled > enqueueImmediate should set triggerType to immediate
+AssertionError: expected null not to be null
+ ❯ src/__tests__/executor.test.ts:276:38
+    274|             await new Promise(r => setTimeout(r, 10));
+    275|             const info = executor.getQueueInfo();
+    276|             expect(info.current).not.toBeNull();
+       |                                      ^
+    277|             expect(info.current!.plan.plan_id).toBe(plan.plan_id);
+    278| 
+System.Management.Automation.RemoteException
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/10]⎯
+System.Management.Automation.RemoteException
+ FAIL  src/__tests__/executor.test.ts > Executor > cancelJob > should remove a pending job from the queue
+AssertionError: expected 1 to be 2 // Object.is equality
+System.Management.Automation.RemoteException
+- Expected
++ Received
+System.Management.Automation.RemoteException
+- 2
++ 1
+System.Management.Automation.RemoteException
+ ❯ src/__tests__/executor.test.ts:303:44
+    301|             executor.enqueue({ plan: plan3, triggerType: 'immediate' }…
+    302| 
+    303|             expect(executor.queueLength()).toBe(2);
+       |                                            ^
+    304| 
+    305|             // plan2 をキューから削除
+System.Management.Automation.RemoteException
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/10]⎯
+System.Management.Automation.RemoteException
+ FAIL  src/__tests__/executor.test.ts > Executor > getQueueInfo > should return current job and pending list
+AssertionError: expected 'pending-1' to be 'running' // Object.is equality
+System.Management.Automation.RemoteException
+Expected: "running"
+Received: "pending-1"
+System.Management.Automation.RemoteException
+ ❯ src/__tests__/executor.test.ts:335:48
+    333|             const info = executor.getQueueInfo();
+    334|             expect(info.current).not.toBeNull();
+    335|             expect(info.current!.plan.plan_id).toBe('running');
+       |                                                ^
+    336|             expect(info.current!.startTime).toBeGreaterThan(0);
+    337|             expect(info.pending).toHaveLength(1);
+System.Management.Automation.RemoteException
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/10]⎯
+System.Management.Automation.RemoteException
+ FAIL  src/__tests__/executor.test.ts > Executor > forceReset > should clear running and queue state
+AssertionError: expected +0 to be 1 // Object.is equality
+System.Management.Automation.RemoteException
+- Expected
++ Received
+System.Management.Automation.RemoteException
+- 1
++ 0
+System.Management.Automation.RemoteException
+ ❯ src/__tests__/executor.test.ts:359:44
+    357|             executor.enqueue({ plan: plan2, triggerType: 'immediate' }…
+    358| 
+    359|             expect(executor.queueLength()).toBe(1); // plan2 is pending
+       |                                            ^
+    360| 
+    361|             executor.forceReset();
+System.Management.Automation.RemoteException
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/10]⎯
+System.Management.Automation.RemoteException
+ FAIL  src/__tests__/executor.test.ts > Executor > forceStop > should stop current job but preserve queue
+AssertionError: expected +0 to be 1 // Object.is equality
+System.Management.Automation.RemoteException
+- Expected
++ Received
+System.Management.Automation.RemoteException
+- 1
++ 0
+System.Management.Automation.RemoteException
+ ❯ src/__tests__/executor.test.ts:386:44
+    384|             executor.enqueue({ plan: plan2, triggerType: 'immediate' }…
+    385| 
+    386|             expect(executor.queueLength()).toBe(1); // plan2 is pending
+       |                                            ^
+    387| 
+    388|             executor.forceStop();
+System.Management.Automation.RemoteException
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/10]⎯
+System.Management.Automation.RemoteException
+ FAIL  src/__tests__/executor.test.ts > Executor > isRunning / queueLength > queueLength should count pending jobs only (not current)
+AssertionError: expected 1 to be 2 // Object.is equality
+System.Management.Automation.RemoteException
+- Expected
++ Received
+System.Management.Automation.RemoteException
+- 2
++ 1
+System.Management.Automation.RemoteException
+ ❯ src/__tests__/executor.test.ts:416:44
+    414| 
+    415|             // 'a' is current, 'b' and 'c' are pending
+    416|             expect(executor.queueLength()).toBe(2);
+       |                                            ^
+    417| 
+    418|             executor.forceReset();
+System.Management.Automation.RemoteException
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/10]⎯
+System.Management.Automation.RemoteException
+ FAIL  src/__tests__/executor.test.ts > Executor > processQueue — 直列実行 > should process jobs sequentially and call notifyDiscord on completion
+AssertionError: expected "vi.fn()" to be called at least once
+ ❯ src/__tests__/executor.test.ts:438:36
+    436|             // notifyDiscord が呼ばれているはず（run_start + 伝令完了 + 成功通知）
+    437|             expect(notifyDiscord).toHaveBeenCalled();
+    438|             expect(cdp.sendPrompt).toHaveBeenCalled();
+       |                                    ^
+    439|         });
+    440| 
+System.Management.Automation.RemoteException
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/10]⎯
+System.Management.Automation.RemoteException
+ FAIL  src/__tests__/executor.test.ts > Executor > processQueue — 直列実行 > should process multiple jobs in FIFO order
+AssertionError: expected [] to deeply equal [ 'job-1', 'job-2' ]
+System.Management.Automation.RemoteException
+- Expected
++ Received
+System.Management.Automation.RemoteException
+- [
+-   "job-1",
+-   "job-2",
+- ]
++ []
+System.Management.Automation.RemoteException
+ ❯ src/__tests__/executor.test.ts:461:27
+    459|             ]);
+    460| 
+    461|             expect(order).toEqual(['job-1', 'job-2']);
+       |                           ^
+    462|         });
+    463|     });
+System.Management.Automation.RemoteException
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[9/10]⎯
+System.Management.Automation.RemoteException
+ FAIL  src/__tests__/executor.test.ts > Executor > executeJob — エラーハンドリング > should handle IPC timeout without retry
+AssertionError: expected 0 to be greater than or equal to 1
+ ❯ src/__tests__/executor.test.ts:498:41
+    496|             const timeoutCalls = notifyDiscord.mock.calls.filter(
+    497|                 (call: unknown[]) => typeof call[1] === 'string' && (c…
+    498|             expect(timeoutCalls.length).toBeGreaterThanOrEqual(1);
+       |                                         ^
+    499|         });
+    500|     });
+System.Management.Automation.RemoteException
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[10/10]⎯
+System.Management.Automation.RemoteException
+
+ Test Files  1 failed | 21 passed (22)
+      Tests  10 failed | 343 passed (353)
+   Start at  11:25:01
+   Duration  3.47s (transform 4.21s, setup 0ms, import 7.28s, tests 795ms, environment 8ms)
+

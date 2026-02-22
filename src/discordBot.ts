@@ -17,6 +17,8 @@ import {
     ButtonInteraction,
     AutocompleteInteraction,
     ModalSubmitInteraction,
+    ActionRowBuilder,
+    ButtonBuilder,
 } from 'discord.js';
 import { ChannelIntent } from './types';
 import { splitForEmbeds, extractTableFields } from './discordFormatter';
@@ -221,6 +223,8 @@ export class DiscordBot {
             case 'models': return 'admin';
             case 'mode': return 'admin';
             case 'help': return 'admin';
+            case 'suggest': return 'admin';
+            case 'pro': return 'admin';
             default: return null;
         }
     }
@@ -290,6 +294,34 @@ export class DiscordBot {
         return this.client.guilds.cache.first() || null;
     }
 
+    /** Guild キャッシュから最初に見つかった #agent-chat チャンネルの ID を返す */
+    findFirstAgentChatChannelId(): string | null {
+        const guild = this.getFirstGuild();
+        if (!guild) { return null; }
+        const ch = guild.channels.cache.find(
+            c => c.type === ChannelType.GuildText && c.name === 'agent-chat',
+        );
+        return ch?.id ?? null;
+    }
+
+    /** 指定ワークスペース名のカテゴリ配下にある #agent-chat チャンネルの ID を返す */
+    findAgentChatChannelByWorkspace(workspaceName: string): string | null {
+        const guild = this.getFirstGuild();
+        if (!guild) { return null; }
+        // カテゴリ名がワークスペース名と一致するカテゴリを探す
+        const category = guild.channels.cache.find(
+            c => c.type === ChannelType.GuildCategory && c.name === workspaceName,
+        );
+        if (!category) { return null; }
+        // そのカテゴリ配下の #agent-chat を探す
+        const ch = guild.channels.cache.find(
+            c => c.type === ChannelType.GuildText
+                && c.name === 'agent-chat'
+                && c.parentId === category.id,
+        );
+        return ch?.id ?? null;
+    }
+
     // -----------------------------------------------------------------------
     // メッセージ送信
     // -----------------------------------------------------------------------
@@ -303,6 +335,23 @@ export class DiscordBot {
         }
 
         await this.sendToTextChannel(channel, text, color);
+    }
+
+    /** 指定チャンネル ID にコンポーネント（ボタン行等）を送信 */
+    async sendComponentsToChannel(
+        channelId: string,
+        components: ActionRowBuilder<ButtonBuilder>[],
+        embed?: EmbedBuilder,
+    ): Promise<void> {
+        const channel = await this.client.channels.fetch(channelId);
+        if (!channel || !(channel instanceof TextChannel)) {
+            logWarn(`Discord: channel ${channelId} not found or not text channel`);
+            return;
+        }
+        await channel.send({
+            embeds: embed ? [embed] : undefined,
+            components,
+        });
     }
 
     /** 指定チャンネル ID で typing indicator を送信 */
@@ -325,33 +374,42 @@ export class DiscordBot {
 
         if (extracted.fields.length > 0) {
             // テーブルあり: description + fields の Embed で送信
-            const embed = new EmbedBuilder()
-                .setColor(color ?? DiscordBot.EMBED_COLOR);
+            // ただし、Embed サイズ制限を超える場合は splitForEmbeds にフォールバック
+            const descLen = extracted.description.length;
+            const fieldsCount = extracted.fields.length;
+            const totalFieldChars = extracted.fields.reduce((sum, f) => sum + f.name.length + f.value.length, 0);
+            const estimatedSize = descLen + totalFieldChars;
 
-            if (extracted.description.length > 0) {
-                embed.setDescription(
-                    extracted.description.length > 4096
-                        ? extracted.description.slice(0, 4093) + '...'
-                        : extracted.description
+            if (descLen > 4096 || fieldsCount > 25 || estimatedSize > 5900) {
+                // Embed 制限超過: テーブルを含むテキストを分割 Embed で送信
+                logDebug(`Discord: table embed too large (desc=${descLen}, fields=${fieldsCount}, est=${estimatedSize}), falling back to split embeds`);
+                // フォールバック: テーブルありでも splitForEmbeds で分割送信
+                // （テーブルは Markdown のまま表示される）
+            } else {
+                const embed = new EmbedBuilder()
+                    .setColor(color ?? DiscordBot.EMBED_COLOR);
+
+                if (extracted.description.length > 0) {
+                    embed.setDescription(extracted.description);
+                }
+
+                embed.addFields(
+                    extracted.fields.map(f => ({
+                        name: f.name.slice(0, 256),
+                        value: f.value.slice(0, 1024),
+                        inline: f.inline ?? false,
+                    }))
                 );
+
+                // フッター（モデル名+タイムスタンプ）
+                if (this.currentModelName) {
+                    embed.setFooter({ text: this.currentModelName });
+                }
+                embed.setTimestamp();
+
+                await channel.send({ embeds: [embed] });
+                return;
             }
-
-            embed.addFields(
-                extracted.fields.slice(0, 25).map(f => ({
-                    name: f.name.slice(0, 256),
-                    value: f.value.slice(0, 1024),
-                    inline: f.inline ?? false,
-                }))
-            );
-
-            // フッター（モデル名+タイムスタンプ）
-            if (this.currentModelName) {
-                embed.setFooter({ text: this.currentModelName });
-            }
-            embed.setTimestamp();
-
-            await channel.send({ embeds: [embed] });
-            return;
         }
 
         // テーブルなし: 従来の分割 Embed 送信
@@ -379,21 +437,26 @@ export class DiscordBot {
     // -----------------------------------------------------------------------
 
     /** メッセージにリアクション待ちして確認を取る */
-    async waitForConfirmation(message: Message, timeoutMs: number = 300_000): Promise<boolean> {
-        return reactions.waitForConfirmation(message, this.client.user?.id, timeoutMs);
+    async waitForConfirmation(message: Message): Promise<boolean> {
+        return reactions.waitForConfirmation(message, this.client.user?.id);
     }
 
     /** 番号付き絵文字リアクションで選択を待つ（1️⃣~🔟 + ❌） */
-    async waitForChoice(message: Message, choiceCount: number, timeoutMs: number = 300_000): Promise<number> {
-        return reactions.waitForChoice(message, this.client.user?.id, choiceCount, timeoutMs);
+    async waitForChoice(message: Message, choiceCount: number): Promise<number> {
+        return reactions.waitForChoice(message, this.client.user?.id, choiceCount);
     }
 
     /**
      * 複数選択待ち: 1️⃣~🔟 で複数選択 → ☑️ で確定、✅ で全選択、❌ で却下。
      * @returns 選択された番号の配列（1-indexed）。空配列 = 却下/タイムアウト。[-1] = 全選択。
      */
-    async waitForMultiChoice(message: Message, choiceCount: number, timeoutMs: number = 300_000): Promise<number[]> {
-        return reactions.waitForMultiChoice(message, this.client.user?.id, choiceCount, timeoutMs);
+    async waitForMultiChoice(message: Message, choiceCount: number): Promise<number[]> {
+        return reactions.waitForMultiChoice(message, this.client.user?.id, choiceCount);
+    }
+
+    /** 指定チャンネルのアクティブな確認コレクタをキャンセル（自動却下） */
+    cancelActiveConfirmation(channelId: string): boolean {
+        return reactions.cancelActiveConfirmation(channelId);
     }
 
     // -----------------------------------------------------------------------

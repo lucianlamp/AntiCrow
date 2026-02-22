@@ -15,7 +15,10 @@ import { logDebug, logError, logWarn } from './logger';
 import { CdpConnectionError, IpcTimeoutError } from './errors';
 import { updateAnticrowMd, getAnticrowMdPath } from './anticrowCustomizer';
 import { getPromptRulesMd, EXECUTION_PROMPT_TEMPLATE } from './embeddedRules';
-import { EmbedColor } from './embedHelper';
+import { buildEmbed, EmbedColor } from './embedHelper';
+import { parseSuggestions } from './suggestionParser';
+import { buildSuggestionRow, buildSuggestionContent, storeSuggestions } from './suggestionButtons';
+import type { ActionRowBuilder, ButtonBuilder, EmbedBuilder } from 'discord.js';
 import { UIWatcher, AutoClickRule, DEFAULT_AUTO_CLICK_RULES } from './uiWatcher';
 import * as vscode from 'vscode';
 import { getMaxRetries, getTimezone, getWorkspacePaths } from './configHelper';
@@ -36,6 +39,7 @@ const RECENT_EXECUTION_TTL_MS = 5 * 60 * 1000;
 
 export type NotifyFunc = (channelId: string, message: string, color?: number) => Promise<void>;
 export type SendTypingFunc = (channelId: string) => Promise<void>;
+export type PostSuggestionsFunc = (channelId: string, components: ActionRowBuilder<ButtonBuilder>[], embed?: EmbedBuilder) => Promise<void>;
 
 export class Executor {
     private cdp: CdpBridge;
@@ -61,8 +65,9 @@ export class Executor {
     private userGlobalRules: string | null = null;
     private promptRulesContent: string | null = null;
     private userMemory: string | null = null;
+    private postSuggestions: PostSuggestionsFunc | null = null;
 
-    constructor(cdp: CdpBridge, fileIpc: FileIpc, planStore: PlanStore, timeoutMs: number, notifyDiscord: NotifyFunc, sendTyping: SendTypingFunc, extensionPath?: string) {
+    constructor(cdp: CdpBridge, fileIpc: FileIpc, planStore: PlanStore, timeoutMs: number, notifyDiscord: NotifyFunc, sendTyping: SendTypingFunc, extensionPath?: string, postSuggestions?: PostSuggestionsFunc) {
         this.cdp = cdp;
         this.fileIpc = fileIpc;
         this.planStore = planStore;
@@ -70,6 +75,7 @@ export class Executor {
         this.notifyDiscord = notifyDiscord;
         this.sendTypingToChannel = sendTyping;
         this.extensionPath = extensionPath || '';
+        this.postSuggestions = postSuggestions ?? null;
 
         // テンプレート・ルールを起動時に読み込み
         this.loadPromptTemplate();
@@ -283,6 +289,7 @@ export class Executor {
 
             // ファイルベース IPC: レスポンスパス（Markdown形式）と進捗パスを生成
             const { requestId, responsePath } = this.fileIpc.createMarkdownRequestId();
+            this.fileIpc.writeRequestMeta(requestId, notifyChannel, plan.workspace_name);
             progressPath = this.fileIpc.createProgressPath(requestId);
 
             // 現在時刻(JST)と曜日をコンテキストとして生成
@@ -488,7 +495,10 @@ export class Executor {
             }
 
             // MEMORY タグを除去してから Discord に送信
-            const cleanContent = stripMemoryTags(content);
+            const memoryCleanContent = stripMemoryTags(content);
+
+            // 提案タグを抽出してクリーンコンテンツを取得
+            const { suggestions, cleanContent } = parseSuggestions(memoryCleanContent);
 
             // 成功通知（重複タイトル防止: レスポンスが prefix と同等の内容で始まる場合はスキップ）
             const prefix = plan.discord_templates.run_success_prefix || '✅ 実行完了';
@@ -499,6 +509,22 @@ export class Executor {
             const resultMsg = isDuplicate ? cleanContent : `${prefix}\n${cleanContent}`;
             logDebug(`Executor: sending success notification to channel ${notifyChannel} (${resultMsg.length} chars, prefixSkipped=${isDuplicate}, markdown=${isMarkdown})`);
             await this.safeNotify(notifyChannel, resultMsg, EmbedColor.Response);
+
+            // 提案ボタンを送信（提案があり、コールバックが設定されている場合）
+            if (suggestions.length > 0 && this.postSuggestions) {
+                try {
+                    const row = buildSuggestionRow(suggestions);
+                    if (row) {
+                        storeSuggestions(notifyChannel, suggestions);
+                        const suggestionText = buildSuggestionContent(suggestions);
+                        const suggestionEmbed = buildEmbed(suggestionText, EmbedColor.Suggest);
+                        await this.postSuggestions(notifyChannel, [row], suggestionEmbed);
+                        logDebug(`Executor: sent ${suggestions.length} suggestion buttons to channel ${notifyChannel}`);
+                    }
+                } catch (e) {
+                    logDebug(`Executor: failed to send suggestion buttons: ${e instanceof Error ? e.message : e}`);
+                }
+            }
 
             // 実行履歴を記録
             this.recordExecution(plan, true, durationMs, cleanContent);
@@ -647,9 +673,9 @@ export class Executor {
     // -----------------------------------------------------------------------
 
     /** UIウォッチャーを開始する（bridgeLifecycle から呼ばれる） */
-    startUIWatcher(): void {
+    startUIWatcher(isProCheck?: () => boolean): void {
         this.stopUIWatcher();
-        this.uiWatcher = new UIWatcher(this.cdp, () => this.processing);
+        this.uiWatcher = new UIWatcher(this.cdp, () => this.processing, isProCheck);
         this.uiWatcher.start();
     }
 

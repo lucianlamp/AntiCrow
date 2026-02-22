@@ -32,9 +32,10 @@ export function parsePlanJson(raw: string): PlanOutput | null {
     // 必須フィールドチェック
     if (typeof o.plan_id !== 'string' || !o.plan_id) { return null; }
     if (typeof o.timezone !== 'string') { return null; }
-    if (typeof o.cron !== 'string') { return null; }
+    if (typeof o.cron !== 'string' && o.cron !== null) { return null; }
     if (typeof o.prompt !== 'string' || !o.prompt) { return null; }
-    if (typeof o.requires_confirmation !== 'boolean') { return null; }
+    // requires_confirmation が欠落している場合は false をデフォルト値として使用
+    const requiresConfirmation = typeof o.requires_confirmation === 'boolean' ? o.requires_confirmation : false;
 
     // discord_templates
     const dt = o.discord_templates;
@@ -57,9 +58,9 @@ export function parsePlanJson(raw: string): PlanOutput | null {
     return {
         plan_id: o.plan_id as string,
         timezone: o.timezone as string,
-        cron: o.cron as string,
+        cron: (o.cron === null ? '' : o.cron) as string,
         prompt: o.prompt as string,
-        requires_confirmation: o.requires_confirmation as boolean,
+        requires_confirmation: requiresConfirmation,
         choice_mode: choiceMode,
         discord_templates: templates,
         human_summary: typeof o.human_summary === 'string' ? o.human_summary : undefined,

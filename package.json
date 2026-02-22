@@ -115,10 +115,10 @@
           "default": [],
           "description": "メッセージ処理を許可する Discord ユーザーID一覧。空の場合は全ユーザーを拒否（セキュリティ保護）。Developer Mode でユーザーIDをコピーできます。"
         },
-        "antiCrow.autoOperation": {
+        "antiCrow.autoAccept": {
           "type": "boolean",
           "default": false,
-          "description": "自動操作（Continue / Allow / 提案承認など）を有効にする。ANTICROW 経由のジョブ実行中のみ動作します。手動操作時は自動承認されません。"
+          "description": "自動承認（Continue / Allow / 提案承認など）を有効にする。ANTICROW 経由のジョブ実行中のみ動作します。手動操作時は自動承認されません。"
         },
         "antiCrow.maxRetries": {
           "type": "number",
@@ -129,6 +129,18 @@
           "type": "string",
           "default": "",
           "description": "Convex デプロイメント URL（ライセンス管理用）。Convex ダッシュボードで確認できます。"
+        },
+        "antiCrow.licenseStatus": {
+          "type": "string",
+          "default": "Free",
+          "enum": [
+            "Free",
+            "Trial",
+            "Monthly",
+            "Lifetime"
+          ],
+          "description": "現在のライセンスプラン（自動更新、変更不可）",
+          "scope": "application"
         }
       }
     }
@@ -159,6 +171,7 @@
     "@types/node-cron": "^3.0.11",
     "@types/vscode": "^1.90.0",
     "@types/ws": "^8.5.10",
+    "dotenv": "^17.3.1",
     "esbuild": "^0.20.2",
     "typescript": "^5.4.5",
     "vitest": "^4.0.18"

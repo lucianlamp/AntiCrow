@@ -17,7 +17,9 @@ import {
     ModalBuilder,
     TextInputBuilder,
     TextInputStyle,
+    TextChannel,
 } from 'discord.js';
+import { DiscordBot } from './discordBot';
 import { parsePlanJson, buildPlan } from './planParser';
 import { logDebug, logError, logWarn } from './logger';
 import { buildEmbed, EmbedColor } from './embedHelper';
@@ -25,7 +27,7 @@ import { BridgeContext } from './bridgeContext';
 import { buildPlanPrompt } from './messageHandler';
 import { getResponseTimeout } from './configHelper';
 
-import { TemplateStore } from './templateStore';
+import { TemplateStore, parseTemplateArgs } from './templateStore';
 
 // ---------------------------------------------------------------------------
 // テンプレート一覧パネル生成
@@ -136,7 +138,7 @@ export async function handleTemplateButton(
         return;
     }
 
-    // ▶ 実行ボタン（一覧から）→ プレビュー確認に遷移
+    // ▶ 実行ボタン（一覧から）
     if (customId.startsWith('tpl_run_')) {
         const name = customId.slice('tpl_run_'.length);
         const template = templateStore.get(name);
@@ -145,6 +147,36 @@ export async function handleTemplateButton(
             return;
         }
 
+        // 引数を検出（保存済み or 再パース）
+        const args = template.args ?? parseTemplateArgs(template.prompt);
+
+        if (args.length > 0) {
+            // 引数あり → 引数入力モーダルを表示
+            const safeName = name.substring(0, 30);
+            const modal = new ModalBuilder()
+                .setCustomId(`tpl_modal_args_${safeName}`)
+                .setTitle(`テンプレート「${safeName}」実行`);
+
+            const maxArgs = Math.min(args.length, 5); // Discord モーダル上限: 5
+            for (let i = 0; i < maxArgs; i++) {
+                const arg = args[i];
+                const input = new TextInputBuilder()
+                    .setCustomId(`tpl_arg_${arg.name}`)
+                    .setLabel(arg.label)
+                    .setStyle(TextInputStyle.Short)
+                    .setRequired(arg.required !== false)
+                    .setMaxLength(500);
+                if (arg.placeholder) { input.setPlaceholder(arg.placeholder); }
+                modal.addComponents(
+                    new ActionRowBuilder<TextInputBuilder>().addComponents(input) as any,
+                );
+            }
+
+            await interaction.showModal(modal);
+            return;
+        }
+
+        // 引数なし → 従来通りプレビュー確認に遷移
         const expandedPrompt = TemplateStore.expandVariables(template.prompt);
         const previewLines = [
             `📄 **テンプレート「${name}」プレビュー**`,
@@ -204,13 +236,34 @@ export async function handleTemplateButton(
             return;
         }
 
-        const cdp = ctx.cdp;
-        const executor = ctx.executor;
         const fileIpc = ctx.fileIpc;
         const planStore = ctx.planStore;
 
-        if (!executor || !cdp || !fileIpc || !planStore) {
+        if (!fileIpc || !planStore) {
             await interaction.reply({ embeds: [buildEmbed('⚠️ Bridge が初期化されていません。', EmbedColor.Warning)], ephemeral: true });
+            return;
+        }
+
+        // ワークスペース解決（チャンネルの親カテゴリーから）
+        const channel = interaction.channel as TextChannel | null;
+        const wsNameFromCategory = (channel && 'parent' in channel)
+            ? DiscordBot.resolveWorkspaceFromChannel(channel as TextChannel) ?? undefined
+            : undefined;
+
+        // CdpBridge 取得: CdpPool がある場合はワークスペース名で acquire
+        let activeCdp = ctx.cdp;
+        if (wsNameFromCategory && ctx.cdpPool) {
+            try {
+                activeCdp = await ctx.cdpPool.acquire(wsNameFromCategory);
+                logDebug(`handleTemplateButton: acquired CdpBridge for workspace "${wsNameFromCategory}"`);
+            } catch (e) {
+                logWarn(`handleTemplateButton: failed to acquire CdpBridge for "${wsNameFromCategory}": ${e instanceof Error ? e.message : e}`);
+                // フォールバック: ctx.cdp を使用
+            }
+        }
+
+        if (!activeCdp) {
+            await interaction.reply({ embeds: [buildEmbed('⚠️ Antigravity との接続が初期化されていません。', EmbedColor.Warning)], ephemeral: true });
             return;
         }
 
@@ -218,10 +271,11 @@ export async function handleTemplateButton(
 
         const tplIpcDir = fileIpc.getIpcDir();
         const expandedPrompt = TemplateStore.expandVariables(template.prompt);
-        const { responsePath } = fileIpc.createRequestId();
+        const { requestId: tplReqId, responsePath } = fileIpc.createRequestId();
+        fileIpc.writeRequestMeta(tplReqId, interaction.channelId, wsNameFromCategory);
         const { prompt: tplPlanPrompt, tempFiles: tplTempFiles } = buildPlanPrompt(expandedPrompt, 'agent-chat', 'template-run', responsePath, undefined, undefined, tplIpcDir);
         try {
-            await cdp.sendPrompt(tplPlanPrompt);
+            await activeCdp.sendPrompt(tplPlanPrompt);
             const responseTimeout = getResponseTimeout();
             const planResponse = await fileIpc.waitForResponse(responsePath, responseTimeout);
 
@@ -236,11 +290,16 @@ export async function handleTemplateButton(
                 await interaction.editReply({ embeds: [buildEmbed(plan.discord_templates.ack, EmbedColor.Info)] });
             }
 
-            const wsName = cdp.getActiveWorkspaceName() || undefined;
+            const wsName = wsNameFromCategory || activeCdp.getActiveWorkspaceName() || undefined;
             if (wsName) { plan.workspace_name = wsName; }
 
-            await executor.enqueueImmediate(plan);
-            logDebug(`handleTemplateButton: tpl_confirm_run "${name}" — plan ${plan.plan_id} enqueued`);
+            // ExecutorPool がある場合はワークスペース指定で enqueue
+            if (ctx.executorPool && wsName) {
+                await ctx.executorPool.enqueueImmediate(wsName, plan);
+            } else if (ctx.executor) {
+                await ctx.executor.enqueueImmediate(plan);
+            }
+            logDebug(`handleTemplateButton: tpl_confirm_run "${name}" — plan ${plan.plan_id} enqueued (ws=${wsName || 'default'})`);
         } catch (e) {
             const errMsg = e instanceof Error ? e.message : String(e);
             logError('handleTemplateButton: tpl_confirm_run failed', e);
@@ -281,29 +340,136 @@ export async function handleModalSubmit(
     ctx: BridgeContext,
     interaction: ModalSubmitInteraction,
 ): Promise<void> {
-    if (interaction.customId !== 'tpl_modal_save') {
-        logWarn(`handleModalSubmit: unknown modal customId: ${interaction.customId}`);
+    // テンプレート保存モーダル
+    if (interaction.customId === 'tpl_modal_save') {
+        const templateStore = ctx.templateStore;
+        if (!templateStore) {
+            await interaction.reply({ embeds: [buildEmbed('⚠️ TemplateStore が初期化されていません。', EmbedColor.Warning)], ephemeral: true });
+            return;
+        }
+
+        const name = interaction.fields.getTextInputValue('tpl_name').trim();
+        const prompt = interaction.fields.getTextInputValue('tpl_prompt').trim();
+
+        if (!name || !prompt) {
+            await interaction.reply({ embeds: [buildEmbed('⚠️ テンプレート名とプロンプトの両方を入力してください。', EmbedColor.Warning)], ephemeral: true });
+            return;
+        }
+
+        templateStore.save(name, prompt);
+
+        // 保存後にテンプレート一覧を再表示
+        const { embeds, components } = buildTemplateListPanel(templateStore);
+        const detectedArgs = parseTemplateArgs(prompt);
+        const argInfo = detectedArgs.length > 0
+            ? `\n検出された引数: ${detectedArgs.map(a => `\`{{${a.name}}}\``).join(', ')}`
+            : '';
+        const successEmbed = buildEmbed(`📝 テンプレート「${name}」を保存しました。${argInfo}`, EmbedColor.Success);
+        await interaction.reply({ embeds: [successEmbed, ...embeds], components: components as any });
         return;
     }
 
-    const templateStore = ctx.templateStore;
-    if (!templateStore) {
-        await interaction.reply({ embeds: [buildEmbed('⚠️ TemplateStore が初期化されていません。', EmbedColor.Warning)], ephemeral: true });
+    // テンプレート引数入力モーダル
+    if (interaction.customId.startsWith('tpl_modal_args_')) {
+        const name = interaction.customId.slice('tpl_modal_args_'.length);
+        const templateStore = ctx.templateStore;
+        if (!templateStore) {
+            await interaction.reply({ embeds: [buildEmbed('⚠️ TemplateStore が初期化されていません。', EmbedColor.Warning)], ephemeral: true });
+            return;
+        }
+
+        const template = templateStore.get(name);
+        if (!template) {
+            await interaction.reply({ embeds: [buildEmbed(`⚠️ テンプレート「${name}」が見つかりません。`, EmbedColor.Warning)], ephemeral: true });
+            return;
+        }
+
+        const fileIpc = ctx.fileIpc;
+        const planStore = ctx.planStore;
+
+        if (!fileIpc || !planStore) {
+            await interaction.reply({ embeds: [buildEmbed('⚠️ Bridge が初期化されていません。', EmbedColor.Warning)], ephemeral: true });
+            return;
+        }
+
+        // ワークスペース解決（チャンネルの親カテゴリーから）
+        const channel = interaction.channel as TextChannel | null;
+        const wsNameFromCategory = (channel && 'parent' in channel)
+            ? DiscordBot.resolveWorkspaceFromChannel(channel as TextChannel) ?? undefined
+            : undefined;
+
+        // CdpBridge 取得: CdpPool がある場合はワークスペース名で acquire
+        let activeCdp = ctx.cdp;
+        if (wsNameFromCategory && ctx.cdpPool) {
+            try {
+                activeCdp = await ctx.cdpPool.acquire(wsNameFromCategory);
+                logDebug(`handleModalSubmit: acquired CdpBridge for workspace "${wsNameFromCategory}"`);
+            } catch (e) {
+                logWarn(`handleModalSubmit: failed to acquire CdpBridge for "${wsNameFromCategory}": ${e instanceof Error ? e.message : e}`);
+                // フォールバック: ctx.cdp を使用
+            }
+        }
+
+        if (!activeCdp) {
+            await interaction.reply({ embeds: [buildEmbed('⚠️ Antigravity との接続が初期化されていません。', EmbedColor.Warning)], ephemeral: true });
+            return;
+        }
+
+        // 引数値を収集
+        const args = template.args ?? parseTemplateArgs(template.prompt);
+        const userArgs: Record<string, string> = {};
+        for (const arg of args) {
+            try {
+                const value = interaction.fields.getTextInputValue(`tpl_arg_${arg.name}`);
+                if (value) { userArgs[arg.name] = value; }
+            } catch { /* optional arg not submitted */ }
+        }
+
+        await interaction.reply({ embeds: [buildEmbed(`⏳ テンプレート「${name}」を実行中...`, EmbedColor.Info)] });
+
+        const tplIpcDir = fileIpc.getIpcDir();
+        const expandedPrompt = TemplateStore.expandVariables(template.prompt, userArgs);
+        const { requestId: tplReqId2, responsePath } = fileIpc.createRequestId();
+        fileIpc.writeRequestMeta(tplReqId2, interaction.channelId ?? '', wsNameFromCategory);
+        const { prompt: tplPlanPrompt, tempFiles: tplTempFiles } = buildPlanPrompt(expandedPrompt, 'agent-chat', 'template-run', responsePath, undefined, undefined, tplIpcDir);
+        try {
+            await activeCdp.sendPrompt(tplPlanPrompt);
+            const responseTimeout = getResponseTimeout();
+            const planResponse = await fileIpc.waitForResponse(responsePath, responseTimeout);
+
+            const planOutput = parsePlanJson(planResponse);
+            if (!planOutput) {
+                await interaction.editReply({ embeds: [buildEmbed('⚠️ 応答を解析できませんでした。', EmbedColor.Warning)] });
+                return;
+            }
+
+            const channelId = interaction.channelId ?? '';
+            const plan = buildPlan(planOutput, channelId, channelId);
+            if (plan.discord_templates.ack) {
+                await interaction.editReply({ embeds: [buildEmbed(plan.discord_templates.ack, EmbedColor.Info)] });
+            }
+
+            const wsName = wsNameFromCategory || activeCdp.getActiveWorkspaceName() || undefined;
+            if (wsName) { plan.workspace_name = wsName; }
+
+            // ExecutorPool がある場合はワークスペース指定で enqueue
+            if (ctx.executorPool && wsName) {
+                await ctx.executorPool.enqueueImmediate(wsName, plan);
+            } else if (ctx.executor) {
+                await ctx.executor.enqueueImmediate(plan);
+            }
+            logDebug(`handleModalSubmit: tpl_modal_args "${name}" — plan ${plan.plan_id} enqueued (ws=${wsName || 'default'})`);
+        } catch (e) {
+            const errMsg = e instanceof Error ? e.message : String(e);
+            logError('handleModalSubmit: tpl_modal_args failed', e);
+            await interaction.editReply({ embeds: [buildEmbed(`❌ テンプレート実行エラー: ${errMsg}`, EmbedColor.Error)] }).catch(() => { });
+        } finally {
+            for (const f of tplTempFiles) {
+                try { fs.unlinkSync(f); } catch { /* ignore */ }
+            }
+        }
         return;
     }
 
-    const name = interaction.fields.getTextInputValue('tpl_name').trim();
-    const prompt = interaction.fields.getTextInputValue('tpl_prompt').trim();
-
-    if (!name || !prompt) {
-        await interaction.reply({ embeds: [buildEmbed('⚠️ テンプレート名とプロンプトの両方を入力してください。', EmbedColor.Warning)], ephemeral: true });
-        return;
-    }
-
-    templateStore.save(name, prompt);
-
-    // 保存後にテンプレート一覧を再表示
-    const { embeds, components } = buildTemplateListPanel(templateStore);
-    const successEmbed = buildEmbed(`📝 テンプレート「${name}」を保存しました。`, EmbedColor.Success);
-    await interaction.reply({ embeds: [successEmbed, ...embeds], components: components as any });
+    logWarn(`handleModalSubmit: unknown modal customId: ${interaction.customId}`);
 }

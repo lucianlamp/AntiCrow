@@ -1,0 +1,582 @@
+{
+  "cascadeIdle": {
+    "tooltipElements": [
+      {
+        "tooltipId": "new-conversation-tooltip",
+        "tag": "A",
+        "ariaLabel": null,
+        "visible": true,
+        "classes": "group relative text-sm text-ide-text-color font-medium !hover:text-ide-icon-color flex w-4 items-cen",
+        "innerHTML": "<svg xmlns=\"http://www.w3.org/2000/svg\" fill=\"none\" viewBox=\"0 0 24 24\" stroke-width=\"1.5\" stroke=\"currentColor\" aria-hidden=\"true\" data-slot=\"icon\" class=\"h-4 w-4\"><path stroke-linecap=\"round\" stroke"
+      },
+      {
+        "tooltipId": "history-tooltip",
+        "tag": "A",
+        "ariaLabel": null,
+        "visible": true,
+        "classes": "group relative text-sm text-ide-text-color font-medium !hover:text-ide-icon-color flex w-4 items-cen",
+        "innerHTML": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucid"
+      },
+      {
+        "tooltipId": "cascade-header-menu",
+        "tag": "BUTTON",
+        "ariaLabel": null,
+        "visible": true,
+        "classes": "group relative flex cursor-pointer items-center justify-center",
+        "innerHTML": "<svg xmlns=\"http://www.w3.org/2000/svg\" fill=\"none\" viewBox=\"0 0 24 24\" stroke-width=\"1.5\" stroke=\"currentColor\" aria-hidden=\"true\" data-slot=\"icon\" class=\"h-4 w-4 fill-ide-text-color\"><path stroke-li"
+      },
+      {
+        "tooltipId": "close-tooltip",
+        "tag": "A",
+        "ariaLabel": null,
+        "visible": true,
+        "classes": "group relative text-sm text-ide-text-color font-medium !hover:text-ide-icon-color flex w-4 items-cen",
+        "innerHTML": "<svg xmlns=\"http://www.w3.org/2000/svg\" fill=\"none\" viewBox=\"0 0 24 24\" stroke-width=\"1.5\" stroke=\"currentColor\" aria-hidden=\"true\" data-slot=\"icon\" class=\"h-4 w-4\"><path stroke-linecap=\"round\" stroke"
+      },
+      {
+        "tooltipId": "undo-tooltip-:r8mm:",
+        "tag": "DIV",
+        "ariaLabel": null,
+        "visible": true,
+        "classes": "cursor-pointer opacity-50 hover:opacity-100 transition-opacity",
+        "innerHTML": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucid"
+      },
+      {
+        "tooltipId": ":r8mp:",
+        "tag": "DIV",
+        "ariaLabel": null,
+        "visible": true,
+        "classes": "relative flex h-4 w-4 flex-none items-center justify-start rounded-sm shadow-gray-500 transition-[sh",
+        "innerHTML": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucid"
+      },
+      {
+        "tooltipId": ":r8pc:",
+        "tag": "SPAN",
+        "ariaLabel": null,
+        "visible": true,
+        "classes": "min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-sm opacity-50",
+        "innerHTML": "…\\dev\\anti-crow"
+      },
+      {
+        "tooltipId": ":r8pd:",
+        "tag": "BUTTON",
+        "ariaLabel": null,
+        "visible": true,
+        "classes": "flex h-5 w-5 cursor-pointer items-center justify-center rounded-sm bg-gray-800 p-1 text-white opacit",
+        "innerHTML": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucid"
+      },
+      {
+        "tooltipId": ":r8oe:",
+        "tag": "DIV",
+        "ariaLabel": null,
+        "visible": true,
+        "classes": "relative flex h-4 w-4 flex-none items-center justify-start rounded-sm shadow-gray-500 transition-[sh",
+        "innerHTML": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucid"
+      },
+      {
+        "tooltipId": ":r8of:",
+        "tag": "SPAN",
+        "ariaLabel": null,
+        "visible": true,
+        "classes": "text-xs mx-1 flex flex-row gap-1 whitespace-nowrap font-medium",
+        "innerHTML": "<span class=\"text-green-600\">+1</span><span class=\"text-red-600\">-1</span>"
+      },
+      {
+        "tooltipId": ":r8om:",
+        "tag": "SPAN",
+        "ariaLabel": null,
+        "visible": true,
+        "classes": "min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-sm opacity-50",
+        "innerHTML": "…\\dev\\anti-crow"
+      },
+      {
+        "tooltipId": ":r8on:",
+        "tag": "BUTTON",
+        "ariaLabel": null,
+        "visible": true,
+        "classes": "flex h-5 w-5 cursor-pointer items-center justify-center rounded-sm bg-gray-800 p-1 text-white opacit",
+        "innerHTML": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucid"
+      },
+      {
+        "tooltipId": ":r8os:",
+        "tag": "SPAN",
+        "ariaLabel": null,
+        "visible": true,
+        "classes": "min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-sm opacity-50",
+        "innerHTML": "…\\dev\\anti-crow"
+      },
+      {
+        "tooltipId": ":r8ot:",
+        "tag": "BUTTON",
+        "ariaLabel": null,
+        "visible": true,
+        "classes": "flex h-5 w-5 cursor-pointer items-center justify-center rounded-sm bg-gray-800 p-1 text-white opacit",
+        "innerHTML": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucid"
+      },
+      {
+        "tooltipId": ":r8p9:",
+        "tag": "DIV",
+        "ariaLabel": null,
+        "visible": true,
+        "classes": "relative flex h-4 w-4 flex-none items-center justify-start rounded-sm shadow-gray-500 transition-[sh",
+        "innerHTML": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucid"
+      },
+      {
+        "tooltipId": ":r8pa:",
+        "tag": "SPAN",
+        "ariaLabel": null,
+        "visible": true,
+        "classes": "text-xs mx-1 flex flex-row gap-1 whitespace-nowrap font-medium",
+        "innerHTML": "<span class=\"text-green-600\">+8</span><span class=\"text-red-600\">-2</span>"
+      },
+      {
+        "tooltipId": ":r8ph:",
+        "tag": "SPAN",
+        "ariaLabel": null,
+        "visible": true,
+        "classes": "min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-sm opacity-50",
+        "innerHTML": "…\\dev\\anti-crow"
+      },
+      {
+        "tooltipId": ":r8pi:",
+        "tag": "BUTTON",
+        "ariaLabel": null,
+        "visible": true,
+        "classes": "flex h-5 w-5 cursor-pointer items-center justify-center rounded-sm bg-gray-800 p-1 text-white opacit",
+        "innerHTML": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucid"
+      },
+      {
+        "tooltipId": "tooltip-changesOverview",
+        "tag": "DIV",
+        "ariaLabel": null,
+        "visible": true,
+        "classes": "rounded-xs cursor-pointer p-[2px] hover:bg-gray-500/25",
+        "innerHTML": "<div class=\"relative\"><div class=\"absolute -bottom-0 -right-0 z-10 origin-center rounded-full bg-gray-500 transition-all duration-200 ease-out scale-100 opacity-100 h-2 w-2\"></div><div class=\"absolute"
+      },
+      {
+        "tooltipId": "tooltip-terminal",
+        "tag": "DIV",
+        "ariaLabel": null,
+        "visible": true,
+        "classes": "rounded-xs cursor-pointer p-[2px] hover:bg-gray-500/25",
+        "innerHTML": "<div class=\"relative\"><div class=\"absolute -bottom-0 -right-0 z-10 origin-center rounded-full bg-gray-500 transition-all duration-200 ease-out scale-0 opacity-0 h-2 w-2\"></div><div class=\"absolute -bo"
+      },
+      {
+        "tooltipId": "tooltip-artifacts",
+        "tag": "DIV",
+        "ariaLabel": null,
+        "visible": true,
+        "classes": "rounded-xs cursor-pointer p-[2px] hover:bg-gray-500/25",
+        "innerHTML": "<div class=\"relative\"><div class=\"absolute -bottom-0 -right-0 z-10 origin-center rounded-full bg-gray-500 transition-all duration-200 ease-out scale-100 opacity-100 h-2 w-2\"></div><div class=\"absolute"
+      },
+      {
+        "tooltipId": "audio-tooltip",
+        "tag": "BUTTON",
+        "ariaLabel": "Record voice memo",
+        "visible": true,
+        "classes": "flex items-center justify-center p-1 rounded-full transition-colors hover:bg-gray-500/20 opacity-50 ",
+        "innerHTML": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucid"
+      },
+      {
+        "tooltipId": "input-send-button-cancel-tooltip",
+        "tag": "DIV",
+        "ariaLabel": null,
+        "visible": true,
+        "classes": "bg-gray-500/20 hover:bg-gray-500/30 w-6 h-6 rounded-full cursor-pointer flex items-center justify-ce",
+        "innerHTML": "<div class=\"bg-red-500 w-[0.625rem] h-[0.625rem] rounded-xs\"></div>"
+      }
+    ],
+    "nearbyButtons": [
+      {
+        "index": 0,
+        "ariaLabel": null,
+        "title": null,
+        "text": "Review Changes",
+        "visible": true,
+        "classes": "cursor-pointer rounded px-1 py-0.5 text-xs font-medium",
+        "tooltipId": null,
+        "dataAttrs": "",
+        "hasSvg": false,
+        "hasSvgRect": false,
+        "hasSvgPath": false,
+        "hasSvgCircle": false,
+        "outerHTML": "<button class=\"cursor-pointer rounded px-1 py-0.5 text-xs font-medium\">Review Changes</button>"
+      },
+      {
+        "index": 1,
+        "ariaLabel": null,
+        "title": null,
+        "text": "",
+        "visible": true,
+        "classes": "p-1 rounded-full hover:bg-gray-500/20 cursor-pointer opacity-70",
+        "tooltipId": null,
+        "dataAttrs": "",
+        "hasSvg": true,
+        "hasSvgRect": false,
+        "hasSvgPath": true,
+        "hasSvgCircle": false,
+        "outerHTML": "<button class=\"p-1 rounded-full hover:bg-gray-500/20 cursor-pointer opacity-70\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-plus\" aria-hidden=\"true\"><path d=\"M5 12h14\"></path><path d=\"M12 5v14\"></path></svg></button>"
+      },
+      {
+        "index": 2,
+        "ariaLabel": null,
+        "title": null,
+        "text": "Planning",
+        "visible": true,
+        "classes": "py-1 pl-1 pr-2 flex items-center gap-0.5 rounded-md hover:bg-gray-500/20 cursor-pointer opacity-70",
+        "tooltipId": null,
+        "dataAttrs": "",
+        "hasSvg": true,
+        "hasSvgRect": false,
+        "hasSvgPath": true,
+        "hasSvgCircle": false,
+        "outerHTML": "<button class=\"py-1 pl-1 pr-2 flex items-center gap-0.5 rounded-md hover:bg-gray-500/20 cursor-pointer opacity-70\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-chevron-up size-4 stroke-1\" aria-hidden=\"true\"><path d=\"m18 15-6-6-6 6\"></path></svg><span class=\"text-xs select-none\">Planning</span></button>"
+      },
+      {
+        "index": 3,
+        "ariaLabel": null,
+        "title": null,
+        "text": "Claude Opus 4.6 (Thinking)",
+        "visible": true,
+        "classes": "relative flex min-w-0 max-w-full cursor-pointer flex-row items-center justify-start gap-x-0.5 rounde",
+        "tooltipId": null,
+        "dataAttrs": "data-headlessui-state=",
+        "hasSvg": true,
+        "hasSvgRect": false,
+        "hasSvgPath": true,
+        "hasSvgCircle": false,
+        "outerHTML": "<button class=\"relative flex min-w-0 max-w-full cursor-pointer flex-row items-center justify-start gap-x-0.5 rounded-md py-1 pr-2 pl-1 text-ide-text-color outline-none hover:bg-gray-500/20\" type=\"button\" aria-expanded=\"false\" data-headlessui-state=\"\" aria-controls=\"headlessui-popover-panel-:r3:\" id=\"headlessui-popover-button-:r1:\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-lin"
+      },
+      {
+        "index": 4,
+        "ariaLabel": "Record voice memo",
+        "title": null,
+        "text": "",
+        "visible": true,
+        "classes": "flex items-center justify-center p-1 rounded-full transition-colors hover:bg-gray-500/20 opacity-50 ",
+        "tooltipId": "audio-tooltip",
+        "dataAttrs": "data-tooltip-id=audio-tooltip",
+        "hasSvg": true,
+        "hasSvgRect": true,
+        "hasSvgPath": true,
+        "hasSvgCircle": false,
+        "outerHTML": "<button data-tooltip-id=\"audio-tooltip\" class=\"flex items-center justify-center p-1 rounded-full transition-colors hover:bg-gray-500/20 opacity-50 cursor-not-allowed\" aria-label=\"Record voice memo\" disabled=\"\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-mic w-4 h-4\" aria-hidden=\"true\"><path d=\"M12 19v3\"></path><path d=\"M19 10v2a7 7 0 0 1-14"
+      }
+    ],
+    "allButtons": [
+      {
+        "index": 0,
+        "ariaLabel": null,
+        "tooltipId": "cascade-header-menu",
+        "title": null,
+        "visible": true,
+        "hasSvg": true,
+        "hasSvgRect": false,
+        "text": "",
+        "classes": "group relative flex cursor-pointer items-center justify-center",
+        "dataAttrs": "data-tooltip-id=cascade-header-menu, data-headlessui-state="
+      },
+      {
+        "index": 1,
+        "ariaLabel": null,
+        "tooltipId": null,
+        "title": null,
+        "visible": true,
+        "hasSvg": true,
+        "hasSvgRect": false,
+        "text": "Thought for 1s",
+        "classes": "flex w-full items-center gap-2 text-left text-sm text-ide-text-color opacity-70 ",
+        "dataAttrs": ""
+      },
+      {
+        "index": 2,
+        "ariaLabel": null,
+        "tooltipId": ":r8pd:",
+        "title": null,
+        "visible": true,
+        "hasSvg": true,
+        "hasSvgRect": true,
+        "text": "",
+        "classes": "flex h-5 w-5 cursor-pointer items-center justify-center rounded-sm bg-gray-800 p",
+        "dataAttrs": "data-tooltip-id=:r8pd:"
+      },
+      {
+        "index": 3,
+        "ariaLabel": null,
+        "tooltipId": null,
+        "title": null,
+        "visible": true,
+        "hasSvg": true,
+        "hasSvgRect": false,
+        "text": "Always run",
+        "classes": "flex cursor-pointer items-center gap-1 rounded-sm px-1 py-0.5 text-sm hover:bg-g",
+        "dataAttrs": "data-headlessui-state="
+      },
+      {
+        "index": 4,
+        "ariaLabel": null,
+        "tooltipId": null,
+        "title": null,
+        "visible": true,
+        "hasSvg": false,
+        "hasSvgRect": false,
+        "text": "Cancel",
+        "classes": "cursor-pointer text-sm opacity-70 transition-opacity hover:opacity-100",
+        "dataAttrs": ""
+      },
+      {
+        "index": 5,
+        "ariaLabel": null,
+        "tooltipId": ":r8on:",
+        "title": null,
+        "visible": true,
+        "hasSvg": true,
+        "hasSvgRect": true,
+        "text": "",
+        "classes": "flex h-5 w-5 cursor-pointer items-center justify-center rounded-sm bg-gray-800 p",
+        "dataAttrs": "data-tooltip-id=:r8on:"
+      },
+      {
+        "index": 6,
+        "ariaLabel": null,
+        "tooltipId": null,
+        "title": null,
+        "visible": true,
+        "hasSvg": true,
+        "hasSvgRect": false,
+        "text": "Always run",
+        "classes": "flex cursor-pointer items-center gap-1 rounded-sm px-1 py-0.5 text-sm hover:bg-g",
+        "dataAttrs": "data-headlessui-state="
+      },
+      {
+        "index": 7,
+        "ariaLabel": null,
+        "tooltipId": ":r8ot:",
+        "title": null,
+        "visible": true,
+        "hasSvg": true,
+        "hasSvgRect": true,
+        "text": "",
+        "classes": "flex h-5 w-5 cursor-pointer items-center justify-center rounded-sm bg-gray-800 p",
+        "dataAttrs": "data-tooltip-id=:r8ot:"
+      },
+      {
+        "index": 8,
+        "ariaLabel": null,
+        "tooltipId": null,
+        "title": null,
+        "visible": true,
+        "hasSvg": true,
+        "hasSvgRect": false,
+        "text": "Always run",
+        "classes": "flex cursor-pointer items-center gap-1 rounded-sm px-1 py-0.5 text-sm hover:bg-g",
+        "dataAttrs": "data-headlessui-state="
+      },
+      {
+        "index": 9,
+        "ariaLabel": null,
+        "tooltipId": ":r8pi:",
+        "title": null,
+        "visible": true,
+        "hasSvg": true,
+        "hasSvgRect": true,
+        "text": "",
+        "classes": "flex h-5 w-5 cursor-pointer items-center justify-center rounded-sm bg-gray-800 p",
+        "dataAttrs": "data-tooltip-id=:r8pi:"
+      },
+      {
+        "index": 10,
+        "ariaLabel": null,
+        "tooltipId": null,
+        "title": null,
+        "visible": true,
+        "hasSvg": true,
+        "hasSvgRect": false,
+        "text": "Always run",
+        "classes": "flex cursor-pointer items-center gap-1 rounded-sm px-1 py-0.5 text-sm hover:bg-g",
+        "dataAttrs": "data-headlessui-state="
+      },
+      {
+        "index": 11,
+        "ariaLabel": null,
+        "tooltipId": null,
+        "title": null,
+        "visible": true,
+        "hasSvg": false,
+        "hasSvgRect": false,
+        "text": "Cancel",
+        "classes": "cursor-pointer text-sm opacity-70 transition-opacity hover:opacity-100",
+        "dataAttrs": ""
+      },
+      {
+        "index": 12,
+        "ariaLabel": "Scroll to bottom",
+        "tooltipId": null,
+        "title": null,
+        "visible": true,
+        "hasSvg": true,
+        "hasSvgRect": false,
+        "text": "",
+        "classes": "z-[100] absolute bottom-2 right-2 flex items-center gap-1 rounded-md border bord",
+        "dataAttrs": ""
+      },
+      {
+        "index": 13,
+        "ariaLabel": null,
+        "tooltipId": null,
+        "title": null,
+        "visible": true,
+        "hasSvg": false,
+        "hasSvgRect": false,
+        "text": "Review Changes",
+        "classes": "cursor-pointer rounded px-1 py-0.5 text-xs font-medium",
+        "dataAttrs": ""
+      },
+      {
+        "index": 14,
+        "ariaLabel": null,
+        "tooltipId": null,
+        "title": null,
+        "visible": true,
+        "hasSvg": true,
+        "hasSvgRect": false,
+        "text": "",
+        "classes": "p-1 rounded-full hover:bg-gray-500/20 cursor-pointer opacity-70",
+        "dataAttrs": ""
+      },
+      {
+        "index": 15,
+        "ariaLabel": null,
+        "tooltipId": null,
+        "title": null,
+        "visible": true,
+        "hasSvg": true,
+        "hasSvgRect": false,
+        "text": "Planning",
+        "classes": "py-1 pl-1 pr-2 flex items-center gap-0.5 rounded-md hover:bg-gray-500/20 cursor-",
+        "dataAttrs": ""
+      },
+      {
+        "index": 16,
+        "ariaLabel": null,
+        "tooltipId": null,
+        "title": null,
+        "visible": true,
+        "hasSvg": true,
+        "hasSvgRect": false,
+        "text": "Claude Opus 4.6 (Thinking)",
+        "classes": "relative flex min-w-0 max-w-full cursor-pointer flex-row items-center justify-st",
+        "dataAttrs": "data-headlessui-state="
+      },
+      {
+        "index": 17,
+        "ariaLabel": "Record voice memo",
+        "tooltipId": "audio-tooltip",
+        "title": null,
+        "visible": true,
+        "hasSvg": true,
+        "hasSvgRect": true,
+        "text": "",
+        "classes": "flex items-center justify-center p-1 rounded-full transition-colors hover:bg-gra",
+        "dataAttrs": "data-tooltip-id=audio-tooltip"
+      }
+    ],
+    "sendAreaButtons": [],
+    "textboxFound": true,
+    "sendBtnFound": false,
+    "timestamp": "2026-02-21T17:02:29.112Z"
+  },
+  "mainIdle": {
+    "tooltipElements": [],
+    "nearbyButtons": [
+      {
+        "index": 0,
+        "ariaLabel": null,
+        "title": null,
+        "text": "Alt+Hreq_1771687025278_113d58ae5c2c_progress.json",
+        "visible": true,
+        "classes": "previous-file secondary",
+        "tooltipId": null,
+        "dataAttrs": "",
+        "hasSvg": false,
+        "hasSvgRect": false,
+        "hasSvgPath": false,
+        "hasSvgCircle": false,
+        "outerHTML": "<button class=\"previous-file secondary\" style=\"\"><span class=\"codicon codicon-chevron-left\"></span><span class=\"shortcut\">Alt+H</span><span>req_1771687025278_113d58ae5c2c_progress.json</span></button>"
+      },
+      {
+        "index": 1,
+        "ariaLabel": null,
+        "title": null,
+        "text": "View 34 edited files",
+        "visible": true,
+        "classes": "center-button secondary",
+        "tooltipId": null,
+        "dataAttrs": "",
+        "hasSvg": false,
+        "hasSvgRect": false,
+        "hasSvgPath": false,
+        "hasSvgCircle": false,
+        "outerHTML": "<button class=\"center-button secondary\"><span>View 34 edited files</span></button>"
+      },
+      {
+        "index": 2,
+        "ariaLabel": null,
+        "title": null,
+        "text": "req_1771687025278_113d58ae5c2c_response.jsonAlt+L",
+        "visible": true,
+        "classes": "next-file secondary",
+        "tooltipId": null,
+        "dataAttrs": "",
+        "hasSvg": false,
+        "hasSvgRect": false,
+        "hasSvgPath": false,
+        "hasSvgCircle": false,
+        "outerHTML": "<button class=\"next-file secondary\"><span>req_1771687025278_113d58ae5c2c_response.json</span><span class=\"shortcut\">Alt+L</span><span class=\"codicon codicon-chevron-right\"></span></button>"
+      }
+    ],
+    "allButtons": [
+      {
+        "index": 0,
+        "ariaLabel": null,
+        "tooltipId": null,
+        "title": null,
+        "visible": true,
+        "hasSvg": false,
+        "hasSvgRect": false,
+        "text": "Alt+Hreq_1771687025278_113d58ae5c2c_progress.json",
+        "classes": "previous-file secondary",
+        "dataAttrs": ""
+      },
+      {
+        "index": 1,
+        "ariaLabel": null,
+        "tooltipId": null,
+        "title": null,
+        "visible": true,
+        "hasSvg": false,
+        "hasSvgRect": false,
+        "text": "View 34 edited files",
+        "classes": "center-button secondary",
+        "dataAttrs": ""
+      },
+      {
+        "index": 2,
+        "ariaLabel": null,
+        "tooltipId": null,
+        "title": null,
+        "visible": true,
+        "hasSvg": false,
+        "hasSvgRect": false,
+        "text": "req_1771687025278_113d58ae5c2c_response.jsonAlt+L",
+        "classes": "next-file secondary",
+        "dataAttrs": ""
+      }
+    ],
+    "sendAreaButtons": [],
+    "textboxFound": true,
+    "sendBtnFound": false,
+    "timestamp": "2026-02-21T17:02:29.118Z"
+  },
+  "cascadeFrameId": "81976DC5A87E099E2E4D4B52B0DDAADB"
+}

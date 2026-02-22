@@ -444,40 +444,17 @@ export class CdpBridge {
     }
 
     /**
-     * Antigravity のキャンセルボタンをクリックして処理を停止する。
-     * 複数戦略を順に試行し、結果を返す。
+     * キャンセルボタン検索用の JS コード。
+     * iframe 内 (evaluateInCascade) とメインフレーム (conn.evaluate) の両方で使い回す。
      */
-    async clickCancelButton(): Promise<string> {
-        const results: string[] = [];
-
-        // 0. VSCode コマンド（UI変更に強いが効かない場合がある）
-        try {
-            await vscode.commands.executeCommand('antigravity.cancelCurrentTask');
-            results.push('vscode-cmd:OK');
-            logDebug('CDP: clickCancelButton — used VSCode command');
-        } catch {
-            results.push('vscode-cmd:FAIL');
-            logDebug('CDP: clickCancelButton — VSCode command not available');
-        }
-
-        // 1. CDP 接続して iframe 内のボタンを探す
-        try {
-            await this.conn.connect();
-        } catch (e) {
-            results.push(`cdp-connect:FAIL(${e instanceof Error ? e.message : e})`);
-            return results.join(', ');
-        }
-
-        // 2. Cascade iframe 内: テキスト入力エリア付近の停止ボタン（赤い■）を JS で探す
-        let buttonClicked = false;
-        try {
-            const stopBtnResult = await this.evaluateInCascade(`
+    private static readonly CANCEL_BUTTON_JS = `
 (function() {
     // 戦略0: data-tooltip-id セレクタ（最も信頼性が高い）
+    // キャンセルボタンは DIV 要素のため offsetParent チェックを緩和（存在すれば即クリック）
     var cancelByTooltip = document.querySelector('[data-tooltip-id="input-send-button-cancel-tooltip"]');
-    if (cancelByTooltip && cancelByTooltip.offsetParent !== null) {
+    if (cancelByTooltip) {
         cancelByTooltip.click();
-        return { found: true, method: 'tooltip-id' };
+        return { found: true, method: 'tooltip-id', tag: cancelByTooltip.tagName, visible: cancelByTooltip.offsetParent !== null };
     }
 
     // 戦略A: textbox の親要素内にある button で SVG rect/stop アイコンを持つもの
@@ -488,7 +465,9 @@ export class CdpBridge {
             var buttons = container.querySelectorAll('button');
             for (var i = 0; i < buttons.length; i++) {
                 var btn = buttons[i];
-                // SVG 内に rect（四角＝停止アイコン）がある、またはクラス/色が赤系のボタン
+                // マイクボタン除外（SVG rect を含むが cancel ボタンではない）
+                if (btn.getAttribute('data-tooltip-id') === 'audio-tooltip') continue;
+                if ((btn.getAttribute('aria-label') || '').toLowerCase().includes('record')) continue;
                 var hasSvgRect = btn.querySelector('svg rect') !== null;
                 var hasSvgStop = btn.querySelector('svg [data-icon="stop"]') !== null || btn.querySelector('svg .stop-icon') !== null;
                 var ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
@@ -505,12 +484,14 @@ export class CdpBridge {
     var allButtons = document.querySelectorAll('button');
     for (var j = 0; j < allButtons.length; j++) {
         var b = allButtons[j];
+        // マイクボタン除外
+        if (b.getAttribute('data-tooltip-id') === 'audio-tooltip') continue;
+        if ((b.getAttribute('aria-label') || '').toLowerCase().includes('record')) continue;
         var rect = b.querySelector('svg rect');
         if (rect) {
             var style = window.getComputedStyle(rect);
             var fill = style.fill || rect.getAttribute('fill') || '';
-            // fill が赤系の場合（red, #f, rgb(2xx,0-50,0-50) 等）
-            if (fill.includes('red') || fill.match(/#[fF]/) || fill.match(/rgb\\(2[0-9]{2},\\s*[0-4]/)) {
+            if (fill.includes('red') || fill.match(/#[fF]/) || fill.match(/rgb\(2[0-9]{2},\s*[0-4]/)) {
                 b.click();
                 return { found: true, method: 'red-svg-rect', fill: fill, ariaLabel: b.getAttribute('aria-label') };
             }
@@ -529,6 +510,7 @@ export class CdpBridge {
     }
 
     // DOM 調査情報を返す（デバッグ用）
+    var cancelTooltipEl = document.querySelector('[data-tooltip-id="input-send-button-cancel-tooltip"]');
     var buttonInfo = [];
     for (var m = 0; m < allButtons.length && m < 20; m++) {
         var bi = allButtons[m];
@@ -538,12 +520,54 @@ export class CdpBridge {
             text: (bi.textContent || '').trim().substring(0, 30),
             hasSvg: bi.querySelector('svg') !== null,
             hasSvgRect: bi.querySelector('svg rect') !== null,
+            tooltipId: bi.getAttribute('data-tooltip-id'),
             classes: bi.className?.substring?.(0, 50) || '',
         });
     }
-    return { found: false, method: 'none', buttonCount: allButtons.length, buttons: buttonInfo };
-})()
-            `) as { found: boolean; method: string;[key: string]: unknown } | null;
+    return {
+        found: false,
+        method: 'none',
+        buttonCount: allButtons.length,
+        buttons: buttonInfo,
+        textboxFound: !!textbox,
+        cancelTooltipExists: !!cancelTooltipEl,
+        cancelTooltipTag: cancelTooltipEl ? cancelTooltipEl.tagName : null,
+        cancelTooltipVisible: cancelTooltipEl ? cancelTooltipEl.offsetParent !== null : null,
+    };
+})()`;
+
+    /**
+     * Antigravity のキャンセルボタンをクリックして処理を停止する。
+     * 複数戦略を順に試行し、結果を返す。
+     */
+    async clickCancelButton(): Promise<string> {
+        const results: string[] = [];
+
+        // 0. VSCode コマンド（UI変更に強いが効かない場合がある）
+        try {
+            await vscode.commands.executeCommand('antigravity.cancelCurrentTask');
+            results.push('vscode-cmd:OK');
+            logDebug('CDP: clickCancelButton — used VSCode command');
+        } catch {
+            results.push('vscode-cmd:FAIL');
+            logDebug('CDP: clickCancelButton — VSCode command not available');
+        }
+
+        // 1. CDP 接続
+        try {
+            await this.conn.connect();
+        } catch (e) {
+            results.push(`cdp-connect:FAIL(${e instanceof Error ? e.message : e})`);
+            return results.join(', ');
+        }
+
+        let buttonClicked = false;
+
+        // 2. Cascade iframe 内でボタンを探す
+        try {
+            const stopBtnResult = await this.evaluateInCascade(
+                CdpBridge.CANCEL_BUTTON_JS,
+            ) as { found: boolean; method: string;[key: string]: unknown } | null;
 
             if (stopBtnResult?.found) {
                 results.push(`cascade-js:OK(${stopBtnResult.method})`);
@@ -556,27 +580,56 @@ export class CdpBridge {
             }
         } catch (e) {
             results.push(`cascade-js:ERROR(${e instanceof Error ? e.message : e})`);
+            logDebug(`CDP: clickCancelButton — evaluateInCascade failed: ${e instanceof Error ? e.message : e}`);
         }
 
-        // 3. フォールバック: aria-label/text ベースの clickElement
+        // 3. メインフレームフォールバック: iframe 外でもボタンを探す
+        if (!buttonClicked) {
+            try {
+                const mainResult = await this.conn.evaluate(
+                    CdpBridge.CANCEL_BUTTON_JS,
+                ) as { found: boolean; method: string;[key: string]: unknown } | null;
+
+                if (mainResult?.found) {
+                    results.push(`main-js:OK(${mainResult.method})`);
+                    logDebug(`CDP: clickCancelButton — stop button found in main frame: ${JSON.stringify(mainResult)}`);
+                    buttonClicked = true;
+                } else {
+                    const debugStr = mainResult ? JSON.stringify(mainResult).substring(0, 200) : 'null';
+                    results.push(`main-js:NOT_FOUND(${debugStr})`);
+                    logDebug(`CDP: clickCancelButton — main frame search result: ${debugStr}`);
+                }
+            } catch (e) {
+                results.push(`main-js:ERROR(${e instanceof Error ? e.message : e})`);
+            }
+        }
+
+        // 4. フォールバック: aria-label/text ベースの clickElement（iframe + メインフレーム両方試行）
         if (!buttonClicked) {
             const stopCandidates: ClickOptions[] = [
+                // iframe 内（tooltip-id セレクタは tag 制約なし — cancel ボタンは DIV 要素のため）
+                { selector: '[data-tooltip-id="input-send-button-cancel-tooltip"]', inCascade: true },
                 { selector: '[aria-label="Cancel"]', tag: 'button', inCascade: true },
                 { selector: '[aria-label="Stop"]', tag: 'button', inCascade: true },
                 { text: 'Cancel', tag: 'button', inCascade: true },
                 { text: 'Stop', tag: 'button', inCascade: true },
+                // メインフレーム（tooltip-id セレクタは tag 制約なし）
+                { selector: '[data-tooltip-id="input-send-button-cancel-tooltip"]', inCascade: false },
+                { selector: '[aria-label="Cancel"]', tag: 'button', inCascade: false },
+                { selector: '[aria-label="Stop"]', tag: 'button', inCascade: false },
             ];
             for (const candidate of stopCandidates) {
                 try {
                     const result = await this.clickElement(candidate);
                     if (result.success) {
                         const label = candidate.selector || candidate.text || '';
-                        results.push(`button:OK(${label})`);
-                        logDebug(`CDP: clickCancelButton — button clicked (${label})`);
+                        const scope = candidate.inCascade ? 'cascade' : 'main';
+                        results.push(`button:OK(${scope}:${label})`);
+                        logDebug(`CDP: clickCancelButton — button clicked (${scope}:${label})`);
                         buttonClicked = true;
                         break;
                     }
-                } catch (e) {
+                } catch {
                     // continue to next candidate
                 }
             }
@@ -585,7 +638,7 @@ export class CdpBridge {
             }
         }
 
-        // 3. フォールバック: Escape キーを送信
+        // 5. 最終フォールバック: Escape キーを送信
         if (!buttonClicked) {
             try {
                 await this.conn.send('Input.dispatchKeyEvent', {

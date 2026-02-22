@@ -4,3 +4,4 @@ out/
 .vscode-test/
 .licensing-setup.json
 convex/_generated/
+.env

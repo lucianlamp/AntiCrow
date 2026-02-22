@@ -16,7 +16,9 @@ import { initLogger, logInfo, logDebug, logError, disposeLogger } from './logger
 import { BridgeContext } from './bridgeContext';
 import { startBridge, stopBridge, updateStatusBar } from './bridgeLifecycle';
 import { checkAndOfferShortcut, createDesktopShortcut } from './shortcutInstaller';
-import { LicenseChecker, LicenseGate, LicenseStatusBar, registerLicenseCommands } from './licensing';
+import { LicenseChecker, LicenseGate, registerLicenseCommands } from './licensing';
+import { isDeveloper } from './accessControl';
+import { getAllowedUserIds } from './configHelper';
 
 // ---------------------------------------------------------------------------
 // グローバル BridgeContext
@@ -39,15 +41,26 @@ const ctx: BridgeContext = {
 
     lockWatchTimer: null,
     categoryWatchTimer: null,
-    autoOperationWatcherTimer: null,
+    autoAcceptWatcherTimer: null,
     healthCheckTimer: null,
     cleanupTimer: null,
+    setLicenseKeyFn: null,
+    getTrialDaysRemaining: null,
 };
 
 // ライセンスモジュールのインスタンス
 let licenseChecker: LicenseChecker | null = null;
 let licenseGate: LicenseGate | null = null;
-let licenseStatusBar: LicenseStatusBar | null = null;
+
+/** ライセンスゲートへのアクセサ（bridgeLifecycle 等から利用） */
+export function getLicenseGate(): LicenseGate | null {
+    return licenseGate;
+}
+
+/** ライセンスチェッカーへのアクセサ（bridgeLifecycle でライセンス表示に利用） */
+export function getLicenseChecker(): LicenseChecker | null {
+    return licenseChecker;
+}
 
 // =====================================================================
 // activate
@@ -66,30 +79,62 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(ctx.statusBarItem);
 
     // -----------------------------------------------------------------
-    // ライセンスモジュール初期化
+    // ライセンスモジュール初期化（Lemonsqueezy）
     // -----------------------------------------------------------------
-    const convexUrl = vscode.workspace.getConfiguration('antiCrow').get<string>('convexUrl') || '';
-    if (convexUrl) {
-        licenseChecker = new LicenseChecker(convexUrl);
-        licenseGate = new LicenseGate(licenseChecker);
-        licenseStatusBar = new LicenseStatusBar(licenseChecker);
-        context.subscriptions.push({ dispose: () => licenseStatusBar?.dispose() });
+    licenseChecker = new LicenseChecker();
+    licenseChecker.setGlobalState(context.globalState);
+    licenseGate = new LicenseGate(licenseChecker);
+    // ライセンス変更時にステータスバーを再描画（LicenseStatusBar を廃止し統合）
+    licenseChecker.onChange(() => {
+        // updateStatusBar は bridgeLifecycle から import するが、
+        // activate 時点では Bridge 未起動の可能性があるため遅延 import
+        import('./bridgeLifecycle').then(({ updateStatusBar }) => {
+            updateStatusBar(ctx);
+        }).catch(() => { /* ignore */ });
+    });
 
-        // Clerk ID を SecretStorage から復元
-        context.secrets.get('clerk-user-id').then((clerkId) => {
-            if (clerkId) {
-                licenseChecker!.setClerkId(clerkId);
-                licenseChecker!.startAutoCheck();
-                logDebug(`License: restored Clerk ID from SecretStorage`);
-            }
-        });
+    // SecretStorage からライセンスキーを復元
+    context.secrets.get('license-key').then((key) => {
+        if (key) {
+            licenseChecker!.setLicenseKey(key);
+            licenseChecker!.startAutoCheck();
+            logDebug('License: restored key from SecretStorage');
+        } else {
+            logDebug('License: no key found (Free plan)');
+        }
+    });
 
-        registerLicenseCommands(context, licenseChecker);
-        logDebug(`License: module initialized`);
-    } else {
-        logDebug('License: skipped (convexUrl not configured)');
+    registerLicenseCommands(context, licenseChecker);
+
+    // 開発者オーバーライド: allowedUserIds に開発者IDが含まれていれば全機能解放
+    const allowedIds = getAllowedUserIds();
+    const hasDeveloper = allowedIds.some(id => isDeveloper(id));
+    if (hasDeveloper) {
+        licenseGate.setDeveloperOverride(true);
+        logDebug('License: developer override enabled (developer ID detected in allowedUserIds)');
     }
 
+    logDebug('License: module initialized (Lemonsqueezy)');
+
+    // Discord からのライセンスキー設定コールバックを BridgeContext に登録
+    ctx.setLicenseKeyFn = async (key: string) => {
+        if (!licenseChecker) throw new Error('LicenseChecker not initialized');
+        // SecretStorage に保存
+        await context.secrets.store('license-key', key);
+        await vscode.workspace.getConfiguration('antiCrow')
+            .update('licenseKey', true, vscode.ConfigurationTarget.Global);
+        // メモリ上のキーを更新
+        licenseChecker.setLicenseKey(key);
+        // 即座に検証
+        const status = await licenseChecker.check(true);
+        if (status.valid && status.type !== 'free') {
+            licenseChecker.startAutoCheck();
+        }
+        return { valid: status.valid, planType: status.type };
+    };
+
+    // トライアル残り日数を取得するコールバックを BridgeContext に登録
+    ctx.getTrialDaysRemaining = () => licenseChecker?.getTrialDaysRemaining();
 
 
     // -----------------------------------------------------------------
@@ -262,10 +307,8 @@ export function activate(context: vscode.ExtensionContext) {
 
 export async function deactivate(): Promise<void> {
     licenseChecker?.dispose();
-    licenseStatusBar?.dispose();
     licenseChecker = null;
     licenseGate = null;
-    licenseStatusBar = null;
 
     await stopBridge(ctx);
     disposeLogger();

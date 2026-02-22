@@ -18,6 +18,8 @@ export const EmbedColor = {
     Progress: 0x00BEBE,
     /** 最終レスポンス (Purple) */
     Response: 0x8D3ED9,
+    /** 提案 (Orange) */
+    Suggest: 0xF5A623,
 } as const;
 
 export type EmbedColorValue = (typeof EmbedColor)[keyof typeof EmbedColor];

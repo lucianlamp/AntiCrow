@@ -27,39 +27,49 @@ const FIND_MODEL_BUTTON = `
     if (textbox) {
         _findDebug.textboxFound = true;
         var container = textbox.parentElement;
+
+        // primary: textbox 兄弟方向で p タグを持つ button を探す（モデル名が p タグ内に表示される）
         for (var d = 0; d < 5; d++) {
             if (!container) break;
             _findDebug.levelsSearched = d + 1;
             var sibling = container.nextElementSibling;
             while (sibling) {
                 _findDebug.siblingsChecked++;
-                var _btn = sibling.querySelector('button[class*="relative"][class*="flex"][class*="cursor-pointer"]');
-                if (_btn) { modelBtn = _btn; break; }
+                var btns = sibling.querySelectorAll('button');
+                _findDebug.buttonsFound += btns.length;
+                for (var b = 0; b < btns.length; b++) {
+                    var pEl = btns[b].querySelector('p');
+                    if (pEl && (pEl.textContent || '').trim().length > 0) {
+                        modelBtn = btns[b];
+                        break;
+                    }
+                }
+                if (modelBtn) break;
                 sibling = sibling.nextElementSibling;
             }
             if (modelBtn) break;
             container = container.parentElement;
         }
 
-        // フォールバック: セレクタが合わない場合、textbox 近傍の button で p タグを持つものを探す
+        // フォールバック: previousElementSibling 方向も探す
         if (!modelBtn) {
             _findDebug.fallbackUsed = true;
             container = textbox.parentElement;
             for (var d2 = 0; d2 < 5; d2++) {
                 if (!container) break;
-                var sibling2 = container.nextElementSibling;
+                var sibling2 = container.previousElementSibling;
                 while (sibling2) {
-                    var btns = sibling2.querySelectorAll('button');
-                    _findDebug.buttonsFound += btns.length;
-                    for (var b = 0; b < btns.length; b++) {
-                        var pEl = btns[b].querySelector('p');
-                        if (pEl && (pEl.textContent || '').trim().length > 0) {
-                            modelBtn = btns[b];
+                    var btns2 = sibling2.querySelectorAll('button');
+                    _findDebug.buttonsFound += btns2.length;
+                    for (var b2 = 0; b2 < btns2.length; b2++) {
+                        var pEl2 = btns2[b2].querySelector('p');
+                        if (pEl2 && (pEl2.textContent || '').trim().length > 0) {
+                            modelBtn = btns2[b2];
                             break;
                         }
                     }
                     if (modelBtn) break;
-                    sibling2 = sibling2.nextElementSibling;
+                    sibling2 = sibling2.previousElementSibling;
                 }
                 if (modelBtn) break;
                 container = container.parentElement;
@@ -192,49 +202,49 @@ export async function getAvailableModels(
         const listScript = `
 (function() {
     var items = [];
-    var debugInfo = { dropdownsFound: 0, headerFound: false, labelsFound: 0, fallbackUsed: false };
+    var debugInfo = { dropdownsFound: 0, headerFound: false, labelsFound: 0, fallbackUsed: false, newSelectorUsed: false };
 
-    var dropdowns = document.querySelectorAll('div[class*="absolute"][class*="overflow-y-auto"][class*="rounded-lg"][class*="border"]');
-    debugInfo.dropdownsFound = dropdowns.length;
-    var ddRoot = null;
-    for (var d = 0; d < dropdowns.length; d++) {
-        var headerCheck = dropdowns[d].querySelector('div[class*="opacity-80"]');
-        if (headerCheck && (headerCheck.textContent || '').trim() === 'Model') {
-            ddRoot = dropdowns[d];
-            debugInfo.headerFound = true;
+    // 新しい UI 構造: z-50 rounded-md border shadow-md のドロップダウン
+    var ddNew = document.querySelectorAll('div[class*="z-50"][class*="rounded-md"][class*="border"][class*="shadow-md"]');
+    for (var dn = 0; dn < ddNew.length; dn++) {
+        var modelRows = ddNew[dn].querySelectorAll('div[class*="cursor-pointer"][class*="px-2"][class*="py-1"]');
+        for (var mr = 0; mr < modelRows.length; mr++) {
+            var fontMedium = modelRows[mr].querySelector('div[class*="font-medium"]');
+            if (fontMedium) {
+                var text = (fontMedium.textContent || '').trim();
+                if (text.length > 0 && text.length < 100) {
+                    items.push(text);
+                }
+            }
+        }
+        if (items.length > 0) {
+            debugInfo.newSelectorUsed = true;
+            debugInfo.dropdownsFound = ddNew.length;
+            debugInfo.labelsFound = items.length;
             break;
         }
     }
 
-    if (ddRoot) {
-        var modelLabels = ddRoot.querySelectorAll('p[class*="overflow-hidden"][class*="text-ellipsis"][class*="whitespace-nowrap"]');
-        debugInfo.labelsFound = modelLabels.length;
-        for (var i = 0; i < modelLabels.length; i++) {
-            var text = (modelLabels[i].textContent || '').trim();
-            if (text.length > 0 && text.length < 100) {
-                items.push(text);
-            }
-        }
-    }
-
+    // フォールバック: 旧 UI 構造 (absolute + overflow-y-auto + "Model" ヘッダー)
     if (items.length === 0) {
         debugInfo.fallbackUsed = true;
-        var allDivs = document.querySelectorAll('div');
-        for (var j = 0; j < allDivs.length; j++) {
-            var directText = '';
-            for (var c = 0; c < allDivs[j].childNodes.length; c++) {
-                if (allDivs[j].childNodes[c].nodeType === 3) directText += allDivs[j].childNodes[c].textContent;
-            }
-            if (directText.trim() === 'Model' && allDivs[j].className.includes('opacity-80')) {
-                var listContainer = allDivs[j].nextElementSibling;
-                if (listContainer) {
-                    var labels = listContainer.querySelectorAll('p[class*="text-ellipsis"]');
-                    for (var l = 0; l < labels.length; l++) {
-                        var lText = (labels[l].textContent || '').trim();
-                        if (lText.length > 0 && lText.length < 100) items.push(lText);
-                    }
-                }
+        var dropdowns = document.querySelectorAll('div[class*="absolute"][class*="overflow-y-auto"][class*="rounded-lg"][class*="border"]');
+        debugInfo.dropdownsFound = dropdowns.length;
+        var ddRoot = null;
+        for (var d = 0; d < dropdowns.length; d++) {
+            var headerCheck = dropdowns[d].querySelector('div[class*="opacity-80"]');
+            if (headerCheck && (headerCheck.textContent || '').trim() === 'Model') {
+                ddRoot = dropdowns[d];
+                debugInfo.headerFound = true;
                 break;
+            }
+        }
+        if (ddRoot) {
+            var modelLabels = ddRoot.querySelectorAll('p[class*="overflow-hidden"][class*="text-ellipsis"][class*="whitespace-nowrap"]');
+            debugInfo.labelsFound = modelLabels.length;
+            for (var i = 0; i < modelLabels.length; i++) {
+                var t = (modelLabels[i].textContent || '').trim();
+                if (t.length > 0 && t.length < 100) items.push(t);
             }
         }
     }
@@ -339,7 +349,22 @@ export async function selectModel(
     var targetModel = ${JSON.stringify(modelName)};
     var targetLower = targetModel.toLowerCase();
 
-    // ドロップダウンルートを特定
+    // 新しい UI 構造: z-50 rounded-md border shadow-md
+    var ddNew = document.querySelectorAll('div[class*="z-50"][class*="rounded-md"][class*="border"][class*="shadow-md"]');
+    for (var dn = 0; dn < ddNew.length; dn++) {
+        var modelRows = ddNew[dn].querySelectorAll('div[class*="cursor-pointer"][class*="px-2"][class*="py-1"]');
+        for (var i = 0; i < modelRows.length; i++) {
+            var fontMedium = modelRows[i].querySelector('div[class*="font-medium"]');
+            if (!fontMedium) continue;
+            var mText = (fontMedium.textContent || '').trim().toLowerCase();
+            if (mText === targetLower || mText.includes(targetLower) || targetLower.includes(mText)) {
+                modelRows[i].click();
+                return { success: true, selected: (fontMedium.textContent || '').trim() };
+            }
+        }
+    }
+
+    // フォールバック: 旧 UI 構造
     var dropdowns = document.querySelectorAll('div[class*="absolute"][class*="overflow-y-auto"][class*="rounded-lg"][class*="border"]');
     var ddRoot = null;
     for (var d = 0; d < dropdowns.length; d++) {
@@ -349,18 +374,16 @@ export async function selectModel(
             break;
         }
     }
-
-    if (!ddRoot) return { success: false, error: 'dropdown not found' };
-
-    // cursor-pointer を持つモデル行を検索
-    var modelRows = ddRoot.querySelectorAll('div[class*="cursor-pointer"][class*="px-2"][class*="py-1"]');
-    for (var i = 0; i < modelRows.length; i++) {
-        var p = modelRows[i].querySelector('p[class*="text-ellipsis"]');
-        if (!p) continue;
-        var pText = (p.textContent || '').trim().toLowerCase();
-        if (pText === targetLower || pText.includes(targetLower) || targetLower.includes(pText)) {
-            modelRows[i].click();
-            return { success: true, selected: (p.textContent || '').trim() };
+    if (ddRoot) {
+        var oldRows = ddRoot.querySelectorAll('div[class*="cursor-pointer"][class*="px-2"][class*="py-1"]');
+        for (var j = 0; j < oldRows.length; j++) {
+            var p = oldRows[j].querySelector('p[class*="text-ellipsis"]');
+            if (!p) continue;
+            var pText = (p.textContent || '').trim().toLowerCase();
+            if (pText === targetLower || pText.includes(targetLower) || targetLower.includes(pText)) {
+                oldRows[j].click();
+                return { success: true, selected: (p.textContent || '').trim() };
+            }
         }
     }
 

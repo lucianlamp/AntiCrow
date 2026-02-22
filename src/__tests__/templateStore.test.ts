@@ -21,7 +21,7 @@ vi.mock('vscode', () => ({
     },
 }));
 
-import { TemplateStore } from '../templateStore';
+import { TemplateStore, parseTemplateArgs } from '../templateStore';
 
 const TEST_DIR = path.join(__dirname, '__templatestore_test_tmp__');
 
@@ -169,6 +169,113 @@ describe('TemplateStore', () => {
         it('should return string as-is when no variables present', () => {
             const result = TemplateStore.expandVariables('No variables here');
             expect(result).toBe('No variables here');
+        });
+
+        it('should expand user-defined args when provided', () => {
+            const result = TemplateStore.expandVariables(
+                'Check {{contract_address}} on {{chain}}',
+                { contract_address: '0xABC', chain: 'solana' },
+            );
+            expect(result).toBe('Check 0xABC on solana');
+        });
+
+        it('should expand both builtin and user args together', () => {
+            const result = TemplateStore.expandVariables(
+                '{{date}} - {{project}} report',
+                { project: 'anti-crow' },
+            );
+            expect(result).toMatch(/\d{4}-\d{2}-\d{2} - anti-crow report/);
+        });
+
+        it('should leave unresolved user args untouched', () => {
+            const result = TemplateStore.expandVariables(
+                '{{foo}} and {{bar}}',
+                { foo: 'hello' },
+            );
+            expect(result).toBe('hello and {{bar}}');
+        });
+
+        it('should handle empty userArgs object', () => {
+            const result = TemplateStore.expandVariables('Hello {{name}}!', {});
+            expect(result).toBe('Hello {{name}}!');
+        });
+    });
+
+    // ----- parseTemplateArgs -----
+
+    describe('parseTemplateArgs', () => {
+        it('should detect user-defined args from prompt', () => {
+            const args = parseTemplateArgs('Check {{contract_address}} on {{chain}}');
+            expect(args.length).toBe(2);
+            expect(args[0].name).toBe('contract_address');
+            expect(args[1].name).toBe('chain');
+        });
+
+        it('should exclude builtin date/time variables', () => {
+            const args = parseTemplateArgs('{{date}} report for {{project}}');
+            expect(args.length).toBe(1);
+            expect(args[0].name).toBe('project');
+        });
+
+        it('should exclude all builtin variables', () => {
+            const args = parseTemplateArgs('{{date}} {{time}} {{datetime}} {{year}} {{month}} {{day}}');
+            expect(args.length).toBe(0);
+        });
+
+        it('should deduplicate repeated args', () => {
+            const args = parseTemplateArgs('{{x}} then {{y}} then {{x}} again');
+            expect(args.length).toBe(2);
+            expect(args.map(a => a.name)).toEqual(['x', 'y']);
+        });
+
+        it('should return empty array when no args present', () => {
+            const args = parseTemplateArgs('Plain prompt with no variables');
+            expect(args.length).toBe(0);
+        });
+
+        it('should return empty array for builtin-only prompt', () => {
+            const args = parseTemplateArgs('Today is {{date}} at {{time}}');
+            expect(args.length).toBe(0);
+        });
+
+        it('should set required=true by default', () => {
+            const args = parseTemplateArgs('{{foo}}');
+            expect(args[0].required).toBe(true);
+        });
+
+        it('should set label same as name by default', () => {
+            const args = parseTemplateArgs('{{my_var}}');
+            expect(args[0].label).toBe('my_var');
+        });
+    });
+
+    // ----- save with args auto-detection -----
+
+    describe('save with args auto-detection', () => {
+        it('should auto-detect args on save', () => {
+            const store = new TemplateStore(TEST_DIR);
+            store.save('dex-check', 'Check {{contract_address}} on DEX');
+            const tmpl = store.get('dex-check');
+            expect(tmpl!.args).toBeDefined();
+            expect(tmpl!.args!.length).toBe(1);
+            expect(tmpl!.args![0].name).toBe('contract_address');
+        });
+
+        it('should not add args field when no user args detected', () => {
+            const store = new TemplateStore(TEST_DIR);
+            store.save('daily', 'Daily report for {{date}}');
+            const tmpl = store.get('daily');
+            expect(tmpl!.args).toBeUndefined();
+        });
+
+        it('should persist args across reload', () => {
+            const store1 = new TemplateStore(TEST_DIR);
+            store1.save('reloaded', 'Project {{name}} status');
+
+            const store2 = new TemplateStore(TEST_DIR);
+            const tmpl = store2.get('reloaded');
+            expect(tmpl!.args).toBeDefined();
+            expect(tmpl!.args![0].name).toBe('name');
         });
     });
 });
