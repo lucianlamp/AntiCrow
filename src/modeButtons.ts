@@ -36,8 +36,14 @@ export function buildModeListEmbed(
 
     // モード一覧をフィールドに追加
     if (modes.length > 0) {
+        const normalizedCurrent = currentMode?.trim().toLowerCase() || '';
         const modeList = modes.map((m) => {
-            const isCurrent = currentMode && m.toLowerCase().includes(currentMode.toLowerCase());
+            const mLower = m.trim().toLowerCase();
+            const isCurrent = normalizedCurrent.length > 0 && (
+                mLower === normalizedCurrent ||
+                mLower.includes(normalizedCurrent) ||
+                normalizedCurrent.includes(mLower)
+            );
             return `${isCurrent ? '✅' : '⬜'} ${m}`;
         }).join('\n');
 
@@ -51,6 +57,7 @@ export function buildModeListEmbed(
     const components: ActionRowBuilder<ButtonBuilder>[] = [];
 
     // モードを5個ずつの ActionRow にまとめる
+    const normalizedCurrentBtn = currentMode?.trim().toLowerCase() || '';
     const displayModes = modes.slice(0, 20);
     for (let i = 0; i < displayModes.length; i += 5) {
         if (components.length >= 4) break; // リフレッシュ用に1行確保
@@ -59,7 +66,12 @@ export function buildModeListEmbed(
         const chunk = displayModes.slice(i, i + 5);
 
         for (const mode of chunk) {
-            const isCurrent = currentMode && mode.toLowerCase().includes(currentMode.toLowerCase());
+            const modeLower = mode.trim().toLowerCase();
+            const isCurrent = normalizedCurrentBtn.length > 0 && (
+                modeLower === normalizedCurrentBtn ||
+                modeLower.includes(normalizedCurrentBtn) ||
+                normalizedCurrentBtn.includes(modeLower)
+            );
             const shortName = mode.substring(0, 80);
 
             row.addComponents(

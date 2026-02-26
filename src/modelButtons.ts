@@ -74,8 +74,14 @@ export function buildModelListEmbed(
 
     // モデル一覧をフィールドに追加
     if (models.length > 0) {
+        const normalizedCurrent = currentModel?.trim().toLowerCase() || '';
         const modelList = models.map((m) => {
-            const isCurrent = currentModel && m.toLowerCase().includes(currentModel.toLowerCase());
+            const mLower = m.trim().toLowerCase();
+            const isCurrent = normalizedCurrent.length > 0 && (
+                mLower === normalizedCurrent ||
+                mLower.includes(normalizedCurrent) ||
+                normalizedCurrent.includes(mLower)
+            );
             const q = findQuota(m, quotas);
             const quotaStr = q ? ` ${quotaEmoji(q.remainingPercentage)} ${q.remainingPercentage}%${formatResetTime(q)}` : '';
             return `${isCurrent ? '✅' : '⬜'} ${m}${quotaStr}`;
@@ -91,6 +97,7 @@ export function buildModelListEmbed(
     const components: ActionRowBuilder<ButtonBuilder>[] = [];
 
     // モデルを5個ずつの ActionRow にまとめる（1行5ボタン × 最大4行 = 20モデル）
+    const normalizedCurrentBtn = currentModel?.trim().toLowerCase() || '';
     const displayModels = models.slice(0, 20); // Discord 上限を考慮
     for (let i = 0; i < displayModels.length; i += 5) {
         if (components.length >= 4) break; // リフレッシュ用に1行確保
@@ -99,7 +106,12 @@ export function buildModelListEmbed(
         const chunk = displayModels.slice(i, i + 5);
 
         for (const model of chunk) {
-            const isCurrent = currentModel && model.toLowerCase().includes(currentModel.toLowerCase());
+            const modelLower = model.trim().toLowerCase();
+            const isCurrent = normalizedCurrentBtn.length > 0 && (
+                modelLower === normalizedCurrentBtn ||
+                modelLower.includes(normalizedCurrentBtn) ||
+                normalizedCurrentBtn.includes(modelLower)
+            );
             // customId は100文字制限があるため、モデル名をハッシュ化せず短縮
             const shortName = model.substring(0, 80);
 

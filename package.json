@@ -83,11 +83,6 @@
           "default": false,
           "markdownDescription": "Bot Token 設定状態（SecretStorage に暗号化保存）。\n\nトークンを設定するには、コマンドパレット（`Ctrl+Shift+P`）から **[AntiCrow: Set Bot Token](command:anti-crow.setToken)** を実行してください。\n\n設定完了後、このチェックボックスは自動的にオンになります。"
         },
-        "antiCrow.timezone": {
-          "type": "string",
-          "default": "",
-          "description": "CRON実行のタイムゾーン（IANA形式）。空の場合はOSの設定から自動取得します。"
-        },
         "antiCrow.responseTimeoutMs": {
           "type": "number",
           "default": 1800000,
@@ -97,11 +92,6 @@
           "type": "boolean",
           "default": true,
           "description": "VS Code起動時に自動でブリッジを開始する"
-        },
-        "antiCrow.clientId": {
-          "type": "string",
-          "default": "",
-          "description": "Discord Application の Client ID（スラッシュコマンド登録に必要）。Developer Portal で確認できます。"
         },
         "antiCrow.categoryArchiveDays": {
           "type": "number",

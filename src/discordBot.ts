@@ -306,6 +306,11 @@ export class DiscordBot {
         return this.ready;
     }
 
+    /** Bot の Application ID (= client.user.id) を返す。ログイン前は null */
+    getClientId(): string | null {
+        return this.client.user?.id ?? null;
+    }
+
     /** 最初の Guild を返す */
     getFirstGuild(): import('discord.js').Guild | null {
         return this.client.guilds.cache.first() || null;

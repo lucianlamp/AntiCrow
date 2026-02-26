@@ -210,8 +210,8 @@ async function promoteToBotOwner(
         }
     }
 
-    // スラッシュコマンド登録
-    const clientId = getClientId();
+    // スラッシュコマンド登録（clientId は設定値 → bot.getClientId() の順でフォールバック）
+    const clientId = getClientId() || ctx.bot.getClientId() || '';
     if (clientId) {
         const guild = ctx.bot.getFirstGuild();
         if (guild) {

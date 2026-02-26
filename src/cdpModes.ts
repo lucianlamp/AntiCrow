@@ -400,22 +400,66 @@ export async function getAvailableModes(
         }
     }
 
-    return { items: items, debug: debugInfo };
+    // アクティブモード検出: 背景色付きやチェックマーク付きの項目を検出
+    var activeMode = null;
+    // 新 UI: bg- クラスを持つアクティブな行のテキストを取得
+    if (ddNew.length > 0) {
+        for (var an = 0; an < ddNew.length; an++) {
+            var activeRows = findAllInTree(ddNew[an], function(el) {
+                if (el.tagName !== 'DIV') return false;
+                var c = typeof el.className === 'string' ? el.className : '';
+                return c.indexOf('cursor-pointer') >= 0 && c.indexOf('px-2') >= 0 && c.indexOf('py-1') >= 0;
+            });
+            for (var ar = 0; ar < activeRows.length; ar++) {
+                var rowClass = typeof activeRows[ar].className === 'string' ? activeRows[ar].className : '';
+                // アクティブ項目は bg- クラスを持つか、チェックマーク SVG/アイコンを含む
+                var hasBg = rowClass.indexOf('bg-') >= 0;
+                var hasCheck = findFirstInTree(activeRows[ar], function(el) {
+                    return el.tagName === 'SVG' || (el.tagName === 'SPAN' && (el.textContent || '').indexOf('✓') >= 0);
+                });
+                if (hasBg || hasCheck) {
+                    var activeFm = findFirstInTree(activeRows[ar], function(el) {
+                        if (el.tagName !== 'DIV') return false;
+                        var c2 = typeof el.className === 'string' ? el.className : '';
+                        return c2.indexOf('font-medium') >= 0;
+                    });
+                    if (activeFm) {
+                        activeMode = (activeFm.textContent || '').trim();
+                    }
+                    break;
+                }
+            }
+            if (activeMode) break;
+        }
+    }
+    debugInfo.activeMode = activeMode;
+
+    return { items: items, debug: debugInfo, activeMode: activeMode };
 })()
         `.trim();
 
-        const listResult = await ops.evaluateInCascade(listScript) as { items: string[]; debug: Record<string, unknown> } | string[];
+        type ListResult = { items: string[]; debug: Record<string, unknown>; activeMode?: string | null } | string[];
+        const listResult = await ops.evaluateInCascade(listScript) as ListResult;
 
         let modes: string[];
+        let dropdownActiveMode: string | null = null;
         if (Array.isArray(listResult)) {
             modes = listResult;
             log('mode_list', true, `count=${modes.length} (legacy format)`);
         } else if (listResult && typeof listResult === 'object' && 'items' in listResult) {
             modes = listResult.items || [];
-            log('mode_list', modes.length > 0, `count=${modes.length}, debug=${JSON.stringify(listResult.debug)}`);
+            dropdownActiveMode = listResult.activeMode || null;
+            log('mode_list', modes.length > 0, `count=${modes.length}, activeMode="${dropdownActiveMode || ''}", debug=${JSON.stringify(listResult.debug)}`);
         } else {
             modes = [];
             log('mode_list', false, `unexpected result type: ${typeof listResult}, value=${JSON.stringify(listResult)}`);
+        }
+
+        // currentMode が取得できなかった場合、ドロップダウンのアクティブ項目をフォールバック
+        if (!currentMode && dropdownActiveMode) {
+            currentMode = dropdownActiveMode;
+            log('mode_fallback', true, `using dropdown activeMode="${dropdownActiveMode}" as currentMode`);
+            logDebug(`cdpModes: getAvailableModes — fallback: using activeMode="${dropdownActiveMode}"`);
         }
 
         // Step 5: ドロップダウンを閉じる
@@ -439,7 +483,7 @@ export async function getAvailableModes(
         }
 
         const modeList = Array.isArray(modes) ? modes : [];
-        logDebug(`cdpModes: getAvailableModes — found ${modeList.length} modes, current="${currentMode}"`);
+        logDebug(`cdpModes: getAvailableModes — found ${modeList.length} modes, current = "${currentMode}"`);
 
         return {
             modes: modeList,
@@ -459,7 +503,7 @@ export async function getAvailableModes(
 
         const msg = e instanceof Error ? e.message : String(e);
         log('fatal', false, msg);
-        logWarn(`cdpModes: getAvailableModes failed — ${msg}`);
+        logWarn(`cdpModes: getAvailableModes failed — ${msg} `);
         return { modes: [], current: currentMode, debugLog };
     }
 }
@@ -477,13 +521,13 @@ export async function selectMode(
 
         // 1. モードボタンをクリックしてドロップダウンを開く
         const openScript = `
-(function() {
+            (function () {
     ${FIND_MODE_BUTTON}
-    if (!modeBtn) return false;
-    modeBtn.click();
-    return true;
-})()
-        `.trim();
+                if (!modeBtn) return false;
+                modeBtn.click();
+                return true;
+            })()
+            `.trim();
 
         const opened = await ops.evaluateInCascade(openScript);
         if (!opened) {
@@ -495,125 +539,126 @@ export async function selectMode(
 
         // 2. ドロップダウン内で目的のモードをクリック
         const selectScript = `
-(function() {
-    var targetMode = ${JSON.stringify(modeName)};
-    var targetLower = targetMode.toLowerCase();
+            (function () {
+                var targetMode = ${JSON.stringify(modeName)
+            };
+        var targetLower = targetMode.toLowerCase();
 
-    // getTargetDoc: cascade iframe 内の document を取得
-    function getTargetDoc() {
-        var iframes = document.querySelectorAll('iframe');
-        for (var fi = 0; fi < iframes.length; fi++) {
-            try {
-                if (iframes[fi].src && iframes[fi].src.includes('cascade-panel') && iframes[fi].contentDocument) {
-                    return iframes[fi].contentDocument;
+        // getTargetDoc: cascade iframe 内の document を取得
+        function getTargetDoc() {
+            var iframes = document.querySelectorAll('iframe');
+            for (var fi = 0; fi < iframes.length; fi++) {
+                try {
+                    if (iframes[fi].src && iframes[fi].src.includes('cascade-panel') && iframes[fi].contentDocument) {
+                        return iframes[fi].contentDocument;
+                    }
+                } catch (e) { /* cross-origin */ }
+            }
+            return document;
+        }
+        var doc = getTargetDoc();
+
+        function findAllInTree(root, predicate) {
+            if (!root) return [];
+            var matches = [];
+            var ownerDoc = root.ownerDocument || root;
+            if (root.nodeType === 1 && predicate(root)) matches.push(root);
+            var walker = (ownerDoc.createTreeWalker || document.createTreeWalker).call(ownerDoc, root, 1, null, false);
+            var el;
+            while ((el = walker.nextNode())) {
+                if (predicate(el)) matches.push(el);
+                if (el.shadowRoot) {
+                    matches = matches.concat(findAllInTree(el.shadowRoot, predicate));
                 }
-            } catch(e) { /* cross-origin */ }
-        }
-        return document;
-    }
-    var doc = getTargetDoc();
-
-    function findAllInTree(root, predicate) {
-        if (!root) return [];
-        var matches = [];
-        var ownerDoc = root.ownerDocument || root;
-        if (root.nodeType === 1 && predicate(root)) matches.push(root);
-        var walker = (ownerDoc.createTreeWalker || document.createTreeWalker).call(ownerDoc, root, 1, null, false);
-        var el;
-        while ((el = walker.nextNode())) {
-            if (predicate(el)) matches.push(el);
-            if (el.shadowRoot) {
-                matches = matches.concat(findAllInTree(el.shadowRoot, predicate));
             }
+            return matches;
         }
-        return matches;
-    }
 
-    function findFirstInTree(root, predicate) {
-        if (!root) return null;
-        var ownerDoc = root.ownerDocument || root;
-        if (root.nodeType === 1 && predicate(root)) return root;
-        var walker = (ownerDoc.createTreeWalker || document.createTreeWalker).call(ownerDoc, root, 1, null, false);
-        var el;
-        while ((el = walker.nextNode())) {
-            if (predicate(el)) return el;
-            if (el.shadowRoot) {
-                var found = findFirstInTree(el.shadowRoot, predicate);
-                if (found) return found;
+        function findFirstInTree(root, predicate) {
+            if (!root) return null;
+            var ownerDoc = root.ownerDocument || root;
+            if (root.nodeType === 1 && predicate(root)) return root;
+            var walker = (ownerDoc.createTreeWalker || document.createTreeWalker).call(ownerDoc, root, 1, null, false);
+            var el;
+            while ((el = walker.nextNode())) {
+                if (predicate(el)) return el;
+                if (el.shadowRoot) {
+                    var found = findFirstInTree(el.shadowRoot, predicate);
+                    if (found) return found;
+                }
             }
+            return null;
         }
-        return null;
-    }
 
-    // 新しい UI 構造: z-50 rounded-md border shadow-md
-    var ddNew = findAllInTree(doc, function(el) {
-        if (el.tagName !== 'DIV') return false;
-        var c = typeof el.className === 'string' ? el.className : '';
-        return c.indexOf('z-50') >= 0 && c.indexOf('rounded-md') >= 0 && c.indexOf('border') >= 0 && c.indexOf('shadow-md') >= 0;
-    });
-
-    for (var dn = 0; dn < ddNew.length; dn++) {
-        var modeRows = findAllInTree(ddNew[dn], function(el) {
+        // 新しい UI 構造: z-50 rounded-md border shadow-md
+        var ddNew = findAllInTree(doc, function (el) {
             if (el.tagName !== 'DIV') return false;
             var c = typeof el.className === 'string' ? el.className : '';
-            return c.indexOf('cursor-pointer') >= 0 && c.indexOf('px-2') >= 0 && c.indexOf('py-1') >= 0;
+            return c.indexOf('z-50') >= 0 && c.indexOf('rounded-md') >= 0 && c.indexOf('border') >= 0 && c.indexOf('shadow-md') >= 0;
         });
-        for (var i = 0; i < modeRows.length; i++) {
-            var fontMedium = findFirstInTree(modeRows[i], function(el) {
+
+        for (var dn = 0; dn < ddNew.length; dn++) {
+            var modeRows = findAllInTree(ddNew[dn], function (el) {
                 if (el.tagName !== 'DIV') return false;
                 var c = typeof el.className === 'string' ? el.className : '';
-                return c.indexOf('font-medium') >= 0;
+                return c.indexOf('cursor-pointer') >= 0 && c.indexOf('px-2') >= 0 && c.indexOf('py-1') >= 0;
             });
-            if (!fontMedium) continue;
-            var mText = (fontMedium.textContent || '').trim().toLowerCase();
-            if (mText === targetLower || mText.includes(targetLower) || targetLower.includes(mText)) {
-                modeRows[i].click();
-                return { success: true, selected: (fontMedium.textContent || '').trim() };
+            for (var i = 0; i < modeRows.length; i++) {
+                var fontMedium = findFirstInTree(modeRows[i], function (el) {
+                    if (el.tagName !== 'DIV') return false;
+                    var c = typeof el.className === 'string' ? el.className : '';
+                    return c.indexOf('font-medium') >= 0;
+                });
+                if (!fontMedium) continue;
+                var mText = (fontMedium.textContent || '').trim().toLowerCase();
+                if (mText === targetLower || mText.includes(targetLower) || targetLower.includes(mText)) {
+                    modeRows[i].click();
+                    return { success: true, selected: (fontMedium.textContent || '').trim() };
+                }
             }
         }
-    }
 
-    // フォールバック: 旧 UI 構造
-    var dropdowns = findAllInTree(doc, function(el) {
-        if (el.tagName !== 'DIV') return false;
-        var c = typeof el.className === 'string' ? el.className : '';
-        return c.indexOf('absolute') >= 0 && c.indexOf('overflow-y-auto') >= 0 && c.indexOf('rounded-lg') >= 0 && c.indexOf('border') >= 0;
-    });
-    var ddRoot = null;
-    for (var d = 0; d < dropdowns.length; d++) {
-        var headerCheck = findFirstInTree(dropdowns[d], function(el) {
+        // フォールバック: 旧 UI 構造
+        var dropdowns = findAllInTree(doc, function (el) {
             if (el.tagName !== 'DIV') return false;
             var c = typeof el.className === 'string' ? el.className : '';
-            return c.indexOf('opacity-80') >= 0;
+            return c.indexOf('absolute') >= 0 && c.indexOf('overflow-y-auto') >= 0 && c.indexOf('rounded-lg') >= 0 && c.indexOf('border') >= 0;
         });
-        if (headerCheck && (headerCheck.textContent || '').trim() === 'Mode') {
-            ddRoot = dropdowns[d];
-            break;
-        }
-    }
-    if (ddRoot) {
-        var oldRows = findAllInTree(ddRoot, function(el) {
-            if (el.tagName !== 'DIV') return false;
-            var c = typeof el.className === 'string' ? el.className : '';
-            return c.indexOf('cursor-pointer') >= 0 && c.indexOf('px-2') >= 0 && c.indexOf('py-1') >= 0;
-        });
-        for (var j = 0; j < oldRows.length; j++) {
-            var p = findFirstInTree(oldRows[j], function(el) {
-                if (el.tagName !== 'P') return false;
+        var ddRoot = null;
+        for (var d = 0; d < dropdowns.length; d++) {
+            var headerCheck = findFirstInTree(dropdowns[d], function (el) {
+                if (el.tagName !== 'DIV') return false;
                 var c = typeof el.className === 'string' ? el.className : '';
-                return c.indexOf('text-ellipsis') >= 0;
+                return c.indexOf('opacity-80') >= 0;
             });
-            if (!p) continue;
-            var pText = (p.textContent || '').trim().toLowerCase();
-            if (pText === targetLower || pText.includes(targetLower) || targetLower.includes(pText)) {
-                oldRows[j].click();
-                return { success: true, selected: (p.textContent || '').trim() };
+            if (headerCheck && (headerCheck.textContent || '').trim() === 'Mode') {
+                ddRoot = dropdowns[d];
+                break;
             }
         }
-    }
+        if (ddRoot) {
+            var oldRows = findAllInTree(ddRoot, function (el) {
+                if (el.tagName !== 'DIV') return false;
+                var c = typeof el.className === 'string' ? el.className : '';
+                return c.indexOf('cursor-pointer') >= 0 && c.indexOf('px-2') >= 0 && c.indexOf('py-1') >= 0;
+            });
+            for (var j = 0; j < oldRows.length; j++) {
+                var p = findFirstInTree(oldRows[j], function (el) {
+                    if (el.tagName !== 'P') return false;
+                    var c = typeof el.className === 'string' ? el.className : '';
+                    return c.indexOf('text-ellipsis') >= 0;
+                });
+                if (!p) continue;
+                var pText = (p.textContent || '').trim().toLowerCase();
+                if (pText === targetLower || pText.includes(targetLower) || targetLower.includes(pText)) {
+                    oldRows[j].click();
+                    return { success: true, selected: (p.textContent || '').trim() };
+                }
+            }
+        }
 
-    return { success: false, error: 'mode not found in dropdown' };
-})()
+        return { success: false, error: 'mode not found in dropdown' };
+    }) ()
         `.trim();
 
         const selectResult = await ops.evaluateInCascade(selectScript) as {
@@ -637,10 +682,10 @@ export async function selectMode(
             });
         } catch { /* ignore */ }
 
-        logWarn(`cdpModes: selectMode — mode "${modeName}" not found: ${selectResult?.error}`);
+        logWarn(`cdpModes: selectMode — mode "${modeName}" not found: ${selectResult?.error} `);
         return false;
     } catch (e) {
-        logWarn(`cdpModes: selectMode failed — ${e instanceof Error ? e.message : e}`);
+        logWarn(`cdpModes: selectMode failed — ${e instanceof Error ? e.message : e} `);
         return false;
     }
 }
