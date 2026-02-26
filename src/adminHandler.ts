@@ -112,9 +112,35 @@ async function handleSchedules(ctx: BridgeContext, interaction: ChatInputCommand
 
 async function handleCancel(ctx: BridgeContext, interaction: ChatInputCommandInteraction): Promise<void> {
     const { executor } = ctx;
-    const { cdp: targetCdp, wsKey } = resolveTargetCdp(ctx, interaction);
+    const { cdp: targetCdp, wsKey: resolvedWsKey } = resolveTargetCdp(ctx, interaction);
     try {
-        // ワークスペース単位でリセット（wsKey 未特定時は全ワークスペース）
+        // wsKey が null の場合、ExecutorPool のサイズで自動解決を試みる
+        // → 1WS なら唯一の WS を対象に、複数WS なら対象特定不能エラー
+        let wsKey = resolvedWsKey;
+        if (!wsKey && ctx.executorPool) {
+            const wsNames = ctx.executorPool.getWorkspaceNames();
+            if (wsNames.length === 1) {
+                wsKey = wsNames[0];
+                logDebug(`handleCancel: wsKey auto-resolved to "${wsKey}" (single workspace in pool)`);
+            } else if (wsNames.length > 1) {
+                // 複数 WS が存在し対象を特定できない場合はエラー
+                logWarn(`handleCancel: cannot resolve target workspace (pool has ${wsNames.length} workspaces: ${wsNames.join(', ')})`);
+                await interaction.reply({
+                    embeds: [buildEmbed(
+                        `⚠️ 対象ワークスペースを特定できません。\n\n` +
+                        `現在 ${wsNames.length} 個のワークスペースが接続中です:\n` +
+                        wsNames.map(n => `- ${n}`).join('\n') + '\n\n' +
+                        `キャンセルしたいワークスペースのカテゴリー配下のチャンネルから \`/cancel\` を送信してください。`,
+                        EmbedColor.Warning,
+                    )],
+                    ephemeral: true,
+                });
+                return;
+            }
+            // wsNames.length === 0: プールが空 → そのまま続行（既存の動作）
+        }
+
+        // ワークスペース単位でリセット
         resetProcessingFlag(wsKey ?? undefined);
         cancelPlanGeneration(wsKey ?? undefined);
 
@@ -129,12 +155,10 @@ async function handleCancel(ctx: BridgeContext, interaction: ChatInputCommandInt
             ctx.executorPool?.forceStop(wsKey);
             logDebug(`handleCancel: /cancel executed — workspace "${wsKey}" stopped`);
         } else {
-            // ワークスペース未特定時は全 Executor 停止（後方互換）
+            // プールが空または未初期化: デフォルト executor のみ停止（後方互換）
             execRunning = executor?.isRunning() || false;
-            poolRunning = ctx.executorPool?.isAnyRunning() || false;
-            executor?.forceStop();
-            ctx.executorPool?.forceStopAll();
-            logDebug('handleCancel: /cancel executed — all workspaces stopped');
+            if (execRunning) { executor?.forceStop(); }
+            logDebug('handleCancel: /cancel executed — default executor stopped (no pool entries)');
         }
 
         let cancelResult = 'CDP未接続';
@@ -149,7 +173,7 @@ async function handleCancel(ctx: BridgeContext, interaction: ChatInputCommandInt
         }
 
         const debugInfo = [
-            `対象WS: ${wsKey || '全ワークスペース'}`,
+            `対象WS: ${wsKey || 'デフォルト'}`,
             `executor実行中: ${execRunning}`,
             `pool実行中: ${poolRunning}`,
             `Antigravity停止: ${cancelResult}`,

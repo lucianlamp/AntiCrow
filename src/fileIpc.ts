@@ -396,11 +396,12 @@ export class FileIpc {
 
     /**
      * 古い IPC ファイルをクリーンアップ。
-     * - tmp_* は 30秒以上で削除
+     * - tmp_* は 5分以上で削除
      * - req_*_progress.json は 2分以上で削除
-     * - req_*_response.* は 10分以上で削除（閾値引き上げ）
+     * - req_*_response.* は 30分以上で削除（stale recovery 間隔より長く設定）
      * - その他は 5分以上で削除
      * - activeRequests に含まれるファイルはスキップ（誤削除防止）
+     * - protectedFiles に含まれるファイルはスキップ（tmp ファイル保護）
      */
     async cleanupOldFiles(): Promise<void> {
         try {
