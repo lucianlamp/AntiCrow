@@ -35,6 +35,7 @@ import {
     clickExpandAll as uiClickExpandAll,
     scrollToBottom as uiScrollToBottom,
     autoFollowOutput as uiAutoFollowOutput,
+    autoApprove as uiAutoApprove,
 } from './cdpUI';
 import { CdpConnectionError, AntigravityLaunchError, CascadePanelError } from './errors';
 import { CdpConnection } from './cdpConnection';
@@ -219,7 +220,11 @@ export class CdpBridge {
         logDebug(`CDP: launchAntigravity called, folderPath="${folderPath || '(none)'}", scriptPath="${scriptPath}"`);
 
         const folderArg = folderPath ? ` -FolderPath "${folderPath}"` : '';
-        const command = `& "${scriptPath}"${folderArg}; exit`;
+        // 固定ポートが設定されていれば anticrow.ps1 に渡す
+        const { getCdpPort } = await import('./configHelper');
+        const cdpPort = getCdpPort();
+        const portArg = cdpPort > 0 ? ` -CdpPort ${cdpPort}` : '';
+        const command = `& "${scriptPath}"${folderArg}${portArg}; exit`;
 
         logDebug(`CDP: launching via terminal: ${command}`);
 
@@ -271,7 +276,7 @@ export class CdpBridge {
         return findFrame(frameTree.frameTree);
     }
 
-    private async getCascadeContext(): Promise<number> {
+    private async getCascadeContext(): Promise<number | undefined> {
         if (this.cascadeContextId !== null) {
             try {
                 const ok = await this.conn.evaluate('true', this.cascadeContextId);
@@ -283,10 +288,9 @@ export class CdpBridge {
 
         const frameId = await this.findCascadeFrameId();
         if (!frameId) {
-            throw new CascadePanelError(
-                'Cascade panel iframe not found. ' +
-                'Make sure the Antigravity chat panel is visible (open the Agent Panel).'
-            );
+            // Antigravity の新バージョンでは Cascade iframe が存在せず、
+            // UI がメインフレームに直接埋め込まれているため undefined を返す
+            return undefined;
         }
 
         const world = await this.conn.send('Page.createIsolatedWorld', {
@@ -306,7 +310,28 @@ export class CdpBridge {
     async ensureCascadePanel(): Promise<void> {
         // 1. パネルの存在を確認
         const frameId = await this.findCascadeFrameId();
-        if (frameId) { return; } // 既に開いている
+        if (frameId) { return; } // iframe なら開いている
+
+        const checkInputJs = `
+        (() => {
+            function isVisible(el) {
+                if (!el) return false;
+                const style = window.getComputedStyle(el);
+                if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0) return false;
+                if (el.offsetParent === null && style.position !== 'fixed') return false;
+                const rect = el.getBoundingClientRect();
+                return rect.width > 0 && rect.height > 0;
+            }
+            const editors = Array.from(document.querySelectorAll('div[role="textbox"]:not(.xterm-helper-textarea)')).filter(isVisible);
+            return editors.length > 0;
+        })()
+    `;
+
+        try {
+            // メインフレームに textbox があれば開いていると見なす
+            const hasInput = await this.conn.evaluate(checkInputJs);
+            if (hasInput) { return; }
+        } catch { }
 
         logDebug('CDP: ensureCascadePanel — panel not found, attempting auto-open...');
 
@@ -319,11 +344,24 @@ export class CdpBridge {
         ];
         for (const cmd of panelCommands) {
             try {
-                await vscode.commands.executeCommand(cmd);
-                logDebug(`CDP: ensureCascadePanel — executed command: ${cmd}`);
-                break;
+                // Execute command inside the CDP target window, NOT the currently active VSCode window 
+                // which might be a different workspace
+                const evalJs = `
+                    (async () => {
+                        if (typeof vscode !== 'undefined' && vscode.commands) {
+                            await vscode.commands.executeCommand('${cmd}');
+                            return true;
+                        }
+                        return false;
+                    })()
+                `;
+                const executed = await this.conn.evaluate(evalJs);
+                if (executed) {
+                    logDebug(`CDP: ensureCascadePanel — executed command in target: ${cmd}`);
+                    break;
+                }
             } catch {
-                logDebug(`CDP: ensureCascadePanel — command not available: ${cmd}`);
+                logDebug(`CDP: ensureCascadePanel — command not available in target: ${cmd}`);
             }
         }
 
@@ -335,10 +373,18 @@ export class CdpBridge {
             await this.sleep(pollMs);
             const fid = await this.findCascadeFrameId();
             if (fid) {
-                logDebug('CDP: ensureCascadePanel — panel opened successfully');
+                logDebug('CDP: ensureCascadePanel — panel opened successfully (iframe)');
                 this.cascadeContextId = null; // コンテキストをリセット
                 return;
             }
+            try {
+                const hasInput = await this.conn.evaluate(checkInputJs);
+                if (hasInput) {
+                    logDebug('CDP: ensureCascadePanel — panel opened successfully (main frame)');
+                    this.cascadeContextId = null; // コンテキストをリセット
+                    return;
+                }
+            } catch { }
         }
         logWarn('CDP: ensureCascadePanel — panel did not open within timeout');
     }
@@ -384,6 +430,10 @@ export class CdpBridge {
         return uiAutoFollowOutput(this.ops);
     }
 
+    async autoApprove(): Promise<{ clicked: number }> {
+        return uiAutoApprove(this.ops);
+    }
+
     // -----------------------------------------------------------------------
     // 接続テスト
     // -----------------------------------------------------------------------
@@ -405,18 +455,48 @@ export class CdpBridge {
     }
 
     // -----------------------------------------------------------------------
+    // スクリーンショット
+    // -----------------------------------------------------------------------
+
+    /** 現在のアクティブなページのスクリーンショットを取得する */
+    async getScreenshot(): Promise<Buffer | null> {
+        try {
+            await this.conn.connect();
+            const result = await this.conn.send('Page.captureScreenshot', { format: 'png' }) as { data: string };
+            if (result && result.data) {
+                return Buffer.from(result.data, 'base64');
+            }
+            return null;
+        } catch (e) {
+            logError('CDP: getScreenshot failed', e);
+            return null;
+        }
+    }
+
+    // -----------------------------------------------------------------------
     // チャット操作
     // -----------------------------------------------------------------------
 
     async startNewChat(): Promise<void> {
-        // 優先: VSCode コマンド（UI変更に強い）
+        // 優先: VSCode コマンド（ターゲットウィンドウ内で実行）
         try {
-            await vscode.commands.executeCommand('antigravity.startNewConversation');
-            logDebug('CDP: startNewChat — used VSCode command (antigravity.startNewConversation)');
-            this.cascadeContextId = null;
-            return;
+            const evalJs = `
+                (async () => {
+                    if (typeof vscode !== 'undefined' && vscode.commands) {
+                        await vscode.commands.executeCommand('antigravity.startNewConversation');
+                        return true;
+                    }
+                    return false;
+                })()
+            `;
+            const executed = await this.conn.evaluate(evalJs);
+            if (executed) {
+                logDebug('CDP: startNewChat — used VSCode command (antigravity.startNewConversation) in target');
+                this.cascadeContextId = null;
+                return;
+            }
         } catch (e) {
-            logDebug(`CDP: startNewChat — VSCode command failed, falling back to key injection: ${e instanceof Error ? e.message : e}`);
+            logDebug(`CDP: startNewChat — VSCode command failed in target: ${e}`);
         }
 
         // フォールバック: CDP でキー注入 (Ctrl+Shift+L)
@@ -449,24 +529,62 @@ export class CdpBridge {
      */
     private static readonly CANCEL_BUTTON_JS = `
 (function() {
+    // DisGrav 参考: getTargetDoc() パターン — iframe 内外を透過的に検索
+    // メインフレームから実行されても cascade-panel iframe 内の document を取得できる
+    function getTargetDoc() {
+        var iframes = document.querySelectorAll('iframe');
+        for (var fi = 0; fi < iframes.length; fi++) {
+            try {
+                if (iframes[fi].src && iframes[fi].src.includes('cascade-panel') && iframes[fi].contentDocument) {
+                    return iframes[fi].contentDocument;
+                }
+            } catch(e) { /* cross-origin の場合は無視 */ }
+        }
+        return document;
+    }
+    var doc = getTargetDoc();
+    var inIframe = doc !== document;
+
     // 戦略0: data-tooltip-id セレクタ（最も信頼性が高い）
     // キャンセルボタンは DIV 要素のため offsetParent チェックを緩和（存在すれば即クリック）
-    var cancelByTooltip = document.querySelector('[data-tooltip-id="input-send-button-cancel-tooltip"]');
+    var cancelByTooltip = doc.querySelector('[data-tooltip-id="input-send-button-cancel-tooltip"]');
     if (cancelByTooltip) {
         cancelByTooltip.click();
-        return { found: true, method: 'tooltip-id', tag: cancelByTooltip.tagName, visible: cancelByTooltip.offsetParent !== null };
+        return { found: true, method: 'tooltip-id', tag: cancelByTooltip.tagName, visible: cancelByTooltip.offsetParent !== null, inIframe: inIframe };
     }
 
-    // 戦略A: textbox の親要素内にある button で SVG rect/stop アイコンを持つもの
-    var textbox = document.querySelector('div[role="textbox"]');
+    // 戦略0.5: button innerText が Stop または 停止 (DisGrav 参考)
+    var buttons = doc.querySelectorAll('button');
+    for (var i = 0; i < buttons.length; i++) {
+        var txt = (buttons[i].innerText || '').trim().toLowerCase();
+        if (txt === 'stop' || txt === '停止') {
+            buttons[i].click();
+            return { found: true, method: 'button-text-stop', tag: 'BUTTON', text: txt, inIframe: inIframe };
+        }
+    }
+
+    // Cancel tooltip-id の部分一致フォールバック（Antigravity アップデートで ID が変わった場合の対策）
+    var cancelPartial = doc.querySelector('[data-tooltip-id*="cancel"]');
+    if (cancelPartial) {
+        cancelPartial.click();
+        return { found: true, method: 'tooltip-id-partial', tag: cancelPartial.tagName, tooltipId: cancelPartial.getAttribute('data-tooltip-id'), inIframe: inIframe };
+    }
+
+    // clickable な要素セレクタ（BUTTON だけでなく DIV も含む）
+    var CLICKABLE_SELECTOR = 'button, div[data-tooltip-id], div[role="button"], div[aria-label], [data-tooltip-id]';
+
+    // 戦略A: textbox の親要素内にある clickable 要素で SVG rect/stop アイコンを持つもの
+    var textbox = doc.querySelector('div[role="textbox"]');
     if (textbox) {
         var container = textbox.closest('form') || textbox.parentElement?.parentElement?.parentElement;
         if (container) {
-            var buttons = container.querySelectorAll('button');
+            var buttons = container.querySelectorAll(CLICKABLE_SELECTOR);
             for (var i = 0; i < buttons.length; i++) {
                 var btn = buttons[i];
                 // マイクボタン除外（SVG rect を含むが cancel ボタンではない）
                 if (btn.getAttribute('data-tooltip-id') === 'audio-tooltip') continue;
+                // 送信ボタン除外
+                if (btn.getAttribute('data-tooltip-id') === 'input-send-button-send-tooltip') continue;
                 if ((btn.getAttribute('aria-label') || '').toLowerCase().includes('record')) continue;
                 var hasSvgRect = btn.querySelector('svg rect') !== null;
                 var hasSvgStop = btn.querySelector('svg [data-icon="stop"]') !== null || btn.querySelector('svg .stop-icon') !== null;
@@ -474,65 +592,107 @@ export class CdpBridge {
                 var isStopBtn = hasSvgRect || hasSvgStop || ariaLabel.includes('stop') || ariaLabel.includes('cancel');
                 if (isStopBtn) {
                     btn.click();
-                    return { found: true, method: 'svg-rect', ariaLabel: btn.getAttribute('aria-label'), text: btn.textContent?.trim() };
+                    return { found: true, method: 'svg-rect', tag: btn.tagName, ariaLabel: btn.getAttribute('aria-label'), text: btn.textContent?.trim(), tooltipId: btn.getAttribute('data-tooltip-id'), inIframe: inIframe };
                 }
             }
         }
     }
 
-    // 戦略B: ドキュメント全体から SVG rect を持つボタンを探す
-    var allButtons = document.querySelectorAll('button');
-    for (var j = 0; j < allButtons.length; j++) {
-        var b = allButtons[j];
-        // マイクボタン除外
+    // 戦略B: ドキュメント全体から SVG rect を持つ clickable 要素を探す
+    var allClickable = doc.querySelectorAll(CLICKABLE_SELECTOR);
+    for (var j = 0; j < allClickable.length; j++) {
+        var b = allClickable[j];
+        // マイクボタン・送信ボタン除外
         if (b.getAttribute('data-tooltip-id') === 'audio-tooltip') continue;
+        if (b.getAttribute('data-tooltip-id') === 'input-send-button-send-tooltip') continue;
         if ((b.getAttribute('aria-label') || '').toLowerCase().includes('record')) continue;
         var rect = b.querySelector('svg rect');
         if (rect) {
-            var style = window.getComputedStyle(rect);
+            var style = doc.defaultView.getComputedStyle(rect);
             var fill = style.fill || rect.getAttribute('fill') || '';
             var hexRedRe = new RegExp('#[fF]');
-            var rgbRedRe = new RegExp('rgb\\(2[0-9]{2},\\s*[0-4]');
+            var rgbRedRe = new RegExp('rgb\\\\(2[0-9]{2},\\\\s*[0-4]');
             if (fill.includes('red') || hexRedRe.test(fill) || rgbRedRe.test(fill)) {
                 b.click();
-                return { found: true, method: 'red-svg-rect', fill: fill, ariaLabel: b.getAttribute('aria-label') };
+                return { found: true, method: 'red-svg-rect', tag: b.tagName, fill: fill, ariaLabel: b.getAttribute('aria-label'), tooltipId: b.getAttribute('data-tooltip-id'), inIframe: inIframe };
             }
         }
     }
 
-    // 戦略C: aria-label/title 属性にマッチするボタン
-    for (var k = 0; k < allButtons.length; k++) {
-        var btn2 = allButtons[k];
+    // 戦略C: aria-label/title 属性にマッチする clickable 要素
+    for (var k = 0; k < allClickable.length; k++) {
+        var btn2 = allClickable[k];
         var label = (btn2.getAttribute('aria-label') || '').toLowerCase();
         var title = (btn2.getAttribute('title') || '').toLowerCase();
         if (label.includes('stop') || label.includes('cancel') || title.includes('stop') || title.includes('cancel')) {
             btn2.click();
-            return { found: true, method: 'aria-match', ariaLabel: btn2.getAttribute('aria-label'), title: btn2.getAttribute('title') };
+            return { found: true, method: 'aria-match', tag: btn2.tagName, ariaLabel: btn2.getAttribute('aria-label'), title: btn2.getAttribute('title'), tooltipId: btn2.getAttribute('data-tooltip-id'), inIframe: inIframe };
         }
     }
 
-    // DOM 調査情報を返す（デバッグ用）
-    var cancelTooltipEl = document.querySelector('[data-tooltip-id="input-send-button-cancel-tooltip"]');
+    // 戦略D: textbox の送信エリアで SVG を持つ非送信ボタンの DIV を探す（より広い探索）
+    if (textbox) {
+        // 5段階まで親要素を遡って探す
+        var parent = textbox.parentElement;
+        for (var depth = 0; depth < 5 && parent; depth++) {
+            var svgEls = parent.querySelectorAll('svg');
+            for (var s = 0; s < svgEls.length; s++) {
+                var svgParent = svgEls[s].parentElement;
+                if (!svgParent) continue;
+                // 送信ボタン・マイクボタンは除外
+                var tid = svgParent.getAttribute('data-tooltip-id') || '';
+                if (tid === 'input-send-button-send-tooltip' || tid === 'audio-tooltip') continue;
+                if (tid.includes('send')) continue;
+                // SVG rect を含む要素 = キャンセルボタンの可能性
+                if (svgParent.querySelector('rect') || svgParent.querySelector('[data-icon="stop"]')) {
+                    svgParent.click();
+                    return { found: true, method: 'svg-parent-walk', tag: svgParent.tagName, tooltipId: tid || null, depth: depth, inIframe: inIframe };
+                }
+            }
+            parent = parent.parentElement;
+        }
+    }
+
+    // DOM 調査情報を返す（デバッグ用: BUTTON + tooltip 付き要素）
+    var allButtons = doc.querySelectorAll('button');
+    var allTooltipEls = doc.querySelectorAll('[data-tooltip-id]');
+    var cancelTooltipEl = doc.querySelector('[data-tooltip-id="input-send-button-cancel-tooltip"]');
+    var cancelPartialEl = doc.querySelector('[data-tooltip-id*="cancel"]');
     var buttonInfo = [];
-    for (var m = 0; m < allButtons.length && m < 20; m++) {
-        var bi = allButtons[m];
+    for (var m = 0; m < allClickable.length && m < 20; m++) {
+        var bi = allClickable[m];
         buttonInfo.push({
             ariaLabel: bi.getAttribute('aria-label'),
             title: bi.getAttribute('title'),
             text: (bi.textContent || '').trim().substring(0, 30),
+            tag: bi.tagName,
             hasSvg: bi.querySelector('svg') !== null,
             hasSvgRect: bi.querySelector('svg rect') !== null,
             tooltipId: bi.getAttribute('data-tooltip-id'),
             classes: bi.className?.substring?.(0, 50) || '',
         });
     }
+    var tooltipInfo = [];
+    for (var t = 0; t < allTooltipEls.length && t < 20; t++) {
+        tooltipInfo.push({
+            tag: allTooltipEls[t].tagName,
+            tooltipId: allTooltipEls[t].getAttribute('data-tooltip-id'),
+            visible: allTooltipEls[t].offsetParent !== null,
+        });
+    }
     return {
         found: false,
         method: 'none',
+        inIframe: inIframe,
         buttonCount: allButtons.length,
+        clickableCount: allClickable.length,
+        tooltipCount: allTooltipEls.length,
         buttons: buttonInfo,
+        tooltips: tooltipInfo,
         textboxFound: !!textbox,
         cancelTooltipExists: !!cancelTooltipEl,
+        cancelPartialExists: !!cancelPartialEl,
+        cancelPartialId: cancelPartialEl ? cancelPartialEl.getAttribute('data-tooltip-id') : null,
         cancelTooltipTag: cancelTooltipEl ? cancelTooltipEl.tagName : null,
         cancelTooltipVisible: cancelTooltipEl ? cancelTooltipEl.offsetParent !== null : null,
     };
@@ -545,14 +705,28 @@ export class CdpBridge {
     async clickCancelButton(): Promise<string> {
         const results: string[] = [];
 
-        // 0. VSCode コマンド（UI変更に強いが効かない場合がある）
+        // 0. VSCode コマンド（ターゲットウィンドウ内で実行）
         try {
-            await vscode.commands.executeCommand('antigravity.cancelCurrentTask');
-            results.push('vscode-cmd:OK');
-            logDebug('CDP: clickCancelButton — used VSCode command');
+            const evalJs = `
+                (async () => {
+                    if (typeof vscode !== 'undefined' && vscode.commands) {
+                        await vscode.commands.executeCommand('antigravity.cancelCurrentTask');
+                        return true;
+                    }
+                    return false;
+                })()
+            `;
+            const executed = await this.conn.evaluate(evalJs);
+            if (executed) {
+                results.push('vscode-cmd-target:OK');
+                logDebug('CDP: clickCancelButton — used VSCode command in target');
+            } else {
+                results.push('vscode-cmd-target:SKIP');
+                logDebug('CDP: clickCancelButton — VSCode command context unavailable in target');
+            }
         } catch {
-            results.push('vscode-cmd:FAIL');
-            logDebug('CDP: clickCancelButton — VSCode command not available');
+            results.push('vscode-cmd-target:FAIL');
+            logDebug('CDP: clickCancelButton — VSCode command failed in target');
         }
 
         // 1. CDP 接続
@@ -611,14 +785,16 @@ export class CdpBridge {
             const stopCandidates: ClickOptions[] = [
                 // iframe 内（tooltip-id セレクタは tag 制約なし — cancel ボタンは DIV 要素のため）
                 { selector: '[data-tooltip-id="input-send-button-cancel-tooltip"]', inCascade: true },
-                { selector: '[aria-label="Cancel"]', tag: 'button', inCascade: true },
-                { selector: '[aria-label="Stop"]', tag: 'button', inCascade: true },
-                { text: 'Cancel', tag: 'button', inCascade: true },
-                { text: 'Stop', tag: 'button', inCascade: true },
+                { selector: '[data-tooltip-id*="cancel"]', inCascade: true },
+                { selector: '[aria-label="Cancel"]', inCascade: true },
+                { selector: '[aria-label="Stop"]', inCascade: true },
+                { text: 'Cancel', inCascade: true },
+                { text: 'Stop', inCascade: true },
                 // メインフレーム（tooltip-id セレクタは tag 制約なし）
                 { selector: '[data-tooltip-id="input-send-button-cancel-tooltip"]', inCascade: false },
-                { selector: '[aria-label="Cancel"]', tag: 'button', inCascade: false },
-                { selector: '[aria-label="Stop"]', tag: 'button', inCascade: false },
+                { selector: '[data-tooltip-id*="cancel"]', inCascade: false },
+                { selector: '[aria-label="Cancel"]', inCascade: false },
+                { selector: '[aria-label="Stop"]', inCascade: false },
             ];
             for (const candidate of stopCandidates) {
                 try {
@@ -640,28 +816,61 @@ export class CdpBridge {
             }
         }
 
-        // 5. 最終フォールバック: Escape キーを送信
+        // 5. cascade iframe 内で textbox にフォーカスしてから Escape キーを DOM ディスパッチ
         if (!buttonClicked) {
             try {
-                await this.conn.send('Input.dispatchKeyEvent', {
-                    type: 'keyDown',
-                    windowsVirtualKeyCode: 27,
-                    code: 'Escape',
-                    key: 'Escape',
-                });
-                await this.sleep(50);
-                await this.conn.send('Input.dispatchKeyEvent', {
-                    type: 'keyUp',
-                    windowsVirtualKeyCode: 27,
-                    code: 'Escape',
-                    key: 'Escape',
-                });
-                results.push('escape:SENT');
-                logDebug('CDP: clickCancelButton — sent Escape key as fallback');
-                await this.sleep(500);
+                const escapeResult = await this.evaluateInCascade(`
+                    (function() {
+                        var el = document.querySelector('div[role="textbox"]');
+                        if (el) { el.focus(); }
+                        var target = el || document.activeElement || document.body;
+                        var opts = { key: 'Escape', code: 'Escape', keyCode: 27, which: 27, bubbles: true, cancelable: true };
+                        target.dispatchEvent(new KeyboardEvent('keydown', opts));
+                        target.dispatchEvent(new KeyboardEvent('keyup', opts));
+                        return { sent: true, target: target.tagName, role: target.getAttribute && target.getAttribute('role') };
+                    })()
+                `) as { sent?: boolean; target?: string } | null;
+                if (escapeResult?.sent) {
+                    results.push(`cascade-escape:SENT(${escapeResult.target})`);
+                    logDebug(`CDP: clickCancelButton — Escape dispatched in cascade iframe: ${JSON.stringify(escapeResult)}`);
+                    await this.sleep(500);
+                } else {
+                    results.push('cascade-escape:FAIL(no-result)');
+                }
             } catch (e) {
-                results.push(`escape:FAIL(${e instanceof Error ? e.message : e})`);
+                results.push(`cascade-escape:ERROR(${e instanceof Error ? e.message : e})`);
+                logDebug(`CDP: clickCancelButton — cascade Escape dispatch failed: ${e instanceof Error ? e.message : e}`);
             }
+        }
+
+        // 6. 最終フォールバック: CDP Input.dispatchKeyEvent で Escape キーを送信（複数回リトライ）
+        if (!buttonClicked) {
+            const ESCAPE_RETRIES = 3;
+            let escapeSent = false;
+            for (let i = 0; i < ESCAPE_RETRIES; i++) {
+                try {
+                    await this.conn.send('Input.dispatchKeyEvent', {
+                        type: 'keyDown',
+                        windowsVirtualKeyCode: 27,
+                        code: 'Escape',
+                        key: 'Escape',
+                    });
+                    await this.sleep(50);
+                    await this.conn.send('Input.dispatchKeyEvent', {
+                        type: 'keyUp',
+                        windowsVirtualKeyCode: 27,
+                        code: 'Escape',
+                        key: 'Escape',
+                    });
+                    escapeSent = true;
+                    logDebug(`CDP: clickCancelButton — Escape key sent (attempt ${i + 1}/${ESCAPE_RETRIES})`);
+                    await this.sleep(300);
+                } catch (e) {
+                    logDebug(`CDP: clickCancelButton — Escape attempt ${i + 1} failed: ${e instanceof Error ? e.message : e}`);
+                }
+            }
+            results.push(escapeSent ? `escape:SENT(${ESCAPE_RETRIES}x)` : 'escape:FAIL');
+            if (escapeSent) { await this.sleep(200); }
         }
 
         return results.join(', ');
@@ -721,47 +930,64 @@ export class CdpBridge {
             }
         }
 
-        // Cascade パネルのコンテキスト取得（パネル未表示時は自動オープン試行）
-        let contextId: number;
+        // Cascade パネルの表示を保証
         try {
-            contextId = await this.getCascadeContext();
+            await this.ensureCascadePanel();
         } catch (e) {
-            if (e instanceof CascadePanelError) {
-                logWarn('CDP: sendPrompt — Cascade panel not found, attempting auto-open...');
-                await this.ensureCascadePanel();
-                contextId = await this.getCascadeContext(); // リトライ（失敗時はそのままスロー）
-            } else {
-                throw e;
-            }
+            logWarn(`CDP: ensureCascadePanel failed: ${e}`);
         }
+        const contextId = await this.getCascadeContext();
 
         // NOTE: document.execCommand は W3C で非推奨（deprecated）だが、
         // Electron の Chromium エンジンでは当面動作する。
         // 将来的に InputEvent / beforeinput ベースの入力方式に移行を検討すること。
         const setInputJs = `
-      (function() {
-        const el = document.querySelector('div[role="textbox"]');
-        if (!el) {
-          return { success: false, error: 'No chat input (div[role=textbox]) found' };
+  (function() {
+    function isVisible(el) {
+        if (!el) return false;
+        const style = window.getComputedStyle(el);
+        if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0) return false;
+        if (el.offsetParent === null && style.position !== 'fixed') return false;
+        const rect = el.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0;
+    }
+
+    const editors = Array.from(document.querySelectorAll('div[role="textbox"]:not(.xterm-helper-textarea)')).filter(isVisible);
+    const el = editors.at(-1);
+
+    if (!el) {
+      return { success: false, error: 'No visible chat input found' };
+    }
+    el.focus();
+    const sel = window.getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    sel.removeAllRanges();
+    sel.addRange(range);
+    
+    // Convert prompt to multiple lines and insert
+    const text = ${JSON.stringify(prompt)};
+    
+    let inserted = false;
+    try {
+        inserted = document.execCommand('insertText', false, text);
+    } catch (e) {}
+
+    if (!inserted) {
+        el.textContent = text;
+        try {
+            el.dispatchEvent(new InputEvent('beforeinput', { bubbles: true, inputType: 'insertText', data: text }));
+            el.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: text }));
+        } catch (e) {
+            el.dispatchEvent(new Event('input', { bubbles: true }));
         }
-        el.focus();
-        const sel = window.getSelection();
-        const range = document.createRange();
-        range.selectNodeContents(el);
-        sel.removeAllRanges();
-        sel.addRange(range);
-        const lines = ${JSON.stringify(prompt)}.split('\\n');
-        for (let i = 0; i < lines.length; i++) {
-          if (lines[i].length > 0) {
-            document.execCommand('insertText', false, lines[i]);
-          }
-          if (i < lines.length - 1) {
-            document.execCommand('insertLineBreak', false);
-          }
-        }
-        return { success: true };
-      })()
-    `;
+    }
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+
+    return { success: true };
+  })()
+`;
 
         const inputResult = await this.conn.evaluate(setInputJs, contextId) as {
             success: boolean;
@@ -775,19 +1001,30 @@ export class CdpBridge {
         await this.sleep(500);
 
         const submitJs = `
-      (function() {
-        const el = document.querySelector('div[role="textbox"]');
-        if (!el) { return { success: false }; }
-        const opts = {
-          key: 'Enter', code: 'Enter', keyCode: 13, which: 13,
-          bubbles: true, cancelable: true
-        };
-        el.dispatchEvent(new KeyboardEvent('keydown', opts));
-        el.dispatchEvent(new KeyboardEvent('keypress', opts));
-        el.dispatchEvent(new KeyboardEvent('keyup', opts));
-        return { success: true };
-      })()
-    `;
+  (function() {
+    function isVisible(el) {
+        if (!el) return false;
+        const style = window.getComputedStyle(el);
+        if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0) return false;
+        if (el.offsetParent === null && style.position !== 'fixed') return false;
+        const rect = el.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0;
+    }
+
+    const editors = Array.from(document.querySelectorAll('div[role="textbox"]:not(.xterm-helper-textarea)')).filter(isVisible);
+    const el = editors.at(-1);
+    
+    if (!el) { return { success: false }; }
+    const opts = {
+      key: 'Enter', code: 'Enter', keyCode: 13, which: 13,
+      bubbles: true, cancelable: true
+    };
+    el.dispatchEvent(new KeyboardEvent('keydown', opts));
+    el.dispatchEvent(new KeyboardEvent('keypress', opts));
+    el.dispatchEvent(new KeyboardEvent('keyup', opts));
+    return { success: true };
+  })()
+`;
         await this.conn.evaluate(submitJs, contextId);
         logDebug('CDP: prompt submitted');
     }

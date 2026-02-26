@@ -42,39 +42,51 @@ export async function openHistoryPopup(ops: CdpBridgeOps): Promise<void> {
 
     const CLICK_HISTORY = `
 (function() {
+    function getTargetDoc() {
+        var iframes = document.querySelectorAll('iframe');
+        for (var fi = 0; fi < iframes.length; fi++) {
+            try {
+                if (iframes[fi].src && iframes[fi].src.includes('cascade-panel') && iframes[fi].contentDocument) {
+                    return iframes[fi].contentDocument;
+                }
+            } catch(e) {}
+        }
+        return document;
+    }
+    var doc = getTargetDoc();
+
     // 戦略0（最優先）: data-tooltip-id="history-tooltip"
-    var btn = document.querySelector('[data-tooltip-id="history-tooltip"]');
+    var btn = doc.querySelector('[data-tooltip-id="history-tooltip"]');
     if (btn) {
         btn.click();
-        return { success: true, method: 'tooltip-id', tag: btn.tagName };
+        return { success: true, method: 'tooltip-id', tag: btn.tagName, inIframe: doc !== document };
     }
 
     // 戦略1: data-past-conversations-toggle 属性
-    var toggle = document.querySelector('[data-past-conversations-toggle]');
+    var toggle = doc.querySelector('[data-past-conversations-toggle]');
     if (toggle) {
         toggle.click();
-        return { success: true, method: 'past-conversations-toggle', tag: toggle.tagName };
+        return { success: true, method: 'past-conversations-toggle', tag: toggle.tagName, inIframe: doc !== document };
     }
 
     // 戦略2: テキスト/アイコンベースのフォールバック
-    var anchors = document.querySelectorAll('a');
+    var anchors = doc.querySelectorAll('a');
     for (var i = 0; i < anchors.length; i++) {
         var a = anchors[i];
         var rect = a.getBoundingClientRect();
         if (rect.width > 0 && rect.height > 0) {
             var svg = a.querySelector('svg');
             if (svg && a.closest('[class*="header"]')) {
-                // ヘッダー内の SVG アイコン付きリンクをヒューリスティックに検出
                 var tooltipId = a.getAttribute('data-tooltip-id') || '';
                 if (tooltipId.indexOf('history') >= 0) {
                     a.click();
-                    return { success: true, method: 'heuristic-header-link', tooltipId: tooltipId };
+                    return { success: true, method: 'heuristic-header-link', tooltipId: tooltipId, inIframe: doc !== document };
                 }
             }
         }
     }
 
-    return { success: false, error: 'History button not found' };
+    return { success: false, error: 'History button not found', inIframe: doc !== document };
 })()
     `.trim();
 
@@ -123,10 +135,46 @@ export async function getConversationList(ops: CdpBridgeOps): Promise<{ title: s
 
     const SCRAPE_CONVERSATIONS = `
 (function() {
-    var result = { success: false, items: [], debugInfo: {} };
+    function getTargetDoc() {
+        var iframes = document.querySelectorAll('iframe');
+        for (var fi = 0; fi < iframes.length; fi++) {
+            try {
+                if (iframes[fi].src && iframes[fi].src.includes('cascade-panel') && iframes[fi].contentDocument) {
+                    return iframes[fi].contentDocument;
+                }
+            } catch(e) {}
+        }
+        return document;
+    }
+    var doc = getTargetDoc();
+    var result = { success: false, items: [], debugInfo: { inIframe: doc !== document } };
+
+    // Shadow DOM 再帰探索ヘルパー
+    function findAllInTree(root, predicate) {
+        if (!root) return [];
+        var matches = [];
+        var ownerDoc = root.ownerDocument || root;
+        if (root.nodeType === 1 && predicate(root)) matches.push(root);
+        var walker = (ownerDoc.createTreeWalker || document.createTreeWalker).call(ownerDoc, root, 1, null, false);
+        var el;
+        while ((el = walker.nextNode())) {
+            if (predicate(el)) matches.push(el);
+            if (el.shadowRoot) {
+                matches = matches.concat(findAllInTree(el.shadowRoot, predicate));
+            }
+        }
+        return matches;
+    }
 
     // 戦略0: delete-conversation tooltip-id を持つ SVG の親 BUTTON を探す
-    var deleteIcons = document.querySelectorAll('[data-tooltip-id*="delete-conversation"]');
+    var deleteIcons = doc.querySelectorAll('[data-tooltip-id*="delete-conversation"]');
+    // Shadow DOM フォールバック
+    if (deleteIcons.length === 0) {
+        deleteIcons = findAllInTree(doc, function(el) {
+            var tid = el.getAttribute && el.getAttribute('data-tooltip-id');
+            return tid && tid.indexOf('delete-conversation') >= 0;
+        });
+    }
     result.debugInfo.deleteIconCount = deleteIcons.length;
 
     if (deleteIcons.length > 0) {
@@ -146,17 +194,14 @@ export async function getConversationList(ops: CdpBridgeOps): Promise<{ title: s
             var text = '';
             var timeAgo = '';
             if (titleEl) {
-                // タイトル DIV 内のテキスト（P タグの時間テキストを除外）
                 var spans = titleEl.querySelectorAll('span, p');
                 var parts = [];
                 for (var k = 0; k < spans.length; k++) {
                     var span = spans[k];
-                    // P.text-nowrap は時間表示 → timeAgo に格納
                     if (span.tagName === 'P' && (span.className || '').indexOf('text-nowrap') >= 0) {
                         timeAgo = (span.textContent || '').trim();
                         continue;
                     }
-                    // hidden な削除ボタンの P もスキップ
                     if (span.tagName === 'P' && (span.className || '').indexOf('hidden') >= 0) continue;
                     var t = (span.textContent || '').trim();
                     if (t) parts.push(t);
@@ -164,7 +209,6 @@ export async function getConversationList(ops: CdpBridgeOps): Promise<{ title: s
                 text = parts.join(' ').trim();
             }
             if (!text) {
-                // フォールバック: BUTTON の直接テキストから時間表記を除外
                 var cloned = button.cloneNode(true);
                 var pTags = cloned.querySelectorAll('p');
                 for (var m = 0; m < pTags.length; m++) { pTags[m].remove(); }
@@ -184,7 +228,15 @@ export async function getConversationList(ops: CdpBridgeOps): Promise<{ title: s
     }
 
     // 戦略1: group クラスの BUTTON を直接探す
-    var groupButtons = document.querySelectorAll('button.group[class*="cursor-pointer"][class*="flex-row"]');
+    var groupButtons = doc.querySelectorAll('button.group[class*="cursor-pointer"][class*="flex-row"]');
+    // Shadow DOM フォールバック
+    if (!groupButtons || groupButtons.length === 0) {
+        groupButtons = findAllInTree(doc, function(el) {
+            if (el.tagName !== 'BUTTON') return false;
+            var cls = el.className || '';
+            return cls.indexOf('group') >= 0 && cls.indexOf('cursor-pointer') >= 0 && cls.indexOf('flex-row') >= 0;
+        });
+    }
     result.debugInfo.groupButtonCount = groupButtons ? groupButtons.length : 0;
     if (groupButtons && groupButtons.length > 0) {
         var items2 = [];
@@ -203,7 +255,59 @@ export async function getConversationList(ops: CdpBridgeOps): Promise<{ title: s
         }
     }
 
-    result.debugInfo.error = 'No conversation items found';
+    // 戦略2: 汎用 — 会話リストエリア内の全 BUTTON / A 要素をスキャン
+    // (CSS クラスや tooltip 属性に依存しないフォールバック)
+    var allButtons = doc.querySelectorAll('button, a');
+    var candidateItems = [];
+    for (var bi = 0; bi < allButtons.length; bi++) {
+        var candidate = allButtons[bi];
+        // 最低限のフィルタ: テキストがある + 可視 + 会話っぽいサイズ
+        var cRect = candidate.getBoundingClientRect();
+        if (cRect.width < 50 || cRect.height < 20) continue;
+        var cText = (candidate.textContent || '').trim();
+        if (cText.length < 2 || cText.length > 200) continue;
+        // ナビゲーション系ボタンを除外
+        var cTid = candidate.getAttribute('data-tooltip-id') || '';
+        if (cTid === 'history-tooltip' || cTid === 'send-tooltip' || cTid === 'cancel-tooltip') continue;
+        if (cTid === 'new-conversation-tooltip') continue;
+        // 親に scrollable なコンテナがあるか (会話リストは通常スクロール可能)
+        var scrollParent = candidate.parentElement;
+        var inScrollArea = false;
+        for (var sp = 0; sp < 10 && scrollParent; sp++) {
+            var overflowY = '';
+            try {
+                var win = scrollParent.ownerDocument.defaultView || window;
+                overflowY = win.getComputedStyle(scrollParent).overflowY || '';
+            } catch(e2) {}
+            if (overflowY === 'auto' || overflowY === 'scroll') { inScrollArea = true; break; }
+            scrollParent = scrollParent.parentElement;
+        }
+        if (!inScrollArea) continue;
+        candidateItems.push({ title: cText.substring(0, 100), index: candidateItems.length });
+    }
+    result.debugInfo.genericCandidateCount = candidateItems.length;
+    if (candidateItems.length > 0) {
+        result.success = true;
+        result.items = candidateItems;
+        return result;
+    }
+
+    // DOM ダンプ診断: 最初の 5 つの button 要素の情報を収集
+    var diagButtons = doc.querySelectorAll('button');
+    var diagInfo = [];
+    for (var di = 0; di < Math.min(diagButtons.length, 10); di++) {
+        var db = diagButtons[di];
+        diagInfo.push({
+            tag: db.tagName,
+            text: (db.textContent || '').trim().substring(0, 60),
+            cls: (db.className || '').substring(0, 100),
+            tooltipId: db.getAttribute('data-tooltip-id') || '',
+            rect: { w: Math.round(db.getBoundingClientRect().width), h: Math.round(db.getBoundingClientRect().height) }
+        });
+    }
+    result.debugInfo.totalButtonsInDoc = diagButtons.length;
+    result.debugInfo.sampleButtons = diagInfo;
+    result.debugInfo.error = 'No conversation items found (all 3 strategies failed)';
     return result;
 })()
     `.trim();
@@ -252,69 +356,137 @@ export async function openHistoryAndGetList(ops: CdpBridgeOps): Promise<{ title:
     // --- Step 1: MutationObserver を設置 ---
     const INSTALL_OBSERVER = `
 (function() {
+    function getTargetDoc() {
+        var iframes = document.querySelectorAll('iframe');
+        for (var fi = 0; fi < iframes.length; fi++) {
+            try {
+                if (iframes[fi].src && iframes[fi].src.includes('cascade-panel') && iframes[fi].contentDocument) {
+                    return iframes[fi].contentDocument;
+                }
+            } catch(e) {}
+        }
+        return document;
+    }
+    var doc = getTargetDoc();
+
     if (window.__historyCaptureObserver) {
         try { window.__historyCaptureObserver.disconnect(); } catch(e) {}
     }
-    window.__historyCapture = { items: [], captured: false, events: 0, diag: [] };
+    window.__historyCapture = { items: [], captured: false, events: 0, diag: [], inIframe: doc !== document };
+
+    // Shadow DOM 再帰探索ヘルパー
+    function findAllInTree(root, predicate) {
+        if (!root) return [];
+        var matches = [];
+        var ownerDoc = root.ownerDocument || root;
+        if (root.nodeType === 1 && predicate(root)) matches.push(root);
+        var walker = (ownerDoc.createTreeWalker || document.createTreeWalker).call(ownerDoc, root, 1, null, false);
+        var el;
+        while ((el = walker.nextNode())) {
+            if (predicate(el)) matches.push(el);
+            if (el.shadowRoot) {
+                matches = matches.concat(findAllInTree(el.shadowRoot, predicate));
+            }
+        }
+        return matches;
+    }
 
     function scrapeConversations() {
-        // delete-conversation tooltip-id を持つ SVG の親 BUTTON から会話を取得
-        var deleteIcons = document.querySelectorAll('[data-tooltip-id*="delete-conversation"]');
+        var deleteIcons = doc.querySelectorAll('[data-tooltip-id*="delete-conversation"]');
+        // Shadow DOM フォールバック
         if (deleteIcons.length === 0) {
-            window.__historyCapture.diag.push('no_delete_icons');
-            return;
+            deleteIcons = findAllInTree(doc, function(el) {
+                var tid = el.getAttribute && el.getAttribute('data-tooltip-id');
+                return tid && tid.indexOf('delete-conversation') >= 0;
+            });
         }
 
-        var buttons = [];
-        for (var i = 0; i < deleteIcons.length; i++) {
-            var btn = deleteIcons[i].closest('button');
-            if (btn && buttons.indexOf(btn) === -1) {
-                buttons.push(btn);
-            }
-        }
-
-        if (buttons.length === 0) {
-            window.__historyCapture.diag.push('no_parent_buttons');
-            return;
-        }
-
-        var items = [];
-        for (var j = 0; j < buttons.length; j++) {
-            var button = buttons[j];
-            var titleEl = button.querySelector('div');
-            var text = '';
-            var timeAgo2 = '';
-            if (titleEl) {
-                var spans = titleEl.querySelectorAll('span, p');
-                var parts = [];
-                for (var k = 0; k < spans.length; k++) {
-                    var span = spans[k];
-                    if (span.tagName === 'P' && (span.className || '').indexOf('text-nowrap') >= 0) {
-                        timeAgo2 = (span.textContent || '').trim();
-                        continue;
-                    }
-                    if (span.tagName === 'P' && (span.className || '').indexOf('hidden') >= 0) continue;
-                    var t = (span.textContent || '').trim();
-                    if (t) parts.push(t);
+        if (deleteIcons.length > 0) {
+            var buttons = [];
+            for (var i = 0; i < deleteIcons.length; i++) {
+                var btn = deleteIcons[i].closest('button');
+                if (btn && buttons.indexOf(btn) === -1) {
+                    buttons.push(btn);
                 }
-                text = parts.join(' ').trim();
             }
-            if (!text) {
-                var cloned = button.cloneNode(true);
-                var pTags = cloned.querySelectorAll('p');
-                for (var m = 0; m < pTags.length; m++) { pTags[m].remove(); }
-                text = (cloned.textContent || '').trim();
+
+            if (buttons.length > 0) {
+                var items = [];
+                for (var j = 0; j < buttons.length; j++) {
+                    var button = buttons[j];
+                    var titleEl = button.querySelector('div');
+                    var text = '';
+                    var timeAgo2 = '';
+                    if (titleEl) {
+                        var spans = titleEl.querySelectorAll('span, p');
+                        var parts = [];
+                        for (var k = 0; k < spans.length; k++) {
+                            var span = spans[k];
+                            if (span.tagName === 'P' && (span.className || '').indexOf('text-nowrap') >= 0) {
+                                timeAgo2 = (span.textContent || '').trim();
+                                continue;
+                            }
+                            if (span.tagName === 'P' && (span.className || '').indexOf('hidden') >= 0) continue;
+                            var t = (span.textContent || '').trim();
+                            if (t) parts.push(t);
+                        }
+                        text = parts.join(' ').trim();
+                    }
+                    if (!text) {
+                        var cloned = button.cloneNode(true);
+                        var pTags = cloned.querySelectorAll('p');
+                        for (var m = 0; m < pTags.length; m++) { pTags[m].remove(); }
+                        text = (cloned.textContent || '').trim();
+                    }
+                    if (text.length > 0) {
+                        var item2 = { title: text.substring(0, 100), index: j };
+                        if (timeAgo2) item2.timeAgo = timeAgo2;
+                        items.push(item2);
+                    }
+                }
+
+                if (items.length > 0 && !window.__historyCapture.captured) {
+                    window.__historyCapture.items = items;
+                    window.__historyCapture.captured = true;
+                    return;
+                }
+            } else {
+                window.__historyCapture.diag.push('no_parent_buttons');
             }
-            if (text.length > 0) {
-                var item2 = { title: text.substring(0, 100), index: j };
-                if (timeAgo2) item2.timeAgo = timeAgo2;
-                items.push(item2);
-            }
+        } else {
+            window.__historyCapture.diag.push('no_delete_icons');
         }
 
-        if (items.length > 0 && !window.__historyCapture.captured) {
-            window.__historyCapture.items = items;
-            window.__historyCapture.captured = true;
+        // フォールバック: スクロール可能エリア内のボタン/リンクをスキャン
+        if (!window.__historyCapture.captured) {
+            var allBtns = doc.querySelectorAll('button, a');
+            var fallbackItems = [];
+            for (var fi2 = 0; fi2 < allBtns.length; fi2++) {
+                var cand = allBtns[fi2];
+                var cR = cand.getBoundingClientRect();
+                if (cR.width < 50 || cR.height < 20) continue;
+                var cTxt = (cand.textContent || '').trim();
+                if (cTxt.length < 2 || cTxt.length > 200) continue;
+                var ctid = cand.getAttribute('data-tooltip-id') || '';
+                if (ctid === 'history-tooltip' || ctid === 'send-tooltip' || ctid === 'cancel-tooltip' || ctid === 'new-conversation-tooltip') continue;
+                var sp2 = cand.parentElement;
+                var inScroll = false;
+                for (var si = 0; si < 10 && sp2; si++) {
+                    try {
+                        var w2 = sp2.ownerDocument.defaultView || window;
+                        var ov = w2.getComputedStyle(sp2).overflowY || '';
+                        if (ov === 'auto' || ov === 'scroll') { inScroll = true; break; }
+                    } catch(e3) {}
+                    sp2 = sp2.parentElement;
+                }
+                if (!inScroll) continue;
+                fallbackItems.push({ title: cTxt.substring(0, 100), index: fallbackItems.length });
+            }
+            if (fallbackItems.length > 0) {
+                window.__historyCapture.items = fallbackItems;
+                window.__historyCapture.captured = true;
+                window.__historyCapture.diag.push('generic_fallback_used');
+            }
         }
     }
 
@@ -323,7 +495,8 @@ export async function openHistoryAndGetList(ops: CdpBridgeOps): Promise<{ title:
         scrapeConversations();
     });
 
-    observer.observe(document.body, {
+    var observeTarget = (doc === document) ? document.body : (doc.body || doc.documentElement);
+    observer.observe(observeTarget, {
         childList: true,
         subtree: true,
         attributes: true,
@@ -331,10 +504,9 @@ export async function openHistoryAndGetList(ops: CdpBridgeOps): Promise<{ title:
     });
     window.__historyCaptureObserver = observer;
 
-    // 初回スキャン
     scrapeConversations();
 
-    return { success: true };
+    return { success: true, inIframe: doc !== document };
 })()
     `.trim();
 
@@ -346,24 +518,69 @@ export async function openHistoryAndGetList(ops: CdpBridgeOps): Promise<{ title:
     }
 
     // --- Step 2: 履歴ボタンをクリック ---
-    const CLICK_HISTORY = `
+    const CLICK_HISTORY2 = `
 (function() {
-    var btn = document.querySelector('[data-tooltip-id="history-tooltip"]');
+    function getTargetDoc() {
+        var iframes = document.querySelectorAll('iframe');
+        for (var fi = 0; fi < iframes.length; fi++) {
+            try {
+                if (iframes[fi].src && iframes[fi].src.includes('cascade-panel') && iframes[fi].contentDocument) {
+                    return iframes[fi].contentDocument;
+                }
+            } catch(e) {}
+        }
+        return document;
+    }
+    var doc = getTargetDoc();
+
+    var btn = doc.querySelector('[data-tooltip-id="history-tooltip"]');
     if (btn) {
         btn.click();
-        return { success: true, method: 'tooltip-id', tag: btn.tagName };
+        return { success: true, method: 'tooltip-id', tag: btn.tagName, inIframe: doc !== document };
     }
-    var toggle = document.querySelector('[data-past-conversations-toggle]');
+    var toggle = doc.querySelector('[data-past-conversations-toggle]');
     if (toggle) {
         toggle.click();
-        return { success: true, method: 'past-conversations-toggle', tag: toggle.tagName };
+        return { success: true, method: 'past-conversations-toggle', tag: toggle.tagName, inIframe: doc !== document };
     }
-    return { success: false, error: 'History button not found' };
+
+    // Shadow DOM 再帰探索フォールバック
+    function findFirstInTree(root, predicate) {
+        if (!root) return null;
+        var ownerDoc = root.ownerDocument || root;
+        if (root.nodeType === 1 && predicate(root)) return root;
+        var walker = (ownerDoc.createTreeWalker || document.createTreeWalker).call(ownerDoc, root, 1, null, false);
+        var el;
+        while ((el = walker.nextNode())) {
+            if (predicate(el)) return el;
+            if (el.shadowRoot) {
+                var found = findFirstInTree(el.shadowRoot, predicate);
+                if (found) return found;
+            }
+        }
+        return null;
+    }
+
+    var shadowBtn = findFirstInTree(doc, function(el) {
+        return el.getAttribute && el.getAttribute('data-tooltip-id') === 'history-tooltip';
+    });
+    if (shadowBtn) {
+        shadowBtn.click();
+        return { success: true, method: 'shadow-tooltip-id', tag: shadowBtn.tagName, inIframe: doc !== document };
+    }
+    var shadowToggle = findFirstInTree(doc, function(el) {
+        return el.getAttribute && el.hasAttribute('data-past-conversations-toggle');
+    });
+    if (shadowToggle) {
+        shadowToggle.click();
+        return { success: true, method: 'shadow-past-conversations-toggle', tag: shadowToggle.tagName, inIframe: doc !== document };
+    }
+    return { success: false, error: 'History button not found', inIframe: doc !== document };
 })()
     `.trim();
 
     try {
-        const clickResult = await ops.evaluateInCascade(CLICK_HISTORY) as {
+        const clickResult = await ops.evaluateInCascade(CLICK_HISTORY2) as {
             success: boolean;
             method?: string;
             tag?: string;
@@ -386,14 +603,47 @@ export async function openHistoryAndGetList(ops: CdpBridgeOps): Promise<{ title:
     // --- Step 3: ポーリング ---
     const READ_CAPTURE = `
 (function() {
+    function getTargetDoc() {
+        var iframes = document.querySelectorAll('iframe');
+        for (var fi = 0; fi < iframes.length; fi++) {
+            try {
+                if (iframes[fi].src && iframes[fi].src.includes('cascade-panel') && iframes[fi].contentDocument) {
+                    return iframes[fi].contentDocument;
+                }
+            } catch(e) {}
+        }
+        return document;
+    }
+    var doc = getTargetDoc();
     var c = window.__historyCapture || { items: [], captured: false, events: 0, diag: [] };
-    var deleteIcons = document.querySelectorAll('[data-tooltip-id*="delete-conversation"]');
+    var deleteIcons = doc.querySelectorAll('[data-tooltip-id*="delete-conversation"]');
+    // Shadow DOM フォールバック
+    if (deleteIcons.length === 0) {
+        function findAllInTree(root, predicate) {
+            if (!root) return [];
+            var matches = [];
+            var ownerDoc = root.ownerDocument || root;
+            if (root.nodeType === 1 && predicate(root)) matches.push(root);
+            var walker = (ownerDoc.createTreeWalker || document.createTreeWalker).call(ownerDoc, root, 1, null, false);
+            var el;
+            while ((el = walker.nextNode())) {
+                if (predicate(el)) matches.push(el);
+                if (el.shadowRoot) { matches = matches.concat(findAllInTree(el.shadowRoot, predicate)); }
+            }
+            return matches;
+        }
+        deleteIcons = findAllInTree(doc, function(el) {
+            var tid = el.getAttribute && el.getAttribute('data-tooltip-id');
+            return tid && tid.indexOf('delete-conversation') >= 0;
+        });
+    }
     return {
         captured: c.captured,
         items: c.items,
         events: c.events,
         diag: c.diag,
         deleteIconCount: deleteIcons.length,
+        inIframe: doc !== document,
     };
 })()
     `.trim();
@@ -479,9 +729,21 @@ export async function debugConversationAttributes(ops: CdpBridgeOps): Promise<un
 
     const DEBUG_SCRIPT = `
 (function() {
-    var result = { buttonCount: 0, items: [] };
-    var deleteIcons = document.querySelectorAll('[data-tooltip-id*="delete-conversation"]');
-    if (deleteIcons.length === 0) return { error: 'no delete icons found' };
+    function getTargetDoc() {
+        var iframes = document.querySelectorAll('iframe');
+        for (var fi = 0; fi < iframes.length; fi++) {
+            try {
+                if (iframes[fi].src && iframes[fi].src.includes('cascade-panel') && iframes[fi].contentDocument) {
+                    return iframes[fi].contentDocument;
+                }
+            } catch(e) {}
+        }
+        return document;
+    }
+    var doc = getTargetDoc();
+    var result = { buttonCount: 0, items: [], inIframe: doc !== document };
+    var deleteIcons = doc.querySelectorAll('[data-tooltip-id*="delete-conversation"]');
+    if (deleteIcons.length === 0) return { error: 'no delete icons found', inIframe: doc !== document };
 
     var buttons = [];
     for (var i = 0; i < deleteIcons.length; i++) {
@@ -497,7 +759,6 @@ export async function debugConversationAttributes(ops: CdpBridgeOps): Promise<un
             var attr = button.attributes[k];
             attrs[attr.name] = attr.value.substring(0, 200);
         }
-        // 親要素の属性も収集
         var parentAttrs = {};
         if (button.parentElement) {
             for (var m = 0; m < button.parentElement.attributes.length; m++) {
@@ -505,7 +766,6 @@ export async function debugConversationAttributes(ops: CdpBridgeOps): Promise<un
                 parentAttrs[pAttr.name] = pAttr.value.substring(0, 200);
             }
         }
-        // 祖父要素の属性も収集
         var grandparentAttrs = {};
         if (button.parentElement && button.parentElement.parentElement) {
             var gp = button.parentElement.parentElement;
@@ -514,7 +774,6 @@ export async function debugConversationAttributes(ops: CdpBridgeOps): Promise<un
                 grandparentAttrs[gpAttr.name] = gpAttr.value.substring(0, 200);
             }
         }
-        // タイトルテキスト取得
         var titleEl = button.querySelector('div');
         var title = titleEl ? (titleEl.textContent || '').trim().substring(0, 50) : '';
 
@@ -572,12 +831,24 @@ export async function selectConversation(ops: CdpBridgeOps, index: number): Prom
 
     const CLICK_CONVERSATION = `
 (function() {
-    var deleteIcons = document.querySelectorAll('[data-tooltip-id*="delete-conversation"]');
+    function getTargetDoc() {
+        var iframes = document.querySelectorAll('iframe');
+        for (var fi = 0; fi < iframes.length; fi++) {
+            try {
+                if (iframes[fi].src && iframes[fi].src.includes('cascade-panel') && iframes[fi].contentDocument) {
+                    return iframes[fi].contentDocument;
+                }
+            } catch(e) {}
+        }
+        return document;
+    }
+    var doc = getTargetDoc();
+
+    var deleteIcons = doc.querySelectorAll('[data-tooltip-id*="delete-conversation"]');
     if (deleteIcons.length === 0) {
-        return { success: false, error: 'No conversation items found (no delete icons)' };
+        return { success: false, error: 'No conversation items found (no delete icons)', inIframe: doc !== document };
     }
 
-    // 各 delete icon の親 BUTTON を取得（重複排除）
     var buttons = [];
     for (var i = 0; i < deleteIcons.length; i++) {
         var btn = deleteIcons[i].closest('button');
@@ -592,16 +863,16 @@ export async function selectConversation(ops: CdpBridgeOps, index: number): Prom
     }
 
     var target = buttons[targetIndex];
-    // BUTTON をクリック
     var rect = target.getBoundingClientRect();
     var cx = rect.left + rect.width / 2;
     var cy = rect.top + rect.height / 2;
-    var opts = { bubbles: true, cancelable: true, view: window, clientX: cx, clientY: cy };
+    var ownerWin = target.ownerDocument.defaultView || window;
+    var opts = { bubbles: true, cancelable: true, view: ownerWin, clientX: cx, clientY: cy };
     target.dispatchEvent(new MouseEvent('mousedown', opts));
     target.dispatchEvent(new MouseEvent('mouseup', opts));
     target.dispatchEvent(new MouseEvent('click', opts));
 
-    return { success: true, index: targetIndex, total: buttons.length };
+    return { success: true, index: targetIndex, total: buttons.length, inIframe: doc !== document };
 })()
     `.trim();
 
@@ -667,12 +938,24 @@ export async function closePopup(ops: CdpBridgeOps): Promise<void> {
     // 戦略1: history-tooltip を再クリックしてトグル（cascade context）
     const TOGGLE_CLOSE = `
 (function() {
-    var btn = document.querySelector('[data-tooltip-id="history-tooltip"]');
+    function getTargetDoc() {
+        var iframes = document.querySelectorAll('iframe');
+        for (var fi = 0; fi < iframes.length; fi++) {
+            try {
+                if (iframes[fi].src && iframes[fi].src.includes('cascade-panel') && iframes[fi].contentDocument) {
+                    return iframes[fi].contentDocument;
+                }
+            } catch(e) {}
+        }
+        return document;
+    }
+    var doc = getTargetDoc();
+    var btn = doc.querySelector('[data-tooltip-id="history-tooltip"]');
     if (btn) {
         btn.click();
-        return { success: true, method: 'tooltip-toggle' };
+        return { success: true, method: 'tooltip-toggle', inIframe: doc !== document };
     }
-    return { success: false };
+    return { success: false, inIframe: doc !== document };
 })()
     `.trim();
 

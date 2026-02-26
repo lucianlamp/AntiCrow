@@ -1,0 +1,56 @@
+[
+  {
+    "description": "",
+    "devtoolsFrontendUrl": "https://chrome-devtools-frontend.appspot.com/serve_rev/@caff226ed96db00961b7046a5dc9f8db004e7fbb/inspector.html?ws=127.0.0.1:9333/devtools/page/D40B75E3F7E6CBD56E74094AF5966071",
+    "id": "D40B75E3F7E6CBD56E74094AF5966071",
+    "title": "Launchpad",
+    "type": "page",
+    "url": "vscode-file://vscode-app/c:/Users/ysk41/AppData/Local/Programs/antigravity/resources/app/out/vs/code/electron-browser/workbench/workbench-jetski-agent.html",
+    "webSocketDebuggerUrl": "ws://127.0.0.1:9333/devtools/page/D40B75E3F7E6CBD56E74094AF5966071"
+  },
+  {
+    "description": "",
+    "devtoolsFrontendUrl": "https://chrome-devtools-frontend.appspot.com/serve_rev/@caff226ed96db00961b7046a5dc9f8db004e7fbb/inspector.html?ws=127.0.0.1:9333/devtools/page/68F06ADAFEFE772AEFFA5F11CA7596EE",
+    "id": "68F06ADAFEFE772AEFFA5F11CA7596EE",
+    "title": "anti-crow - Antigravity - Implementation Plan",
+    "type": "page",
+    "url": "vscode-file://vscode-app/c:/Users/ysk41/AppData/Local/Programs/antigravity/resources/app/out/vs/code/electron-browser/workbench/workbench.html",
+    "webSocketDebuggerUrl": "ws://127.0.0.1:9333/devtools/page/68F06ADAFEFE772AEFFA5F11CA7596EE"
+  },
+  {
+    "description": "",
+    "devtoolsFrontendUrl": "https://chrome-devtools-frontend.appspot.com/serve_rev/@caff226ed96db00961b7046a5dc9f8db004e7fbb/inspector.html?ws=127.0.0.1:9333/devtools/page/02B2E0B206CF0F2F5E3B189DFDCFCD67",
+    "id": "02B2E0B206CF0F2F5E3B189DFDCFCD67",
+    "title": "MagicCore - Antigravity - req_1771886848258_7d4eb6cc3811_progress.json",
+    "type": "page",
+    "url": "vscode-file://vscode-app/c:/Users/ysk41/AppData/Local/Programs/antigravity/resources/app/out/vs/code/electron-browser/workbench/workbench.html",
+    "webSocketDebuggerUrl": "ws://127.0.0.1:9333/devtools/page/02B2E0B206CF0F2F5E3B189DFDCFCD67"
+  },
+  {
+    "description": "",
+    "devtoolsFrontendUrl": "https://chrome-devtools-frontend.appspot.com/serve_rev/@caff226ed96db00961b7046a5dc9f8db004e7fbb/inspector.html?ws=127.0.0.1:9333/devtools/page/D52235AFFBA73570D5B1AA53FBF24B51",
+    "id": "D52235AFFBA73570D5B1AA53FBF24B51",
+    "title": "",
+    "type": "worker",
+    "url": "",
+    "webSocketDebuggerUrl": "ws://127.0.0.1:9333/devtools/page/D52235AFFBA73570D5B1AA53FBF24B51"
+  },
+  {
+    "description": "",
+    "devtoolsFrontendUrl": "https://chrome-devtools-frontend.appspot.com/serve_rev/@caff226ed96db00961b7046a5dc9f8db004e7fbb/inspector.html?ws=127.0.0.1:9333/devtools/page/69D3F77CA869F0804468E048DBA1EA0E",
+    "id": "69D3F77CA869F0804468E048DBA1EA0E",
+    "title": "",
+    "type": "worker",
+    "url": "",
+    "webSocketDebuggerUrl": "ws://127.0.0.1:9333/devtools/page/69D3F77CA869F0804468E048DBA1EA0E"
+  },
+  {
+    "description": "",
+    "devtoolsFrontendUrl": "https://chrome-devtools-frontend.appspot.com/serve_rev/@caff226ed96db00961b7046a5dc9f8db004e7fbb/inspector.html?ws=127.0.0.1:9333/devtools/page/79034604328E92152D9CE5546435ABBD",
+    "id": "79034604328E92152D9CE5546435ABBD",
+    "title": "",
+    "type": "worker",
+    "url": "",
+    "webSocketDebuggerUrl": "ws://127.0.0.1:9333/devtools/page/79034604328E92152D9CE5546435ABBD"
+  }
+]

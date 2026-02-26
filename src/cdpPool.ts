@@ -117,6 +117,21 @@ export class CdpPool {
     }
 
     /**
+     * ワークスペース名でアクティブな CdpBridge を取得する。
+     * プール内に存在する場合はそれを返し、存在しない場合は null を返す。
+     * 起動や自動探索は行わない（主にキャンセル等の起動を伴わない操作用）。
+     */
+    getActive(workspaceName: string): CdpBridge | null {
+        const key = workspaceName || DEFAULT_WORKSPACE;
+        const existing = this.pool.get(key);
+        if (existing) {
+            existing.lastUsedAt = Date.now();
+            return existing.cdp;
+        }
+        return null;
+    }
+
+    /**
      * 内部: CdpBridge を作成してターゲットに接続する。
      */
     private async doAcquire(workspaceName: string, onAutoLaunch?: (wsName: string) => void | Promise<void>): Promise<CdpBridge> {

@@ -285,7 +285,13 @@ export async function handleTemplateButton(
         try {
             await activeCdp.sendPrompt(tplPlanPrompt);
             const responseTimeout = getResponseTimeout();
-            const planResponse = await fileIpc.waitForResponse(responsePath, responseTimeout);
+            fileIpc.registerActiveRequest(tplReqId, tplTempFiles);
+            let planResponse: string;
+            try {
+                planResponse = await fileIpc.waitForResponse(responsePath, responseTimeout);
+            } finally {
+                fileIpc.unregisterActiveRequest(tplReqId, tplTempFiles);
+            }
 
             const planOutput = parsePlanJson(planResponse);
             if (!planOutput) {
@@ -443,7 +449,13 @@ export async function handleModalSubmit(
         try {
             await activeCdp.sendPrompt(tplPlanPrompt);
             const responseTimeout = getResponseTimeout();
-            const planResponse = await fileIpc.waitForResponse(responsePath, responseTimeout);
+            fileIpc.registerActiveRequest(tplReqId2, tplTempFiles);
+            let planResponse: string;
+            try {
+                planResponse = await fileIpc.waitForResponse(responsePath, responseTimeout);
+            } finally {
+                fileIpc.unregisterActiveRequest(tplReqId2, tplTempFiles);
+            }
 
             const planOutput = parsePlanJson(planResponse);
             if (!planOutput) {

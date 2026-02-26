@@ -1,31 +1,157 @@
+FAIL out/__tests__/fileIpc.test.js
+  笳・Test suite failed to run
 
-[1m[46m RUN [49m[22m [36mv4.0.18 [39m[90mC:/Users/ysk41/dev/anti-crow[39m
+    Vitest cannot be imported in a CommonJS module using require(). Please use "import" instead.
 
- [32m笨・[39m src/__tests__/errors.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 10[2mms[22m[39m
- [32m笨・[39m src/__tests__/logger.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 8[2mms[22m[39m
- [31m笶ｯ[39m src/__tests__/promptBuilder.test.ts [2m([22m[2m0 test[22m[2m)[22m
- [32m笨・[39m src/__tests__/discordFormatter.test.ts [2m([22m[2m15 tests[22m[2m)[22m[32m 11[2mms[22m[39m
- [32m笨・[39m src/__tests__/planParser.test.ts [2m([22m[2m15 tests[22m[2m)[22m[32m 11[2mms[22m[39m
- [32m笨・[39m src/__tests__/discordUtils.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+    If you are using "import" in your source code, then it's possible it was bundled into require() automatically by your bundler. In that case, do not bundle CommonJS output since it will never work with Vitest, or use dynamic import() which is available in all CommonJS modules.
 
-竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ Failed Suites 1 竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ
+      3 | // ---------------------------------------------------------------------------
+      4 |
+    > 5 | import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+        | ^
+      6 |
+      7 | // vscode 繝｢繧ｸ繝･繝ｼ繝ｫ繧偵Δ繝・け
+      8 | vi.mock('vscode', () => ({
 
- FAIL  src/__tests__/promptBuilder.test.ts [ src/__tests__/promptBuilder.test.ts ]
-Error: Cannot find package 'vscode' imported from 'C:/Users/ysk41/dev/anti-crow/src/logger.ts'
- 笶ｯ src/logger.ts:5:1
-      3| // -------------------------------------------------------------------窶ｦ
-      4| 
-      5| import * as vscode from 'vscode';
-       | ^
-      6| 
-      7| /** 繝ｭ繧ｰ繝ｬ繝吶Ν螳夂ｾｩ・域焚蛟､縺悟､ｧ縺阪＞縺ｻ縺ｩ驥崎ｦ・ｼ・*/
- 笶ｯ src/promptBuilder.ts:9:1
+      at Object.<anonymous> (node_modules/vitest/index.cjs:1:7)
+      at Object.require (src/__tests__/fileIpc.test.ts:5:1)
 
-竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ[1/1]竡ｯ
+FAIL out/__tests__/fileIpc.test.d.ts
+  笳・Test suite failed to run
 
+    Jest encountered an unexpected token
 
-[2m Test Files [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m5 passed[39m[22m[90m (6)[39m
-[2m      Tests [22m [1m[32m47 passed[39m[22m[90m (47)[39m
-[2m   Start at [22m 21:35:28
-[2m   Duration [22m 606ms[2m (transform 795ms, setup 0ms, import 866ms, tests 45ms, environment 2ms)[22m
+    Jest failed to parse a file. This happens e.g. when your code or its dependencies use non-standard JavaScript syntax, or when Jest is not configured to support such syntax.
 
+    Out of the box Jest supports Babel, which will be used to transform your files into valid JS based on your Babel configuration.
+
+    By default "node_modules" folder is ignored by transformers.
+
+    Here's what you can do:
+     窶｢ If you are trying to use ECMAScript Modules, see https://jestjs.io/docs/ecmascript-modules for how to enable it.
+     窶｢ If you are trying to use TypeScript, see https://jestjs.io/docs/getting-started#using-typescript
+     窶｢ To have some of your "node_modules" files transformed, you can specify a custom "transformIgnorePatterns" in your config.
+     窶｢ If you need a custom transformation, specify a "transform" option in your config.
+     窶｢ If you simply want to mock your non-JS modules (e.g. binary assets) you can stub them out with the "moduleNameMapper" config option.
+
+    You'll find more details and examples of these config options in the docs:
+    https://jestjs.io/docs/configuration
+    For information about custom transformations, see:
+    https://jestjs.io/docs/code-transformation
+
+    Details:
+
+    C:\Users\ysk41\dev\anti-crow\out\__tests__\fileIpc.test.d.ts:1
+    export {};
+    ^^^^^^
+
+    SyntaxError: Unexpected token 'export'
+
+      at Runtime.createScriptFromCode (../../AppData/Local/npm-cache/_npx/b8d86e6551a4f492/node_modules/jest-runtime/build/index.js:1318:40)
+
+FAIL src/__tests__/fileIpc.test.ts
+  笳・Test suite failed to run
+
+    Jest encountered an unexpected token
+
+    Jest failed to parse a file. This happens e.g. when your code or its dependencies use non-standard JavaScript syntax, or when Jest is not configured to support such syntax.
+
+    Out of the box Jest supports Babel, which will be used to transform your files into valid JS based on your Babel configuration.
+
+    By default "node_modules" folder is ignored by transformers.
+
+    Here's what you can do:
+     窶｢ If you are trying to use ECMAScript Modules, see https://jestjs.io/docs/ecmascript-modules for how to enable it.
+     窶｢ If you are trying to use TypeScript, see https://jestjs.io/docs/getting-started#using-typescript
+     窶｢ To have some of your "node_modules" files transformed, you can specify a custom "transformIgnorePatterns" in your config.
+     窶｢ If you need a custom transformation, specify a "transform" option in your config.
+     窶｢ If you simply want to mock your non-JS modules (e.g. binary assets) you can stub them out with the "moduleNameMapper" config option.
+
+    You'll find more details and examples of these config options in the docs:
+    https://jestjs.io/docs/configuration
+    For information about custom transformations, see:
+    https://jestjs.io/docs/code-transformation
+
+    Details:
+
+    SyntaxError: C:\Users\ysk41\dev\anti-crow\src\__tests__\fileIpc.test.ts: Missing semicolon. (255:11)
+
+      253 |
+      254 | describe('FileIpc instance methods', () => {
+    > 255 |     let ipc: FileIpc;
+          |            ^
+      256 |     let tmpDir: string;
+      257 |     let ipcDir: string;
+      258 |
+
+      at constructor (../../AppData/Local/npm-cache/_npx/b8d86e6551a4f492/node_modules/@babel/parser/src/parse-error.ts:95:45)
+      at Parser.toParseError [as raise] (../../AppData/Local/npm-cache/_npx/b8d86e6551a4f492/node_modules/@babel/parser/src/tokenizer/index.ts:1504:19)
+      at Parser.raise [as semicolon] (../../AppData/Local/npm-cache/_npx/b8d86e6551a4f492/node_modules/@babel/parser/src/parser/util.ts:149:10)
+      at Parser.semicolon [as parseVarStatement] (../../AppData/Local/npm-cache/_npx/b8d86e6551a4f492/node_modules/@babel/parser/src/parser/statement.ts:1252:10)
+      at Parser.parseVarStatement [as parseStatementContent] (../../AppData/Local/npm-cache/_npx/b8d86e6551a4f492/node_modules/@babel/parser/src/parser/statement.ts:612:21)
+      at Parser.parseStatementContent [as parseStatementLike] (../../AppData/Local/npm-cache/_npx/b8d86e6551a4f492/node_modules/@babel/parser/src/parser/statement.ts:482:17)
+      at Parser.parseStatementLike [as parseStatementListItem] (../../AppData/Local/npm-cache/_npx/b8d86e6551a4f492/node_modules/@babel/parser/src/parser/statement.ts:431:17)
+      at Parser.parseStatementListItem [as parseBlockOrModuleBlockBody] (../../AppData/Local/npm-cache/_npx/b8d86e6551a4f492/node_modules/@babel/parser/src/parser/statement.ts:1444:16)
+      at Parser.parseBlockOrModuleBlockBody [as parseBlockBody] (../../AppData/Local/npm-cache/_npx/b8d86e6551a4f492/node_modules/@babel/parser/src/parser/statement.ts:1417:10)
+      at Parser.parseBlockBody [as parseBlock] (../../AppData/Local/npm-cache/_npx/b8d86e6551a4f492/node_modules/@babel/parser/src/parser/statement.ts:1385:10)
+      at Parser.parseBlock [as parseFunctionBody] (../../AppData/Local/npm-cache/_npx/b8d86e6551a4f492/node_modules/@babel/parser/src/parser/expression.ts:2618:24)
+      at Parser.parseFunctionBody [as parseArrowExpression] (../../AppData/Local/npm-cache/_npx/b8d86e6551a4f492/node_modules/@babel/parser/src/parser/expression.ts:2559:10)
+      at Parser.parseArrowExpression [as parseParenAndDistinguishExpression] (../../AppData/Local/npm-cache/_npx/b8d86e6551a4f492/node_modules/@babel/parser/src/parser/expression.ts:1847:12)
+      at Parser.parseParenAndDistinguishExpression [as parseExprAtom] (../../AppData/Local/npm-cache/_npx/b8d86e6551a4f492/node_modules/@babel/parser/src/parser/expression.ts:1170:21)
+      at Parser.parseExprAtom [as parseExprSubscripts] (../../AppData/Local/npm-cache/_npx/b8d86e6551a4f492/node_modules/@babel/parser/src/parser/expression.ts:742:23)
+      at Parser.parseExprSubscripts [as parseUpdate] (../../AppData/Local/npm-cache/_npx/b8d86e6551a4f492/node_modules/@babel/parser/src/parser/expression.ts:721:21)
+      at Parser.parseUpdate [as parseMaybeUnary] (../../AppData/Local/npm-cache/_npx/b8d86e6551a4f492/node_modules/@babel/parser/src/parser/expression.ts:683:23)
+      at Parser.parseMaybeUnary [as parseMaybeUnaryOrPrivate] (../../AppData/Local/npm-cache/_npx/b8d86e6551a4f492/node_modules/@babel/parser/src/parser/expression.ts:417:14)
+      at Parser.parseMaybeUnaryOrPrivate [as parseExprOps] (../../AppData/Local/npm-cache/_npx/b8d86e6551a4f492/node_modules/@babel/parser/src/parser/expression.ts:429:23)
+      at Parser.parseExprOps [as parseMaybeConditional] (../../AppData/Local/npm-cache/_npx/b8d86e6551a4f492/node_modules/@babel/parser/src/parser/expression.ts:384:23)
+      at Parser.parseMaybeConditional [as parseMaybeAssign] (../../AppData/Local/npm-cache/_npx/b8d86e6551a4f492/node_modules/@babel/parser/src/parser/expression.ts:301:21)
+      at parseMaybeAssign (../../AppData/Local/npm-cache/_npx/b8d86e6551a4f492/node_modules/@babel/parser/src/parser/expression.ts:257:12)
+      at Parser.callback [as allowInAnd] (../../AppData/Local/npm-cache/_npx/b8d86e6551a4f492/node_modules/@babel/parser/src/parser/expression.ts:3194:12)
+      at Parser.allowInAnd [as parseMaybeAssignAllowIn] (../../AppData/Local/npm-cache/_npx/b8d86e6551a4f492/node_modules/@babel/parser/src/parser/expression.ts:256:17)
+      at Parser.parseMaybeAssignAllowIn [as parseMaybeAssignAllowInOrVoidPattern] (../../AppData/Local/npm-cache/_npx/b8d86e6551a4f492/node_modules/@babel/parser/src/parser/expression.ts:3308:17)
+      at Parser.parseMaybeAssignAllowInOrVoidPattern [as parseExprListItem] (../../AppData/Local/npm-cache/_npx/b8d86e6551a4f492/node_modules/@babel/parser/src/parser/expression.ts:2790:18)
+      at Parser.parseExprListItem [as parseCallExpressionArguments] (../../AppData/Local/npm-cache/_npx/b8d86e6551a4f492/node_modules/@babel/parser/src/parser/expression.ts:1042:14)
+      at Parser.parseCallExpressionArguments [as parseCoverCallAndAsyncArrowHead] (../../AppData/Local/npm-cache/_npx/b8d86e6551a4f492/node_modules/@babel/parser/src/parser/expression.ts:922:29)
+      at Parser.parseCoverCallAndAsyncArrowHead [as parseSubscript] (../../AppData/Local/npm-cache/_npx/b8d86e6551a4f492/node_modules/@babel/parser/src/parser/expression.ts:804:19)
+      at Parser.parseSubscript [as parseSubscripts] (../../AppData/Local/npm-cache/_npx/b8d86e6551a4f492/node_modules/@babel/parser/src/parser/expression.ts:763:19)
+      at Parser.parseSubscripts [as parseExprSubscripts] (../../AppData/Local/npm-cache/_npx/b8d86e6551a4f492/node_modules/@babel/parser/src/parser/expression.ts:748:17)
+      at Parser.parseExprSubscripts [as parseUpdate] (../../AppData/Local/npm-cache/_npx/b8d86e6551a4f492/node_modules/@babel/parser/src/parser/expression.ts:721:21)
+      at Parser.parseUpdate [as parseMaybeUnary] (../../AppData/Local/npm-cache/_npx/b8d86e6551a4f492/node_modules/@babel/parser/src/parser/expression.ts:683:23)
+      at Parser.parseMaybeUnary [as parseMaybeUnaryOrPrivate] (../../AppData/Local/npm-cache/_npx/b8d86e6551a4f492/node_modules/@babel/parser/src/parser/expression.ts:417:14)
+      at Parser.parseMaybeUnaryOrPrivate [as parseExprOps] (../../AppData/Local/npm-cache/_npx/b8d86e6551a4f492/node_modules/@babel/parser/src/parser/expression.ts:429:23)
+      at Parser.parseExprOps [as parseMaybeConditional] (../../AppData/Local/npm-cache/_npx/b8d86e6551a4f492/node_modules/@babel/parser/src/parser/expression.ts:384:23)
+      at Parser.parseMaybeConditional [as parseMaybeAssign] (../../AppData/Local/npm-cache/_npx/b8d86e6551a4f492/node_modules/@babel/parser/src/parser/expression.ts:301:21)
+      at Parser.parseMaybeAssign [as parseExpressionBase] (../../AppData/Local/npm-cache/_npx/b8d86e6551a4f492/node_modules/@babel/parser/src/parser/expression.ts:226:23)
+      at parseExpressionBase (../../AppData/Local/npm-cache/_npx/b8d86e6551a4f492/node_modules/@babel/parser/src/parser/expression.ts:217:39)
+      at Parser.callback [as allowInAnd] (../../AppData/Local/npm-cache/_npx/b8d86e6551a4f492/node_modules/@babel/parser/src/parser/expression.ts:3189:16)
+      at Parser.allowInAnd [as parseExpression] (../../AppData/Local/npm-cache/_npx/b8d86e6551a4f492/node_modules/@babel/parser/src/parser/expression.ts:217:17)
+      at Parser.parseExpression [as parseStatementContent] (../../AppData/Local/npm-cache/_npx/b8d86e6551a4f492/node_modules/@babel/parser/src/parser/statement.ts:688:23)
+      at Parser.parseStatementContent [as parseStatementLike] (../../AppData/Local/npm-cache/_npx/b8d86e6551a4f492/node_modules/@babel/parser/src/parser/statement.ts:482:17)
+      at Parser.parseStatementLike [as parseModuleItem] (../../AppData/Local/npm-cache/_npx/b8d86e6551a4f492/node_modules/@babel/parser/src/parser/statement.ts:419:17)
+      at Parser.parseModuleItem [as parseBlockOrModuleBlockBody] (../../AppData/Local/npm-cache/_npx/b8d86e6551a4f492/node_modules/@babel/parser/src/parser/statement.ts:1443:16)
+      at Parser.parseBlockOrModuleBlockBody [as parseBlockBody] (../../AppData/Local/npm-cache/_npx/b8d86e6551a4f492/node_modules/@babel/parser/src/parser/statement.ts:1417:10)
+      at Parser.parseBlockBody [as parseProgram] (../../AppData/Local/npm-cache/_npx/b8d86e6551a4f492/node_modules/@babel/parser/src/parser/statement.ts:229:10)
+      at Parser.parseProgram [as parseTopLevel] (../../AppData/Local/npm-cache/_npx/b8d86e6551a4f492/node_modules/@babel/parser/src/parser/statement.ts:203:25)
+      at Parser.parseTopLevel [as parse] (../../AppData/Local/npm-cache/_npx/b8d86e6551a4f492/node_modules/@babel/parser/src/parser/index.ts:83:25)
+      at parse (../../AppData/Local/npm-cache/_npx/b8d86e6551a4f492/node_modules/@babel/parser/src/index.ts:86:38)
+      at parser (../../AppData/Local/npm-cache/_npx/b8d86e6551a4f492/node_modules/@babel/core/src/parser/index.ts:29:19)
+          at parser.next (<anonymous>)
+      at normalizeFile (../../AppData/Local/npm-cache/_npx/b8d86e6551a4f492/node_modules/@babel/core/src/transformation/normalize-file.ts:50:24)
+          at normalizeFile.next (<anonymous>)
+      at run (../../AppData/Local/npm-cache/_npx/b8d86e6551a4f492/node_modules/@babel/core/src/transformation/index.ts:41:36)
+          at run.next (<anonymous>)
+      at transform (../../AppData/Local/npm-cache/_npx/b8d86e6551a4f492/node_modules/@babel/core/src/transform.ts:29:20)
+          at transform.next (<anonymous>)
+      at evaluateSync (../../AppData/Local/npm-cache/_npx/b8d86e6551a4f492/node_modules/gensync/index.js:251:28)
+      at sync (../../AppData/Local/npm-cache/_npx/b8d86e6551a4f492/node_modules/gensync/index.js:89:14)
+      at fn (../../AppData/Local/npm-cache/_npx/b8d86e6551a4f492/node_modules/@babel/core/src/errors/rewrite-stack-trace.ts:99:14)
+      at transformSync (../../AppData/Local/npm-cache/_npx/b8d86e6551a4f492/node_modules/@babel/core/src/transform.ts:66:52)
+      at ScriptTransformer.transformSource (../../AppData/Local/npm-cache/_npx/b8d86e6551a4f492/node_modules/@jest/transform/build/index.js:422:31)
+      at ScriptTransformer._transformAndBuildScript (../../AppData/Local/npm-cache/_npx/b8d86e6551a4f492/node_modules/@jest/transform/build/index.js:519:40)
+      at ScriptTransformer.transform (../../AppData/Local/npm-cache/_npx/b8d86e6551a4f492/node_modules/@jest/transform/build/index.js:558:19)
+
+Test Suites: 3 failed, 3 total
+Tests:       0 total
+Snapshots:   0 total
+Time:        1.223 s
+Ran all test suites matching fileIpc.test.

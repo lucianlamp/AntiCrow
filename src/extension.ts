@@ -44,6 +44,7 @@ const ctx: BridgeContext = {
     autoAcceptWatcherTimer: null,
     healthCheckTimer: null,
     cleanupTimer: null,
+    staleRecoveryTimer: null,
     setLicenseKeyFn: null,
     getTrialDaysRemaining: null,
 };
@@ -62,13 +63,27 @@ export function getLicenseChecker(): LicenseChecker | null {
     return licenseChecker;
 }
 
+import * as fs from 'fs';
+import * as path from 'path';
+
 // =====================================================================
 // activate
 // =====================================================================
 
-export function activate(context: vscode.ExtensionContext) {
+export async function activate(context: vscode.ExtensionContext) {
     const log = initLogger();
     logInfo('Extension activating...');
+
+    // --- Temporary command dump for investigation ---
+    try {
+        const cmds = await vscode.commands.getCommands(true);
+        const dumpPath = 'c:\\Users\\ysk41\\dev\\anti-crow\\scripts\\vscode_commands_dump.json';
+        fs.writeFileSync(dumpPath, JSON.stringify(cmds, null, 2), 'utf-8');
+        logDebug(`CDP: Dumped ${cmds.length} commands to ${dumpPath}`);
+    } catch (e) {
+        logDebug(`CDP: Failed to dump commands: ${e}`);
+    }
+    // ----------------------------------------------
 
     // StatusBar
     ctx.statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);

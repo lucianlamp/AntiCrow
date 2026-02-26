@@ -152,6 +152,22 @@ export class CdpConnection {
         }
 
         await this.connectToUrl(wsUrl);
+
+        // [Fix: Iframe Delay Issue] 接続成功直後にメインフレームでチャットパネルを強制展開し、iframe の初期化を促す
+        try {
+            logDebug(`CDP: focusing chat panel to ensure iframe initialization`);
+            await this.evaluate(`
+            (async () => {
+                if (typeof vscode !== 'undefined' && vscode.commands) {
+                    await vscode.commands.executeCommand('workbench.panel.chatSidebar.focus');
+                }
+            })()
+        `);
+            // パネル展開とiframeのマウントを少し待機
+            await new Promise(resolve => setTimeout(resolve, 500));
+        } catch (err) {
+            logWarn(`CDP: failed to focus chat panel: ${err instanceof Error ? err.message : err}`);
+        }
     }
 
     /** WebSocket を切断する（ターゲット情報は保持） */

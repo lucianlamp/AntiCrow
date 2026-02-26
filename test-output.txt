@@ -1,221 +1,32 @@
 
-[1m[46m RUN [49m[22m [36mv4.0.18 [39m[90mC:/Users/ysk41/dev/anti-crow[39m
+ RUN  v4.0.18 C:/Users/ysk41/dev/anti-crow
 
- [32m笨・[39m src/__tests__/planParser.test.ts [2m([22m[2m18 tests[22m[2m)[22m[32m 39[2mms[22m[39m
- [32m笨・[39m src/__tests__/configHelper.test.ts [2m([22m[2m16 tests[22m[2m)[22m[32m 37[2mms[22m[39m
- [32m笨・[39m src/__tests__/botLock.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 60[2mms[22m[39m
- [32m笨・[39m src/__tests__/scheduler.test.ts [2m([22m[2m13 tests[22m[2m)[22m[32m 49[2mms[22m[39m
- [32m笨・[39m src/__tests__/templateStore.test.ts [2m([22m[2m32 tests[22m[2m)[22m[32m 186[2mms[22m[39m
- [32m笨・[39m src/__tests__/fileIpc.test.ts [2m([22m[2m34 tests[22m[2m)[22m[32m 191[2mms[22m[39m
- [32m笨・[39m src/__tests__/memoryStore.test.ts [2m([22m[2m15 tests[22m[2m)[22m[32m 24[2mms[22m[39m
- [32m笨・[39m src/__tests__/discordFormatter.test.ts [2m([22m[2m31 tests[22m[2m)[22m[32m 15[2mms[22m[39m
- [32m笨・[39m src/__tests__/mdToJson.test.ts [2m([22m[2m11 tests[22m[2m)[22m[32m 12[2mms[22m[39m
- [32m笨・[39m src/__tests__/suggestionParser.test.ts [2m([22m[2m17 tests[22m[2m)[22m[32m 13[2mms[22m[39m
- [31m笶ｯ[39m src/__tests__/executor.test.ts [2m([22m[2m18 tests[22m[2m | [22m[31m10 failed[39m[2m)[22m[32m 273[2mms[22m[39m
-       [32m笨・[39m should start with running = false[32m 3[2mms[22m[39m
-       [32m笨・[39m should start with empty queue[32m 1[2mms[22m[39m
-       [32m笨・[39m should start with null queue info[32m 1[2mms[22m[39m
-[31m       [31mﾃ・[31m should skip duplicate plan_id already in queue (pending)[39m[32m 40[2mms[22m[39m
-[31m       [31mﾃ・[31m enqueueImmediate should set triggerType to immediate[39m[32m 28[2mms[22m[39m
-[31m       [31mﾃ・[31m should remove a pending job from the queue[39m[32m 26[2mms[22m[39m
-[31m       [31mﾃ・[31m should return current job and pending list[39m[32m 28[2mms[22m[39m
-[31m       [31mﾃ・[31m should clear running and queue state[39m[32m 50[2mms[22m[39m
-[31m       [31mﾃ・[31m should stop current job but preserve queue[39m[32m 33[2mms[22m[39m
-       [32m笨・[39m isRunning should be false before any enqueue[32m 1[2mms[22m[39m
-[31m       [31mﾃ・[31m queueLength should count pending jobs only (not current)[39m[32m 18[2mms[22m[39m
-[31m       [31mﾃ・[31m should process jobs sequentially and call notifyDiscord on completion[39m[32m 4[2mms[22m[39m
-[31m       [31mﾃ・[31m should process multiple jobs in FIFO order[39m[32m 6[2mms[22m[39m
-       [32m笨・[39m should notify on error and not crash[32m 3[2mms[22m[39m
-[31m       [31mﾃ・[31m should handle IPC timeout without retry[39m[32m 4[2mms[22m[39m
-       [32m笨・[39m startUIWatcher should not throw[32m 2[2mms[22m[39m
-       [32m笨・[39m stopUIWatcher should not throw even when not started[32m 11[2mms[22m[39m
-       [32m笨・[39m startUIWatcher twice should stop previous watcher[32m 4[2mms[22m[39m
- [32m笨・[39m src/__tests__/licenseChecker.test.ts [2m([22m[2m25 tests[22m[2m)[22m[32m 37[2mms[22m[39m
- [32m笨・[39m src/__tests__/suggestionButtons.test.ts [2m([22m[2m13 tests[22m[2m)[22m[32m 8[2mms[22m[39m
- [32m笨・[39m src/__tests__/errors.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 11[2mms[22m[39m
- [32m笨・[39m src/__tests__/embedHelper.test.ts [2m([22m[2m24 tests[22m[2m)[22m[32m 9[2mms[22m[39m
- [32m笨・[39m src/__tests__/logger.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 8[2mms[22m[39m
- [32m笨・[39m src/__tests__/licenseWebview.test.ts [2m([22m[2m15 tests[22m[2m)[22m[32m 12[2mms[22m[39m
- [32m笨・[39m src/__tests__/promptBuilder.test.ts [2m([22m[2m17 tests[22m[2m)[22m[32m 7[2mms[22m[39m
- [32m笨・[39m src/__tests__/discordUtils.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 4[2mms[22m[39m
- [32m笨・[39m src/__tests__/accessControl.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 4[2mms[22m[39m
- [32m笨・[39m src/__tests__/messageHandler.test.ts [2m([22m[2m11 tests[22m[2m)[22m[32m 9[2mms[22m[39m
- [32m笨・[39m src/__tests__/discordChannels.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ 笨・src/__tests__/botLock.test.ts (8 tests) 30ms
+ 笨・src/__tests__/planParser.test.ts (18 tests) 37ms
+ 笨・src/__tests__/configHelper.test.ts (16 tests) 36ms
+ 笨・src/__tests__/scheduler.test.ts (13 tests) 104ms
+ 笨・src/__tests__/templateStore.test.ts (40 tests) 132ms
+ 笨・src/__tests__/fileIpc.test.ts (34 tests) 191ms
+ 笨・src/__tests__/discordFormatter.test.ts (31 tests) 16ms
+ 笨・src/__tests__/suggestionParser.test.ts (17 tests) 12ms
+ 笨・src/__tests__/executor.test.ts (27 tests) 358ms
+ 笨・src/__tests__/memoryStore.test.ts (16 tests) 24ms
+ 笨・src/__tests__/memorySummarizer.test.ts (11 tests) 15ms
+ 笨・src/__tests__/licenseChecker.test.ts (25 tests) 26ms
+ 笨・src/__tests__/mdToJson.test.ts (11 tests) 10ms
+ 笨・src/__tests__/errors.test.ts (7 tests) 9ms
+ 笨・src/__tests__/embedHelper.test.ts (24 tests) 10ms
+ 笨・src/__tests__/logger.test.ts (6 tests) 8ms
+ 笨・src/__tests__/licenseWebview.test.ts (15 tests) 10ms
+ 笨・src/__tests__/suggestionButtons.test.ts (13 tests) 8ms
+ 笨・src/__tests__/promptBuilder.test.ts (17 tests) 6ms
+ 笨・src/__tests__/accessControl.test.ts (6 tests) 5ms
+ 笨・src/__tests__/discordUtils.test.ts (4 tests) 3ms
+ 笨・src/__tests__/messageHandler.test.ts (11 tests) 10ms
+ 笨・src/__tests__/discordChannels.test.ts (12 tests) 5ms
 
-竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ Failed Tests 10 竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ
-
- FAIL  src/__tests__/executor.test.ts > Executor > enqueue 窶・驥崎､・亟豁｢ > should skip duplicate plan_id already in queue (pending)
-AssertionError: expected +0 to be 1 // Object.is equality
-
-- Expected
-+ Received
-
-- 1
-+ 0
-
- 笶ｯ src/__tests__/executor.test.ts:250:44
-    248|             // 2縺､逶ｮ繧偵く繝･繝ｼ縺ｫ霑ｽ蜉・・ending迥ｶ諷具ｼ・[39m
-    249|             executor.enqueue({ plan: planB, triggerType: 'immediate' }窶ｦ
-    250|             expect(executor.queueLength()).toBe(1);
-       |                                            ^
-    251| 
-    252|             // 蜷後§plan_id縺ｮ3縺､逶ｮ縺ｯ繧ｹ繧ｭ繝・・縺輔ｌ繧・[39m
-
-竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ[1/10]竡ｯ
-
- FAIL  src/__tests__/executor.test.ts > Executor > enqueueImmediate / enqueueScheduled > enqueueImmediate should set triggerType to immediate
-AssertionError: expected null not to be null
- 笶ｯ src/__tests__/executor.test.ts:276:38
-    274|             await new Promise(r => setTimeout(r, 10));
-    275|             const info = executor.getQueueInfo();
-    276|             expect(info.current).not.toBeNull();
-       |                                      ^
-    277|             expect(info.current!.plan.plan_id).toBe(plan.plan_id);
-    278| 
-
-竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ[2/10]竡ｯ
-
- FAIL  src/__tests__/executor.test.ts > Executor > cancelJob > should remove a pending job from the queue
-AssertionError: expected 1 to be 2 // Object.is equality
-
-- Expected
-+ Received
-
-- 2
-+ 1
-
- 笶ｯ src/__tests__/executor.test.ts:303:44
-    301|             executor.enqueue({ plan: plan3, triggerType: 'immediate' }窶ｦ
-    302| 
-    303|             expect(executor.queueLength()).toBe(2);
-       |                                            ^
-    304| 
-    305|             // plan2 繧偵く繝･繝ｼ縺九ｉ蜑企勁
-
-竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ[3/10]竡ｯ
-
- FAIL  src/__tests__/executor.test.ts > Executor > getQueueInfo > should return current job and pending list
-AssertionError: expected 'pending-1' to be 'running' // Object.is equality
-
-Expected: "running"
-Received: "pending-1"
-
- 笶ｯ src/__tests__/executor.test.ts:335:48
-    333|             const info = executor.getQueueInfo();
-    334|             expect(info.current).not.toBeNull();
-    335|             expect(info.current!.plan.plan_id).toBe('running');
-       |                                                ^
-    336|             expect(info.current!.startTime).toBeGreaterThan(0);
-    337|             expect(info.pending).toHaveLength(1);
-
-竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ[4/10]竡ｯ
-
- FAIL  src/__tests__/executor.test.ts > Executor > forceReset > should clear running and queue state
-AssertionError: expected +0 to be 1 // Object.is equality
-
-- Expected
-+ Received
-
-- 1
-+ 0
-
- 笶ｯ src/__tests__/executor.test.ts:359:44
-    357|             executor.enqueue({ plan: plan2, triggerType: 'immediate' }窶ｦ
-    358| 
-    359|             expect(executor.queueLength()).toBe(1); // plan2 is pending
-       |                                            ^
-    360| 
-    361|             executor.forceReset();
-
-竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ[5/10]竡ｯ
-
- FAIL  src/__tests__/executor.test.ts > Executor > forceStop > should stop current job but preserve queue
-AssertionError: expected +0 to be 1 // Object.is equality
-
-- Expected
-+ Received
-
-- 1
-+ 0
-
- 笶ｯ src/__tests__/executor.test.ts:386:44
-    384|             executor.enqueue({ plan: plan2, triggerType: 'immediate' }窶ｦ
-    385| 
-    386|             expect(executor.queueLength()).toBe(1); // plan2 is pending
-       |                                            ^
-    387| 
-    388|             executor.forceStop();
-
-竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ[6/10]竡ｯ
-
- FAIL  src/__tests__/executor.test.ts > Executor > isRunning / queueLength > queueLength should count pending jobs only (not current)
-AssertionError: expected 1 to be 2 // Object.is equality
-
-- Expected
-+ Received
-
-- 2
-+ 1
-
- 笶ｯ src/__tests__/executor.test.ts:416:44
-    414| 
-    415|             // 'a' is current, 'b' and 'c' are pending
-    416|             expect(executor.queueLength()).toBe(2);
-       |                                            ^
-    417| 
-    418|             executor.forceReset();
-
-竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ[7/10]竡ｯ
-
- FAIL  src/__tests__/executor.test.ts > Executor > processQueue 窶・逶ｴ蛻怜ｮ溯｡・[2m > should process jobs sequentially and call notifyDiscord on completion
-AssertionError: expected "vi.fn()" to be called at least once
- 笶ｯ src/__tests__/executor.test.ts:438:36
-    436|             // notifyDiscord 縺悟他縺ｰ繧後※縺・ｋ縺ｯ縺夲ｼ・un_start + 莨昜ｻ､螳御ｺ・+ 謌仙粥騾夂衍・・[39m
-    437|             expect(notifyDiscord).toHaveBeenCalled();
-    438|             expect(cdp.sendPrompt).toHaveBeenCalled();
-       |                                    ^
-    439|         });
-    440| 
-
-竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ[8/10]竡ｯ
-
- FAIL  src/__tests__/executor.test.ts > Executor > processQueue 窶・逶ｴ蛻怜ｮ溯｡・[2m > should process multiple jobs in FIFO order
-AssertionError: expected [] to deeply equal [ 'job-1', 'job-2' ]
-
-- Expected
-+ Received
-
-- [
--   "job-1",
--   "job-2",
-- ]
-+ []
-
- 笶ｯ src/__tests__/executor.test.ts:461:27
-    459|             ]);
-    460| 
-    461|             expect(order).toEqual(['job-1', 'job-2']);
-       |                           ^
-    462|         });
-    463|     });
-
-竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ[9/10]竡ｯ
-
- FAIL  src/__tests__/executor.test.ts > Executor > executeJob 窶・繧ｨ繝ｩ繝ｼ繝上Φ繝峨Μ繝ｳ繧ｰ > should handle IPC timeout without retry
-AssertionError: expected 0 to be greater than or equal to 1
- 笶ｯ src/__tests__/executor.test.ts:498:41
-    496|             const timeoutCalls = notifyDiscord.mock.calls.filter(
-    497|                 (call: unknown[]) => typeof call[1] === 'string' && (c窶ｦ
-    498|             expect(timeoutCalls.length).toBeGreaterThanOrEqual(1);
-       |                                         ^
-    499|         });
-    500|     });
-
-竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ[10/10]竡ｯ
-
-
-[2m Test Files [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m21 passed[39m[22m[90m (22)[39m
-[2m      Tests [22m [1m[31m10 failed[39m[22m[2m | [22m[1m[32m343 passed[39m[22m[90m (353)[39m
-[2m   Start at [22m 11:24:47
-[2m   Duration [22m 3.47s[2m (transform 3.62s, setup 0ms, import 6.65s, tests 1.01s, environment 6ms)[22m
+ Test Files  23 passed (23)
+      Tests  382 passed (382)
+   Start at  17:02:27
+   Duration  2.38s (transform 2.14s, setup 0ms, import 4.71s, tests 1.07s, environment 10ms)
 

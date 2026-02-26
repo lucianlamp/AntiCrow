@@ -97,17 +97,34 @@ function cleanupRecentMessageIds(): void {
 // 60秒毎にクリーンアップ
 setInterval(cleanupRecentMessageIds, 60_000);
 
-/** 全ワークスペースのキューをリセットする（cancelPlanGeneration や内部リセットで使用） */
-export function resetProcessingFlag(): void {
-    workspaceQueueCount.clear();
-    workspaceQueues.clear();
-    workspaceWaitingMessages.clear();
-    currentProcessingStatuses.clear();
-    logDebug('messageHandler: all workspace queues reset');
+/**
+ * ワークスペースのキューをリセットする（cancelPlanGeneration や内部リセットで使用）。
+ * wsKey を指定すると対象ワークスペースのみリセット、省略時は全ワークスペース一括リセット。
+ */
+export function resetProcessingFlag(wsKey?: string): void {
+    if (wsKey) {
+        workspaceQueueCount.delete(wsKey);
+        workspaceQueues.delete(wsKey);
+        workspaceWaitingMessages.delete(wsKey);
+        currentProcessingStatuses.delete(wsKey);
+        logDebug(`messageHandler: workspace queue reset for "${wsKey}"`);
+    } else {
+        workspaceQueueCount.clear();
+        workspaceQueues.clear();
+        workspaceWaitingMessages.clear();
+        currentProcessingStatuses.clear();
+        logDebug('messageHandler: all workspace queues reset');
+    }
 }
 
-/** Plan 生成をキャンセルする（/cancel コマンド用） */
-export function cancelPlanGeneration(): void {
+/**
+ * Plan 生成をキャンセルする（/cancel コマンド用）。
+ * wsKey を指定すると対象ワークスペースのキュー状態のみクリア、
+ * AbortController / typing / progress interval は全体に影響する（ワークスペース単位の分離は不可）。
+ * wsKey 省略時は従来通り全クリア。
+ */
+export function cancelPlanGeneration(wsKey?: string): void {
+    // AbortController と interval は全体共有リソースのため常に全クリア
     if (currentPlanAbortController) {
         currentPlanAbortController.abort();
         currentPlanAbortController = null;
@@ -127,10 +144,18 @@ export function cancelPlanGeneration(): void {
         logDebug(`messageHandler: cleared ${activePlanProgressIntervals.size} plan progress interval(s)`);
         activePlanProgressIntervals.clear();
     }
-    currentProcessingStatuses.clear();
-    // キュー状態も完全リセット（キャンセル後のゴーストカウント防止）
-    workspaceQueueCount.clear();
-    workspaceWaitingMessages.clear();
+    // キュー状態のクリア（ワークスペース単位 or 全体）
+    if (wsKey) {
+        currentProcessingStatuses.delete(wsKey);
+        workspaceQueueCount.delete(wsKey);
+        workspaceWaitingMessages.delete(wsKey);
+        logDebug(`messageHandler: cancelled plan generation for workspace "${wsKey}"`);
+    } else {
+        currentProcessingStatuses.clear();
+        workspaceQueueCount.clear();
+        workspaceWaitingMessages.clear();
+        logDebug('messageHandler: cancelled plan generation for all workspaces');
+    }
 }
 
 /** メッセージキューの状態を取得（/queue, /status コマンド用） */
@@ -461,9 +486,11 @@ async function generatePlan(
         activePlanProgressIntervals.add(myProgressInterval);
 
         const responseTimeout = getResponseTimeout();
+        fileIpc.registerActiveRequest(requestId, tempFiles);
         try {
             planResponse = await fileIpc.waitForResponse(responsePath, responseTimeout, abortController.signal);
         } finally {
+            fileIpc.unregisterActiveRequest(requestId, tempFiles);
             clearInterval(myProgressInterval);
             activePlanProgressIntervals.delete(myProgressInterval);
             fileIpc.cleanupProgress(progressPath).catch(() => { });
@@ -478,12 +505,19 @@ async function generatePlan(
     }
     logDebug(`handleDiscordMessage: plan response received(${planResponse.length} chars)`);
 
-    // パース
-    logDebug(`handleDiscordMessage: raw plan response: ${planResponse.substring(0, 200)} `);
     const planOutput = parsePlanJson(planResponse);
     if (!planOutput) {
-        // Plan JSON として解析できなかった → Markdown テキストとして Discord に送信
+        // Plan JSON として解析できなかった
         logWarn('handleDiscordMessage: plan JSON parse failed, forwarding as markdown');
+
+        // フォールバック安全網: 明らかに壊れた計画JSONの場合、Discordに生漏れさせない
+        const trimmed = planResponse.trim();
+        if (trimmed.startsWith('{') && (trimmed.includes('"plan_id"') || trimmed.includes('"prompt"'))) {
+            logWarn('handleDiscordMessage: broken plan JSON detected, aborting to prevent raw JSON leak');
+            await channel.send({ embeds: [buildEmbed('❌ 計画の生成に失敗しました（JSONフォーマットエラー）。もう一度指示をお試しください。', EmbedColor.Error)] });
+            return null;
+        }
+
         const formatted = FileIpc.extractResult(planResponse);
         const content = formatted !== planResponse ? formatted : planResponse;
         // normalizeHeadings + splitForEmbeds で長文分割 Embed 送信
@@ -776,8 +810,12 @@ export async function handleDiscordMessage(
 
     } catch (e) {
         const errMsg = e instanceof Error ? e.message : String(e);
-        logError('handleDiscordMessage failed', e);
-        await channel.send({ embeds: [buildEmbed(`❌ エラー: ${sanitizeErrorForDiscord(errMsg)}`, EmbedColor.Error)] });
+        if (errMsg.includes('aborted')) {
+            logDebug(`handleDiscordMessage: aborted (expected via /cancel)`);
+        } else {
+            logError('handleDiscordMessage failed', e);
+            await channel.send({ embeds: [buildEmbed(`❌ エラー: ${sanitizeErrorForDiscord(errMsg)}`, EmbedColor.Error)] });
+        }
     } finally {
         // 処理完了時にステータスをクリア
         currentProcessingStatuses.delete(wsKeyForStatus);

@@ -17,8 +17,7 @@ import type { WorkspaceStore } from './workspaceStore';
 // デフォルト値定数
 // ---------------------------------------------------------------------------
 
-/** CDP ポートスキャン範囲（レガシー: 現在は cdp_ports/ の動的ポートファイルを使用） */
-export const CDP_PORT_RANGE: number[] = [];
+
 
 /**
  * CDP ポートとして使用してはいけないポート番号。
@@ -30,6 +29,7 @@ export const EXCLUDED_CDP_PORTS: ReadonlySet<number> = new Set([9222]);
  * CDP ポート一覧を取得する。
  * cdp_ports/ ディレクトリのポートファイルから動的に検出する。
  * EXCLUDED_CDP_PORTS に含まれるポートは自動的に除外される。
+ * 動的ポートが見つからない場合は settings の cdpPort をフォールバックに使用する。
  * 
  * @param storagePath globalStorage のパス
  */
@@ -68,8 +68,16 @@ export function getCdpPorts(storagePath: string): number[] {
         return dynamicPorts;
     }
 
-    logWarn('getCdpPorts: no dynamic ports found in cdp_ports/ directory');
-    return [];
+    // フォールバック: settings の cdpPort（固定ポート）を使用
+    const configuredPort = getCdpPort();
+    logDebug(`getCdpPorts: no dynamic ports found, using configured cdpPort ${configuredPort}`);
+    return [configuredPort];
+
+}
+
+/** CDP 固定ポート番号を取得する（デフォルト: 9333） */
+export function getCdpPort(): number {
+    return getConfig().get<number>('cdpPort') ?? 9333;
 }
 
 /** 古いポートファイルを削除（プロセスが終了済みの場合） */
@@ -157,6 +165,11 @@ export function getArchiveDays(): number {
 /** workspacePaths を取得する（手動設定のみ、非推奨） */
 export function getWorkspacePaths(): Record<string, string> {
     return getConfig().get<Record<string, string>>('workspacePaths') || {};
+}
+
+/** 新規ワークスペース作成用ペアレントディレクトリ候補を取得する */
+export function getWorkspaceParentDirs(): string[] {
+    return getConfig().get<string[]>('workspaceParentDirs') || [];
 }
 
 /**

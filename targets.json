@@ -1,0 +1,33 @@
+[ {
+   "description": "",
+   "devtoolsFrontendUrl": "https://chrome-devtools-frontend.appspot.com/serve_rev/@caff226ed96db00961b7046a5dc9f8db004e7fbb/inspector.html?ws=127.0.0.1:9333/devtools/page/980880F1EAE4D6719324221E2E778A30",
+   "id": "980880F1EAE4D6719324221E2E778A30",
+   "title": "Launchpad",
+   "type": "page",
+   "url": "vscode-file://vscode-app/c:/Users/ysk41/AppData/Local/Programs/antigravity/resources/app/out/vs/code/electron-browser/workbench/workbench-jetski-agent.html",
+   "webSocketDebuggerUrl": "ws://127.0.0.1:9333/devtools/page/980880F1EAE4D6719324221E2E778A30"
+}, {
+   "description": "",
+   "devtoolsFrontendUrl": "https://chrome-devtools-frontend.appspot.com/serve_rev/@caff226ed96db00961b7046a5dc9f8db004e7fbb/inspector.html?ws=127.0.0.1:9333/devtools/page/B400650ED454F7B69B4C46E7F66DF3D0",
+   "id": "B400650ED454F7B69B4C46E7F66DF3D0",
+   "title": "anti-crow - Antigravity - anticrow.ps1",
+   "type": "page",
+   "url": "vscode-file://vscode-app/c:/Users/ysk41/AppData/Local/Programs/antigravity/resources/app/out/vs/code/electron-browser/workbench/workbench.html",
+   "webSocketDebuggerUrl": "ws://127.0.0.1:9333/devtools/page/B400650ED454F7B69B4C46E7F66DF3D0"
+}, {
+   "description": "",
+   "devtoolsFrontendUrl": "https://chrome-devtools-frontend.appspot.com/serve_rev/@caff226ed96db00961b7046a5dc9f8db004e7fbb/inspector.html?ws=127.0.0.1:9333/devtools/page/9FEA391D089B8C40298D569DFFC78F02",
+   "id": "9FEA391D089B8C40298D569DFFC78F02",
+   "title": "",
+   "type": "worker",
+   "url": "",
+   "webSocketDebuggerUrl": "ws://127.0.0.1:9333/devtools/page/9FEA391D089B8C40298D569DFFC78F02"
+}, {
+   "description": "",
+   "devtoolsFrontendUrl": "https://chrome-devtools-frontend.appspot.com/serve_rev/@caff226ed96db00961b7046a5dc9f8db004e7fbb/inspector.html?ws=127.0.0.1:9333/devtools/page/43663A5A1D5E7D46A42419F4114BD9BB",
+   "id": "43663A5A1D5E7D46A42419F4114BD9BB",
+   "title": "",
+   "type": "worker",
+   "url": "",
+   "webSocketDebuggerUrl": "ws://127.0.0.1:9333/devtools/page/43663A5A1D5E7D46A42419F4114BD9BB"
+} ]

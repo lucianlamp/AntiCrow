@@ -22,7 +22,7 @@ import { CdpPool } from './cdpPool';
 import { ExecutorPool } from './executorPool';
 import { TemplateStore } from './templateStore';
 import { ChannelIntent, Plan } from './types';
-import { logDebug, logError, logWarn } from './logger';
+import { logDebug, logError, logWarn, logInfo } from './logger';
 import { registerGuildCommands } from './slashCommands';
 
 import { cleanupOldAttachments } from './attachmentDownloader';
@@ -34,7 +34,23 @@ import { getConfig, getResponseTimeout, getTimezone, getArchiveDays, getWorkspac
 import { archiveOldCategories } from './categoryArchiver';
 import { getLicenseGate, getLicenseChecker } from './extension';
 import type { LicenseType } from './licensing';
+import { setSummarizeOps } from './memoryStore';
 import * as fs from 'fs';
+
+/** ワークスペース名としてカテゴリ作成すべきでない名前を判定する */
+function isInvalidWorkspaceName(wsName: string): boolean {
+    if (!wsName) { return true; }
+    return (
+        wsName.includes('://') ||           // URL 形式
+        wsName === 'Antigravity' ||          // 初期状態のタイトル
+        wsName.includes('workbench.html') || // 内部 URL の一部
+        wsName.includes('Welcome') ||        // Welcome タブ
+        wsName.includes('Settings') ||       // 設定タブ
+        wsName.includes('Extensions') ||     // 拡張機能タブ
+        /^\..+/.test(wsName) ||              // 隠しファイル
+        /\.[a-z]{1,5}$/i.test(wsName)        // ファイル名（拡張子を含む）
+    );
+}
 
 // ---------------------------------------------------------------------------
 // 設定バリデーション
@@ -45,6 +61,65 @@ function validateConfig(): void {
     for (const [wsName, wsPath] of Object.entries(wsPaths)) {
         if (!fs.existsSync(wsPath)) {
             logWarn(`validateConfig: workspacePaths["${wsName}"] のパスが存在しません: "${wsPath}"`);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// stale response 再送（起動時 + 定期チェック共通）
+// ---------------------------------------------------------------------------
+
+async function redeliverStaleResponses(
+    ctx: BridgeContext,
+    staleResponses: import('./fileIpc').StaleResponse[],
+): Promise<void> {
+    if (staleResponses.length === 0) { return; }
+    for (const sr of staleResponses) {
+        try {
+            if (ctx.bot && ctx.bot.isReady()) {
+                // ワークスペース名の補完: meta になければ requestId から抽出（req_{ws}_{ts}_{uuid} 形式）
+                let wsName = sr.workspaceName;
+                if (!wsName) {
+                    const wsMatch = sr.requestId.match(/^req_([a-zA-Z][a-zA-Z0-9_-]*)_\d+_[a-f0-9]+$/);
+                    if (wsMatch) {
+                        wsName = wsMatch[1];
+                        logDebug(`Bridge: extracted workspace from requestId: "${wsName}"`);
+                    }
+                }
+
+                // 2段フォールバック: ① meta channelId → ② ワークスペース名でカテゴリ内 #agent-chat
+                // ※ findFirstAgentChatChannelId（全WS横断）は使わない — 別WSへの誤送信を防止
+                let targetChannelId = sr.channelId || null;
+                let source = 'meta';
+                if (!targetChannelId && wsName) {
+                    targetChannelId = ctx.bot.findAgentChatChannelByWorkspace(wsName);
+                    source = 'workspace';
+                }
+                if (targetChannelId) {
+                    // テキスト抽出
+                    let text: string;
+                    if (sr.format === 'md') {
+                        text = sr.content;
+                    } else {
+                        text = FileIpc.extractResult(sr.content);
+                    }
+
+                    // 再送メッセージにヘッダー付与
+                    const header = '⚠️ **前回のセッションで未配信だったレスポンスを再送します:**\\n\\n';
+                    await ctx.bot.sendToChannel(targetChannelId, header + text, 0xFFA500);
+                    logDebug(`Bridge: stale response re-delivered — requestId=${sr.requestId}, channelId=${targetChannelId} (source=${source}, workspace=${wsName ?? 'none'})`);
+                } else {
+                    logWarn(`Bridge: stale response skipped — cannot determine target channel (requestId=${sr.requestId}, workspace=${wsName ?? 'none'}). Cleaning up to prevent re-delivery.`);
+                }
+            } else {
+                logWarn(`Bridge: stale response found but bot not ready — requestId=${sr.requestId}, format=${sr.format}, chars=${sr.content.length}`);
+            }
+            // 再送成否に関わらずファイル+metaは削除（無限ループ防止）
+            await ctx.fileIpc!.cleanupStaleResponse(sr.filePath, sr.metaFilePath);
+        } catch (e) {
+            logWarn(`Bridge: stale response re-delivery failed — requestId=${sr.requestId}: ${e instanceof Error ? e.message : e}`);
+            // エラーでもファイル削除を試行
+            try { await ctx.fileIpc!.cleanupStaleResponse(sr.filePath, sr.metaFilePath); } catch { /* ignore */ }
         }
     }
 }
@@ -74,7 +149,7 @@ async function promoteToBotOwner(
 
     await ctx.bot.start();
     await ctx.bot.waitForReady();
-    logDebug(`Bridge: bot ready, guilds=${ctx.bot.getFirstGuild()?.name || 'none'}`);
+    logInfo(`Bridge: bot ready, guilds=${ctx.bot.getFirstGuild()?.name || 'none'}`);
 
     // ワークスペースカテゴリー自動作成
     {
@@ -89,8 +164,10 @@ async function promoteToBotOwner(
                         continue;
                     }
                     const wsName = CdpBridge.extractWorkspaceName(inst.title);
-                    if (wsName) {
+                    if (wsName && !isInvalidWorkspaceName(wsName)) {
                         await ctx.bot.ensureWorkspaceStructure(guild.id, wsName);
+                    } else if (wsName) {
+                        logDebug(`Bridge: skipping category creation for invalid workspace name: "${wsName}" (title: "${inst.title}")`);
                     }
                 }
                 logDebug(`Bridge: workspace categories ensured for ${instances.length} instance(s)`);
@@ -102,11 +179,7 @@ async function promoteToBotOwner(
                     const wsPath = currentWsFolders[0].uri.fsPath;
                     if (wsName && wsPath) {
                         // バリデーション: 壊れたワークスペース名の保存を防止
-                        const isInvalidName =
-                            wsName.includes('://') ||           // URL 形式
-                            wsName === 'Antigravity' ||          // 初期状態のタイトル
-                            wsName.includes('workbench.html');   // 内部 URL の一部
-                        if (isInvalidName) {
+                        if (isInvalidWorkspaceName(wsName)) {
                             logWarn(`Bridge: skipping workspace path save — invalid workspace name: "${wsName}"`);
                         } else {
                             const wsPaths = getWorkspacePaths();
@@ -165,7 +238,7 @@ async function promoteToBotOwner(
         await handleModalSubmit(ctx, interaction);
     });
 
-    logDebug('Bridge: Bot started (this workspace is the bot owner)');
+    logInfo('Bridge: Bot started (this workspace is the bot owner)');
 
     // -----------------------------------------------------------------
     // 定期 CDP ターゲットスキャン: 新ワークスペースのカテゴリ自動生成
@@ -191,6 +264,10 @@ async function promoteToBotOwner(
                 if (!hasWorkspace) { continue; }
                 const wsName = CdpBridge.extractWorkspaceName(inst.title);
                 if (!wsName || knownWorkspaces.has(wsName)) { continue; }
+                if (isInvalidWorkspaceName(wsName)) {
+                    logDebug(`Bridge: skipping category creation for invalid workspace name: "${wsName}" (title: "${inst.title}")`);
+                    continue;
+                }
 
                 knownWorkspaces.add(wsName);
                 logDebug(`Bridge: new workspace detected: "${wsName}" — creating category...`);
@@ -235,6 +312,7 @@ async function startBridgeInternal(
     ctx: BridgeContext,
     context: vscode.ExtensionContext,
 ): Promise<void> {
+    logInfo('Bridge: startBridgeInternal starting...');
     validateConfig();
 
     ctx.extensionPath = context.extensionPath;
@@ -345,15 +423,27 @@ async function startBridgeInternal(
         logWarn(`Bridge: CDP initial connect failed (will retry on first message): ${e instanceof Error ? e.message : e}`);
     }
 
+    // サマライズ Ops を memoryStore に注入（CDP + FileIpc が必要）
+    if (ctx.cdp && ctx.fileIpc) {
+        setSummarizeOps({
+            sendPrompt: async (prompt: string) => { await ctx.cdp!.sendPrompt(prompt); },
+            createMarkdownRequestId: (wsName?: string) => ctx.fileIpc!.createMarkdownRequestId(wsName),
+            waitForResponse: async (responsePath: string, timeoutMs: number) =>
+                ctx.fileIpc!.waitForResponse(responsePath, timeoutMs),
+        });
+        logDebug('Bridge: summarize ops injected into memoryStore');
+    }
+
     // Bot 起動ロック
     const storagePath = storageUri.fsPath;
     ctx.globalStoragePath = storagePath;
     ctx.isBotOwner = acquireLock(storagePath);
 
     if (ctx.isBotOwner) {
+        logInfo('Bridge: Acquired bot owner lock — promoting to Bot Owner');
         await promoteToBotOwner(ctx, context);
     } else {
-        logDebug('Bridge: Bot startup skipped (another workspace owns the bot) — running in standby mode');
+        logInfo('Bridge: Bot startup skipped (another workspace owns the bot) — running in standby mode');
 
         // 二重昇格防止フラグ（promoteToBotOwner 中に次の setInterval が発火するレース対策）
         let promoting = false;
@@ -379,53 +469,22 @@ async function startBridgeInternal(
         }, 5_000);
     }
 
-    // -----------------------------------------------------------------
-    // Phase 2: stale response を Discord に再送
-    // Bot が稼働中なら #agent-chat に再送、そうでなければログ+削除
-    // -----------------------------------------------------------------
-    if (pendingStaleResponses.length > 0) {
-        for (const sr of pendingStaleResponses) {
-            try {
-                if (ctx.bot && ctx.bot.isReady()) {
-                    // 3段フォールバック: ① meta channelId → ② ワークスペース名でカテゴリ内 #agent-chat → ③ 最初の #agent-chat
-                    let targetChannelId = sr.channelId || null;
-                    let source = 'meta';
-                    if (!targetChannelId && sr.workspaceName) {
-                        targetChannelId = ctx.bot.findAgentChatChannelByWorkspace(sr.workspaceName);
-                        source = 'workspace';
-                    }
-                    if (!targetChannelId) {
-                        targetChannelId = ctx.bot.findFirstAgentChatChannelId();
-                        source = 'fallback';
-                    }
-                    if (targetChannelId) {
-                        // テキスト抽出
-                        let text: string;
-                        if (sr.format === 'md') {
-                            text = sr.content;
-                        } else {
-                            text = FileIpc.extractResult(sr.content);
-                        }
+    // Phase 2: stale response を Discord に再送（初回）
+    await redeliverStaleResponses(ctx, pendingStaleResponses);
 
-                        // 再送メッセージにヘッダー付与
-                        const header = '⚠️ **前回のセッションで未配信だったレスポンスを再送します:**\n\n';
-                        await ctx.bot.sendToChannel(targetChannelId, header + text, 0xFFA500);
-                        logDebug(`Bridge: stale response re-delivered — requestId=${sr.requestId}, channelId=${targetChannelId} (source=${source}, workspace=${sr.workspaceName ?? 'none'})`);
-                    } else {
-                        logWarn(`Bridge: stale response found but no target channel — requestId=${sr.requestId}`);
-                    }
-                } else {
-                    logWarn(`Bridge: stale response found but bot not ready — requestId=${sr.requestId}, format=${sr.format}, chars=${sr.content.length}`);
-                }
-                // 再送成否に関わらずファイル+metaは削除（無限ループ防止）
-                await ctx.fileIpc.cleanupStaleResponse(sr.filePath, sr.metaFilePath);
-            } catch (e) {
-                logWarn(`Bridge: stale response re-delivery failed — requestId=${sr.requestId}: ${e instanceof Error ? e.message : e}`);
-                // エラーでもファイル削除を試行
-                try { await ctx.fileIpc.cleanupStaleResponse(sr.filePath, sr.metaFilePath); } catch { /* ignore */ }
+    // 定期 stale response チェック（5分間隔 — 再起動後に AI が書いたレスポンスもピックアップ）
+    ctx.staleRecoveryTimer = setInterval(async () => {
+        if (!ctx.fileIpc || !ctx.bot || !ctx.bot.isReady()) { return; }
+        try {
+            const stale = await ctx.fileIpc.recoverStaleResponses();
+            if (stale.length > 0) {
+                logWarn(`Bridge: periodic stale check found ${stale.length} response(s)`);
+                await redeliverStaleResponses(ctx, stale);
             }
+        } catch (e) {
+            logDebug(`Bridge: periodic stale recovery failed: ${e instanceof Error ? e.message : e}`);
         }
-    }
+    }, 5 * 60_000);
 
     // 設定変更リスナー
     context.subscriptions.push(
@@ -442,10 +501,10 @@ async function startBridgeInternal(
                     }
                     logDebug('Bridge: autoAccept enabled — starting UI watcher');
                     const isProCheck = () => getLicenseGate()?.isFeatureAllowed('autoAccept') ?? true;
-                    ctx.executor?.startUIWatcher(isProCheck);
+                    ctx.executorPool?.startUIWatcherAll(isProCheck);
                 } else {
                     logDebug('Bridge: autoAccept disabled — stopping UI watcher');
-                    ctx.executor?.stopUIWatcher();
+                    ctx.executorPool?.stopUIWatcherAll();
                 }
             }
         })
@@ -460,7 +519,7 @@ async function startBridgeInternal(
             logDebug('Bridge: autoAccept enabled but blocked at startup (Free plan)');
         } else {
             const isProCheck = () => getLicenseGate()?.isFeatureAllowed('autoAccept') ?? true;
-            ctx.executor?.startUIWatcher(isProCheck);
+            ctx.executorPool?.startUIWatcherAll(isProCheck);
             logDebug('Bridge: UI watcher started (autoAccept enabled)');
         }
     }
@@ -522,13 +581,18 @@ export async function stopBridge(ctx: BridgeContext): Promise<void> {
         ctx.cleanupTimer = null;
     }
 
+    if (ctx.staleRecoveryTimer) {
+        clearInterval(ctx.staleRecoveryTimer);
+        ctx.staleRecoveryTimer = null;
+    }
+
     ctx.scheduler?.stopAll();
 
     // 実行中ジョブを先に停止（CDP 切断前にジョブ停止を保証）
     ctx.executor?.forceStop();
     ctx.executorPool?.forceStopAll();
     // UIウォッチャー停止
-    ctx.executor?.stopUIWatcher();
+    ctx.executorPool?.stopUIWatcherAll();
 
     ctx.cdpPool?.disconnectAll();
     ctx.cdp?.fullDisconnect();
@@ -547,6 +611,9 @@ export async function stopBridge(ctx: BridgeContext): Promise<void> {
     ctx.scheduler = null;
     ctx.executor = null;
     ctx.executorPool = null;
+
+    // サマライズ Ops をクリア
+    setSummarizeOps(null);
 
     const licenseSuffix = getLicenseSuffix();
     ctx.statusBarItem.text = `$(circle-slash) AntiCrow${licenseSuffix}`;
@@ -611,7 +678,7 @@ export function updateStatusBar(ctx: BridgeContext): void {
         ctx.statusBarItem.text = `$(check) AntiCrow${licenseSuffix}`;
         ctx.statusBarItem.tooltip = `AntiCrow — Active (メッセージを処理中)\n${licenseTooltip}`;
     } else {
-        ctx.statusBarItem.text = `$(eye) AntiCrow${licenseSuffix}`;
+        ctx.statusBarItem.text = `$(check) AntiCrow${licenseSuffix}`;
         ctx.statusBarItem.tooltip = `AntiCrow — Standby (別ワークスペースが Bot 管理中)\n${licenseTooltip}`;
     }
     ctx.statusBarItem.command = 'anti-crow.stop';

@@ -248,6 +248,14 @@ DOM 構造を調べるには:
 - 送信ボタン: textbox の兄弟/近傍にある `button` 要素
 - 履歴ボタン: 左サイドバー内
 
+### 2026-02-23 以降の DOM 構造の変化（Shadow DOM 対応）
+
+- **背景**: VSCode や Antigravity のアップデートにより、ダイアログなどで `<vscode-button>` などの Web コンポーネント展開や Shadow DOM が多用されるようになった。
+- **問題点**: 単純な `document.querySelector` や `document.querySelectorAll` では、Shadow DOM 内部の要素（例: `scrollToBottom` 時の `.overflow-y-auto` コンテナや `<vscode-button>` の内部テキストなど）を発見できない。
+- **対策 (findInTree の導入)**:
+  - `el.shadowRoot` を再帰的に走査して目的の要素やテキストを抽出する独自の探索関数 (`findInTree` などのロジック) を導入する必要がある。
+  - `AutoClick` や DOM 操作機能においては、対象タグの探索に `<vscode-button>` を明示的に含めるか、あるいは `tag: 'button'` のような厳しい制約を外し、柔軟な**テキストベースの抽出に寄せる**ことで構造変化に強くする。
+
 ---
 
 ## IPC 通信

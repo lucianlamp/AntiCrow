@@ -23,6 +23,13 @@ const WRITE_SETTLE_MS = 500;
 /** ポーリング間隔（ms） */
 const POLL_INTERVAL_MS = 1_000;
 
+/** ワークスペース名をファイル名に安全に使えるようサニタイズする */
+export function sanitizeWorkspaceName(name?: string): string {
+    if (!name) { return ''; }
+    // 特殊文字を除去し、英数字・ハイフン・アンダースコアのみ残す
+    return name.replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 30);
+}
+
 /** stale レスポンスの情報 */
 export interface StaleResponse {
     requestId: string;
@@ -42,6 +49,8 @@ export class FileIpc {
     private readonly storagePath: string;
     /** waitForResponse が待機中のリクエストID集合（誤削除防止） */
     private readonly activeRequests = new Set<string>();
+    /** 削除から保護するファイル名（basename）の集合 */
+    private readonly protectedFiles = new Set<string>();
 
     constructor(storageUri: vscode.Uri) {
         this.storagePath = storageUri.fsPath;
@@ -65,15 +74,21 @@ export class FileIpc {
     }
 
     /** リクエスト ID を生成し、レスポンスファイルのパスを返す（JSON形式 — 計画生成用） */
-    createRequestId(): { requestId: string; responsePath: string } {
-        const requestId = `req_${Date.now()}_${crypto.randomUUID().replace(/-/g, '').substring(0, 12)}`;
+    createRequestId(workspaceName?: string): { requestId: string; responsePath: string } {
+        const wsPrefix = sanitizeWorkspaceName(workspaceName);
+        const requestId = wsPrefix
+            ? `req_${wsPrefix}_${Date.now()}_${crypto.randomUUID().replace(/-/g, '').substring(0, 12)}`
+            : `req_${Date.now()}_${crypto.randomUUID().replace(/-/g, '').substring(0, 12)}`;
         const responsePath = path.join(this.ipcDir, `${requestId}_response.json`);
         return { requestId, responsePath };
     }
 
     /** リクエスト ID を生成し、Markdown レスポンスファイルのパスを返す（実行結果用） */
-    createMarkdownRequestId(): { requestId: string; responsePath: string } {
-        const requestId = `req_${Date.now()}_${crypto.randomUUID().replace(/-/g, '').substring(0, 12)}`;
+    createMarkdownRequestId(workspaceName?: string): { requestId: string; responsePath: string } {
+        const wsPrefix = sanitizeWorkspaceName(workspaceName);
+        const requestId = wsPrefix
+            ? `req_${wsPrefix}_${Date.now()}_${crypto.randomUUID().replace(/-/g, '').substring(0, 12)}`
+            : `req_${Date.now()}_${crypto.randomUUID().replace(/-/g, '').substring(0, 12)}`;
         const responsePath = path.join(this.ipcDir, `${requestId}_response.md`);
         return { requestId, responsePath };
     }
@@ -95,16 +110,28 @@ export class FileIpc {
     // アクティブリクエスト管理（cleanupOldFiles 誤削除防止）
     // -----------------------------------------------------------------
 
-    /** waitForResponse 開始時にリクエストIDを登録 */
-    registerActiveRequest(requestId: string): void {
+    /** waitForResponse 開始時にリクエストIDを登録（関連 tmp ファイルも保護対象に追加可能） */
+    registerActiveRequest(requestId: string, associatedFiles?: string[]): void {
         this.activeRequests.add(requestId);
-        logDebug(`FileIpc: registered active request: ${requestId}`);
+        if (associatedFiles) {
+            for (const f of associatedFiles) {
+                const basename = path.basename(f);
+                this.protectedFiles.add(basename);
+                logDebug(`FileIpc: protecting associated file: ${basename}`);
+            }
+        }
+        logDebug(`FileIpc: registered active request: ${requestId} (protected files: ${this.protectedFiles.size})`);
     }
 
-    /** waitForResponse 完了後にリクエストIDを解除 */
-    unregisterActiveRequest(requestId: string): void {
+    /** waitForResponse 完了後にリクエストIDを解除（関連 tmp ファイルの保護も解除） */
+    unregisterActiveRequest(requestId: string, associatedFiles?: string[]): void {
         this.activeRequests.delete(requestId);
-        logDebug(`FileIpc: unregistered active request: ${requestId}`);
+        if (associatedFiles) {
+            for (const f of associatedFiles) {
+                this.protectedFiles.delete(path.basename(f));
+            }
+        }
+        logDebug(`FileIpc: unregistered active request: ${requestId} (protected files: ${this.protectedFiles.size})`);
     }
 
     /**
@@ -240,6 +267,9 @@ export class FileIpc {
                 logWarn(`FileIpc: fs.watch failed to start, using polling only: ${e instanceof Error ? e.message : e}`);
             }
 
+            // --- 即時チェック: 既にファイルが存在する場合に即座に検出 ---
+            tryReadResponse();
+
             // --- フォールバック: ポーリング（1秒間隔） ---
             pollTimer = setInterval(async () => {
                 if (settled) { return; }
@@ -270,12 +300,9 @@ export class FileIpc {
                     // ログ強化: logWarn でメトリクス出力
                     logWarn(`FileIpc: waitForResponse TIMEOUT — elapsed=${totalElapsedSec}s, timeout=${timeoutMs}ms, ${progressInfo}, responseFileExists=${responseFileExists}, path=${responsePath}`);
 
-                    // タイムアウトしたレスポンスファイルがあれば削除
+                    // タイムアウトしたレスポンスファイルは削除しない（stale recovery でピックアップするため残す）
                     if (responseFileExists) {
-                        try {
-                            await fs.promises.unlink(responsePath);
-                            logDebug('FileIpc: cleaned up timed-out response file');
-                        } catch { /* ignore */ }
+                        logDebug('FileIpc: timed-out response file exists — leaving for stale recovery');
                     }
 
                     reject(new IpcTimeoutError(`FileIpc: response timeout (${timeoutMs}ms, ${progressInfo}) — file never appeared at ${responsePath}`));
@@ -298,7 +325,8 @@ export class FileIpc {
             const files = await fs.promises.readdir(this.ipcDir);
             for (const f of files) {
                 // req_*_response.json or req_*_response.md パターンにマッチ
-                const match = f.match(/^(req_\d+_[a-f0-9]+)_response\.(json|md)$/);
+                // ワークスペースプレフィックス付き（req_{ws}_{ts}_{uuid}）も後方互換でマッチ
+                const match = f.match(/^(req_(?:[a-zA-Z0-9_-]+_)?\d+_[a-f0-9]+)_response\.(json|md)$/);
                 if (!match) { continue; }
 
                 const requestId = match[1];
@@ -392,11 +420,17 @@ export class FileIpc {
                     }
                     if (isActive) { continue; }
 
+                    // protectedFiles 保護: 明示的に保護されたファイル名はスキップ
+                    if (this.protectedFiles.has(f)) {
+                        logDebug(`FileIpc: skipping protected file: ${f}`);
+                        continue;
+                    }
+
                     const stat = await fs.promises.stat(fp);
                     const ageMs = now - stat.mtimeMs;
 
-                    // tmp_* 系（一時プロンプト/ルール/グローバルファイル）: 即時削除（30秒以上）
-                    if (f.startsWith('tmp_') && ageMs > 30 * 1000) {
+                    // tmp_* 系（一時プロンプト/ルール/グローバルファイル）: 5分以上で削除
+                    if (f.startsWith('tmp_') && ageMs > 5 * 60 * 1000) {
                         await fs.promises.unlink(fp);
                         logDebug(`FileIpc: cleaned up tmp file ${f}`);
                         continue;
@@ -409,15 +443,15 @@ export class FileIpc {
                         continue;
                     }
 
-                    // req_*_response.*: 10分以上で削除（閾値引き上げで安全性向上）
-                    if (f.includes('_response.') && ageMs > 10 * 60 * 1000) {
+                    // req_*_response.*: 30分以上で削除（stale recovery 間隔より長く設定）
+                    if (f.includes('_response.') && ageMs > 30 * 60 * 1000) {
                         await fs.promises.unlink(fp);
                         logDebug(`FileIpc: cleaned up old response file ${f}`);
                         continue;
                     }
 
-                    // req_*_meta.json: response と同じ 10分閾値で削除
-                    if (f.includes('_meta.json') && ageMs > 10 * 60 * 1000) {
+                    // req_*_meta.json: response と同じ 30分閾値で削除
+                    if (f.includes('_meta.json') && ageMs > 30 * 60 * 1000) {
                         await fs.promises.unlink(fp);
                         logDebug(`FileIpc: cleaned up old meta file ${f}`);
                         continue;
@@ -442,6 +476,11 @@ export class FileIpc {
                 if (f.startsWith('tmp_')) {
                     if (excludeSet && excludeSet.has(f)) {
                         logDebug(`FileIpc: skipping excluded tmp file ${f}`);
+                        continue;
+                    }
+                    // protectedFiles 保護: 明示的に保護されたファイル名はスキップ
+                    if (this.protectedFiles.has(f)) {
+                        logDebug(`FileIpc: skipping protected tmp file ${f}`);
                         continue;
                     }
                     const fp = path.join(this.ipcDir, f);

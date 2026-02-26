@@ -8,7 +8,7 @@
 
 import { ExecutionJob, Plan, PlanExecution } from './types';
 import { CdpBridge } from './cdpBridge';
-import { FileIpc } from './fileIpc';
+import { FileIpc, sanitizeWorkspaceName } from './fileIpc';
 import { PlanStore } from './planStore';
 import { readCombinedMemory, appendToGlobalMemory, appendToWorkspaceMemory, extractMemoryTags, stripMemoryTags } from './memoryStore';
 import { logDebug, logError, logWarn } from './logger';
@@ -19,7 +19,7 @@ import { buildEmbed, EmbedColor } from './embedHelper';
 import { parseSuggestions } from './suggestionParser';
 import { buildSuggestionRow, buildSuggestionContent, storeSuggestions } from './suggestionButtons';
 import type { ActionRowBuilder, ButtonBuilder, EmbedBuilder } from 'discord.js';
-import { UIWatcher, AutoClickRule, DEFAULT_AUTO_CLICK_RULES } from './uiWatcher';
+import { UIWatcher } from './uiWatcher';
 import * as vscode from 'vscode';
 import { getMaxRetries, getTimezone, getWorkspacePaths } from './configHelper';
 import * as fs from 'fs';
@@ -216,41 +216,9 @@ export class Executor {
         let progressPath = '';
 
         try {
-            // ワークスペース切り替え（plan に紐づくワークスペースで実行）
-            if (plan.workspace_name) {
-                const currentWs = this.cdp.getActiveWorkspaceName();
-                if (currentWs !== plan.workspace_name) {
-                    logDebug(`Executor: switching workspace "${currentWs}" → "${plan.workspace_name}" for plan ${plan.plan_id}`);
-                    const port = this.cdp.getActiveTargetPort();
-                    let instances = await CdpBridge.discoverInstances(this.cdp.getPorts());
-                    let target = instances.find(i =>
-                        CdpBridge.extractWorkspaceName(i.title) === plan.workspace_name);
-
-                    // ワークスペースが見つからない場合、Antigravity を自動起動して再試行
-                    if (!target) {
-                        logDebug(`Executor: workspace "${plan.workspace_name}" not found, attempting auto-launch...`);
-                        try {
-                            await this.cdp.ensureConnected();
-                            instances = await CdpBridge.discoverInstances(this.cdp.getPorts());
-                            target = instances.find(i =>
-                                CdpBridge.extractWorkspaceName(i.title) === plan.workspace_name);
-                        } catch (e) {
-                            logWarn(`Executor: auto-launch failed — ${e instanceof Error ? e.message : e}`);
-                        }
-                    }
-
-                    if (target) {
-                        await this.cdp.switchTarget(target.id);
-                        logDebug(`Executor: switched to workspace "${plan.workspace_name}" (id=${target.id})`);
-                    } else {
-                        logWarn(`Executor: workspace "${plan.workspace_name}" not found even after auto-launch, skipping job`);
-                        await this.safeNotify(notifyChannel,
-                            `⚠️ ワークスペース "${plan.workspace_name}" が見つかりません。Antigravity の自動起動も試みましたが接続できませんでした。`);
-                        this.recordExecution(plan, false, Date.now() - jobStartTime, `Workspace "${plan.workspace_name}" not found`);
-                        return;
-                    }
-                }
-            }
+            // ExecutorPool と CdpPool が 1:1 マッピングを保証しているため、
+            // executeJob 内での動的なターゲット再探索・切替（レガシーな振る舞い）は削除。
+            // 既存の this.cdp をそのまま使用する。
 
             // 開始通知
             const startMsg = plan.discord_templates.run_start
@@ -288,7 +256,7 @@ export class Executor {
             const { signal } = this.abortController;
 
             // ファイルベース IPC: レスポンスパス（Markdown形式）と進捗パスを生成
-            const { requestId, responsePath } = this.fileIpc.createMarkdownRequestId();
+            const { requestId, responsePath } = this.fileIpc.createMarkdownRequestId(plan.workspace_name);
             this.fileIpc.writeRequestMeta(requestId, notifyChannel, plan.workspace_name);
             progressPath = this.fileIpc.createProgressPath(requestId);
 
@@ -383,7 +351,10 @@ export class Executor {
 
             // プロンプトを一時ファイルに書き出し、CDP には view_file 指示のみ送る
             const ipcDir = path.dirname(responsePath);
-            const tmpExecPath = path.join(ipcDir, `tmp_exec_${requestId}.json`);
+            const wsExecPrefix = sanitizeWorkspaceName(plan.workspace_name);
+            const tmpExecPath = wsExecPrefix
+                ? path.join(ipcDir, `tmp_exec_${wsExecPrefix}_${requestId}.json`)
+                : path.join(ipcDir, `tmp_exec_${requestId}.json`);
             fs.writeFileSync(tmpExecPath, finalPrompt, 'utf-8');
             logDebug(`Executor: prompt written to temp file: ${tmpExecPath}`);
             const cdpInstruction = `以下のファイルを view_file ツールで読み込み、その指示に従ってください。ファイルパス: ${tmpExecPath}`;

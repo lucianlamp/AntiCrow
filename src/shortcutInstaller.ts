@@ -14,32 +14,24 @@ import { logDebug, logError, logWarn } from './logger';
 const GLOBAL_STATE_KEY = 'shortcutCreated';
 
 /**
- * 初回起動チェック：ショートカット未作成ならユーザーに確認して設置する。
+ * 初回起動チェック：ショートカット未作成なら自動で設置する。
  */
 export async function checkAndOfferShortcut(context: vscode.ExtensionContext): Promise<void> {
     // Windows 以外は何もしない
     if (process.platform !== 'win32') { return; }
 
-    const alreadyOffered = context.globalState.get<boolean>(GLOBAL_STATE_KEY);
-    if (alreadyOffered) { return; }
+    const alreadyCreated = context.globalState.get<boolean>(GLOBAL_STATE_KEY);
+    if (alreadyCreated) { return; }
 
-    const answer = await vscode.window.showInformationMessage(
-        'デスクトップに AntiCrow 起動用ショートカットを作成しますか？\n（Antigravity を自動起動します）',
-        'はい',
-        'いいえ',
-    );
-
-    if (answer === 'はい') {
-        try {
-            createDesktopShortcut(context.extensionPath);
-            vscode.window.showInformationMessage('✅ デスクトップにショートカットを作成しました。');
-        } catch (e) {
-            logError('shortcutInstaller: failed to create shortcut', e);
-            vscode.window.showErrorMessage('ショートカット作成に失敗しました。Output パネルでログを確認してください。');
-        }
+    try {
+        createDesktopShortcut(context.extensionPath);
+        logDebug('shortcutInstaller: auto-created desktop shortcut on first run');
+        vscode.window.showInformationMessage('✅ デスクトップに AntiCrow ショートカットを自動作成しました。');
+    } catch (e) {
+        logError('shortcutInstaller: failed to auto-create shortcut', e);
     }
 
-    // はい/いいえどちらでも再表示しない
+    // 成功・失敗どちらでも再試行しない
     await context.globalState.update(GLOBAL_STATE_KEY, true);
 }
 
@@ -59,6 +51,16 @@ export function createDesktopShortcut(extensionPath: string): void {
     // VSIX パッケージに同梱済みの ICO ファイルを使用
     const iconIco = path.join(extensionPath, 'images', 'AntiCrowIcon.ico');
 
+    // CDP 固定ポートを設定から取得
+    let cdpPortArg = '';
+    try {
+        const vsc = require('vscode') as typeof import('vscode');
+        const cdpPort = vsc.workspace.getConfiguration('antiCrow').get<number>('cdpPort') ?? 9333;
+        if (cdpPort > 0) {
+            cdpPortArg = ` -CdpPort ${cdpPort}`;
+        }
+    } catch { /* テスト環境では vscode が読めない場合がある */ }
+
     // PowerShell で WScript.Shell COM 経由で .lnk を作成
     const escShortcut = shortcutPath.replace(/'/g, "''");
     const escWorkDir = path.dirname(scriptPath).replace(/'/g, "''");
@@ -67,7 +69,7 @@ export function createDesktopShortcut(extensionPath: string): void {
         '$ws = New-Object -ComObject WScript.Shell;',
         `$sc = $ws.CreateShortcut('${escShortcut}');`,
         "$sc.TargetPath = 'powershell.exe';",
-        `$sc.Arguments = '-ExecutionPolicy Bypass -WindowStyle Hidden -File "${scriptPath.replace(/"/g, '`"')}"';`,
+        `$sc.Arguments = '-ExecutionPolicy Bypass -WindowStyle Hidden -File "${scriptPath.replace(/"/g, '`"')}"${cdpPortArg}';`,
         `$sc.WorkingDirectory = '${escWorkDir}';`,
         "$sc.Description = 'AntiCrow — Discord to Antigravity bridge';",
         `$icoPath = '${escIco}';`,

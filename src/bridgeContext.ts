@@ -35,6 +35,7 @@ export interface BridgeContext {
     autoAcceptWatcherTimer: NodeJS.Timeout | null;
     healthCheckTimer: NodeJS.Timeout | null;
     cleanupTimer: NodeJS.Timeout | null;
+    staleRecoveryTimer: NodeJS.Timeout | null;
     /** Discord からライセンスキーを設定するためのコールバック（SecretStorage + LicenseChecker を橋渡し） */
     setLicenseKeyFn: ((key: string) => Promise<{ valid: boolean; planType: string }>) | null;
     /** トライアル残り日数を取得するコールバック */

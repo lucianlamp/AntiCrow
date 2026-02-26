@@ -1,0 +1,39 @@
+
+竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ Startup Error 竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ
+Error: Failed to load custom Reporter from basic
+    at loadCustomReporterModule (file:///C:/Users/ysk41/dev/anti-crow/node_modules/vitest/dist/chunks/cli-api.B7PN_QUv.js:10593:9)
+    at file:///C:/Users/ysk41/dev/anti-crow/node_modules/vitest/dist/chunks/cli-api.B7PN_QUv.js:10609:23
+    ... 3 lines matching cause stack trace ...
+    at _createServer (file:///C:/Users/ysk41/dev/anti-crow/node_modules/vite/dist/node/chunks/config.js:25603:86)
+    at createViteServer (file:///C:/Users/ysk41/dev/anti-crow/node_modules/vitest/dist/chunks/cli-api.B7PN_QUv.js:9870:17)
+    at createVitest (file:///C:/Users/ysk41/dev/anti-crow/node_modules/vitest/dist/chunks/cli-api.B7PN_QUv.js:13186:17)
+    at prepareVitest (file:///C:/Users/ysk41/dev/anti-crow/node_modules/vitest/dist/chunks/cli-api.B7PN_QUv.js:13548:14)
+    at startVitest (file:///C:/Users/ysk41/dev/anti-crow/node_modules/vitest/dist/chunks/cli-api.B7PN_QUv.js:13494:14) {
+  [cause]: Error: Failed to load url basic (resolved id: basic). Does the file exist?
+      at reviveInvokeError (file:///C:/Users/ysk41/dev/anti-crow/node_modules/vite/dist/node/module-runner.js:475:14)
+      at Object.invoke (file:///C:/Users/ysk41/dev/anti-crow/node_modules/vite/dist/node/module-runner.js:491:33)
+      at ServerModuleRunner.getModuleInformation (file:///C:/Users/ysk41/dev/anti-crow/node_modules/vite/dist/node/module-runner.js:1086:7)
+      at ServerModuleRunner.import (file:///C:/Users/ysk41/dev/anti-crow/node_modules/vite/dist/node/module-runner.js:1013:23)
+      at loadCustomReporterModule (file:///C:/Users/ysk41/dev/anti-crow/node_modules/vitest/dist/chunks/cli-api.B7PN_QUv.js:10591:26)
+      at file:///C:/Users/ysk41/dev/anti-crow/node_modules/vitest/dist/chunks/cli-api.B7PN_QUv.js:10609:23
+      at async Promise.all (index 0)
+      at Vitest._setServer (file:///C:/Users/ysk41/dev/anti-crow/node_modules/vitest/dist/chunks/cli-api.B7PN_QUv.js:12251:138)
+      at BasicMinimalPluginContext.handler (file:///C:/Users/ysk41/dev/anti-crow/node_modules/vitest/dist/chunks/cli-api.B7PN_QUv.js:13158:6)
+      at _createServer (file:///C:/Users/ysk41/dev/anti-crow/node_modules/vite/dist/node/chunks/config.js:25603:86) {
+    code: 'ERR_LOAD_URL',
+    runnerError: Error: RunnerError
+        at reviveInvokeError (file:///C:/Users/ysk41/dev/anti-crow/node_modules/vite/dist/node/module-runner.js:476:64)
+        at Object.invoke (file:///C:/Users/ysk41/dev/anti-crow/node_modules/vite/dist/node/module-runner.js:491:33)
+        at ServerModuleRunner.getModuleInformation (file:///C:/Users/ysk41/dev/anti-crow/node_modules/vite/dist/node/module-runner.js:1086:7)
+        at ServerModuleRunner.import (file:///C:/Users/ysk41/dev/anti-crow/node_modules/vite/dist/node/module-runner.js:1013:23)
+        at loadCustomReporterModule (file:///C:/Users/ysk41/dev/anti-crow/node_modules/vitest/dist/chunks/cli-api.B7PN_QUv.js:10591:26)
+        at file:///C:/Users/ysk41/dev/anti-crow/node_modules/vitest/dist/chunks/cli-api.B7PN_QUv.js:10609:23
+        at async Promise.all (index 0)
+        at Vitest._setServer (file:///C:/Users/ysk41/dev/anti-crow/node_modules/vitest/dist/chunks/cli-api.B7PN_QUv.js:12251:138)
+        at BasicMinimalPluginContext.handler (file:///C:/Users/ysk41/dev/anti-crow/node_modules/vitest/dist/chunks/cli-api.B7PN_QUv.js:13158:6)
+        at _createServer (file:///C:/Users/ysk41/dev/anti-crow/node_modules/vite/dist/node/chunks/config.js:25603:86)
+  }
+}
+
+
+

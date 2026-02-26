@@ -32,6 +32,8 @@ export class ExecutorPool {
     private sendTyping: SendTypingFunc;
     private extensionPath: string;
     private postSuggestions: PostSuggestionsFunc | null;
+    /** 起動中の UIWatcher isProCheck コールバック（新規 Executor 生成時にも自動適用） */
+    private uiWatcherIsProCheck: (() => boolean) | null = null;
 
     constructor(
         cdpPool: CdpPool,
@@ -88,6 +90,11 @@ export class ExecutorPool {
 
         this.pool.set(key, executor);
         logDebug(`ExecutorPool: created executor for workspace "${key}" (pool size=${this.pool.size})`);
+        // UIWatcher が起動中なら新規 Executor にも自動適用
+        if (this.uiWatcherIsProCheck) {
+            executor.startUIWatcher(this.uiWatcherIsProCheck);
+            logDebug(`ExecutorPool: auto-started UIWatcher for new executor "${key}"`);
+        }
         return executor;
     }
 
@@ -156,6 +163,22 @@ export class ExecutorPool {
     }
 
     /**
+     * 指定ワークスペースの Executor の現在のジョブを停止する（キューは保持）。
+     * @returns 対象 Executor が存在して停止できたかどうか。
+     */
+    forceStop(workspaceName: string): boolean {
+        const key = workspaceName || DEFAULT_WORKSPACE;
+        const executor = this.pool.get(key);
+        if (executor) {
+            logDebug(`ExecutorPool: force-stopping executor for workspace "${key}"`);
+            executor.forceStop();
+            return true;
+        }
+        logDebug(`ExecutorPool: no executor found for workspace "${key}" (skip forceStop)`);
+        return false;
+    }
+
+    /**
      * 全 Executor の現在のジョブを停止する（キューは保持）。
      */
     forceStopAll(): void {
@@ -207,5 +230,32 @@ export class ExecutorPool {
      */
     getWorkspaceNames(): string[] {
         return Array.from(this.pool.keys());
+    }
+
+    // -------------------------------------------------------------------
+    // UIWatcher 管理
+    // -------------------------------------------------------------------
+
+    /**
+     * 全 Executor の UIWatcher を起動する。
+     * isProCheck コールバックを保持し、以後 getOrCreate された Executor にも自動適用する。
+     */
+    startUIWatcherAll(isProCheck?: () => boolean): void {
+        this.uiWatcherIsProCheck = isProCheck ?? null;
+        for (const [key, executor] of this.pool.entries()) {
+            executor.startUIWatcher(isProCheck);
+            logDebug(`ExecutorPool: started UIWatcher for workspace "${key}"`);
+        }
+    }
+
+    /**
+     * 全 Executor の UIWatcher を停止する。
+     */
+    stopUIWatcherAll(): void {
+        this.uiWatcherIsProCheck = null;
+        for (const [key, executor] of this.pool.entries()) {
+            executor.stopUIWatcher();
+            logDebug(`ExecutorPool: stopped UIWatcher for workspace "${key}"`);
+        }
     }
 }

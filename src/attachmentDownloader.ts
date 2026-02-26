@@ -22,6 +22,10 @@ const SUPPORTED_EXTENSIONS = new Set([
     // テキスト
     '.txt', '.json', '.md', '.csv', '.ts', '.js', '.py', '.html', '.css',
     '.xml', '.yaml', '.yml', '.toml', '.ini', '.cfg', '.log', '.sh', '.bat',
+    // ドキュメント
+    '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.pptx', '.rtf',
+    // Google Workspace（エクスポート形式）
+    '.gdoc', '.gsheet', '.gslides',
 ]);
 
 const MAX_FILE_SIZE = 8 * 1024 * 1024;     // 8MB per file

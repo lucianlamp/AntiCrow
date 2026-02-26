@@ -14,6 +14,7 @@ import { markdownToJson } from './mdToJson';
 import { getPromptRulesMd } from './embeddedRules';
 import { getTimezone } from './configHelper';
 import { readCombinedMemory } from './memoryStore';
+import { sanitizeWorkspaceName } from './fileIpc';
 
 // ---------------------------------------------------------------------------
 // Plan プロンプト生成
@@ -39,8 +40,11 @@ export function buildPlanPrompt(
     const now = new Date().toLocaleString('ja-JP', { timeZone: getTimezone() });
     const tempFiles: string[] = [];
 
-    // 一時ファイル用 ID 生成（タイムスタンプ + ランダム）
-    const tmpId = `${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+    // 一時ファイル用 ID 生成（ワークスペースプレフィックス + タイムスタンプ + ランダム）
+    const wsPrefix = sanitizeWorkspaceName(workspacePath ? path.basename(workspacePath) : undefined);
+    const tmpId = wsPrefix
+        ? `${wsPrefix}_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`
+        : `${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
 
     // ルール内容を埋め込み定数から Markdown → JSON 変換して一時ファイルに保存
     let rulesFilePath = '';
@@ -262,24 +266,19 @@ export function buildConfirmMessage(plan: Plan): string {
             break;
         case 'single': {
             const choiceCount = countChoiceItems(plan.discord_templates.confirm);
-            const numberEmojis = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟'];
-            const lastEmoji = numberEmojis[Math.min(choiceCount || 1, 10) - 1];
-            lines.push(`1️⃣~${lastEmoji} で1つ選択、❌ で却下`);
-            lines.push('💡 修正したい場合は ❌ で却下し、要件を修正して再送信できます。');
+            lines.push(`1~${Math.min(choiceCount || 1, 10)} で1つ選択、「却下」で取り消し`);
+            lines.push('💡 修正したい場合は却下後に、要件を修正して再送信できます。');
             break;
         }
         case 'multi': {
             const choiceCount = countChoiceItems(plan.discord_templates.confirm);
-            const numberEmojis = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟'];
-            const lastEmoji = numberEmojis[Math.min(choiceCount || 1, 10) - 1];
-            lines.push(`1️⃣~${lastEmoji} で複数選択 → ☑️ で確定`);
-            lines.push('✅ 全て選択 / ❌ 却下');
-            lines.push('💡 修正したい場合は ❌ で却下し、要件を修正して再送信できます。');
+            lines.push(`1~${Math.min(choiceCount || 1, 10)} で複数選択 →「確定」で実行`);
+            lines.push('「全選択」で全て選択 /「却下」で取り消し');
+            lines.push('💡 修正したい場合は却下後に、要件を修正して再送信できます。');
             break;
         }
         default:
-            lines.push('✅ で承認、❌ で却下');
-            lines.push('💡 修正したい場合は ❌ で却下し、要件を修正して再送信できます。');
+            lines.push('💡 修正したい場合は却下後に、要件を修正して再送信できます。');
             break;
     }
 

@@ -87,7 +87,7 @@ describe('parsePlanJson', () => {
         expect(parsePlanJson(raw)).toBeNull();
     });
 
-    it('should return null for missing prompt', () => {
+    it('should use default for missing prompt', () => {
         const raw = JSON.stringify({
             plan_id: 'missing-prompt',
             timezone: 'Asia/Tokyo',
@@ -95,10 +95,12 @@ describe('parsePlanJson', () => {
             requires_confirmation: false,
             discord_templates: { ack: 'ok' },
         });
-        expect(parsePlanJson(raw)).toBeNull();
+        const result = parsePlanJson(raw);
+        expect(result).not.toBeNull();
+        expect(result!.prompt).toBe('指示が欠落しています。再試行してください。');
     });
 
-    it('should return null for missing discord_templates', () => {
+    it('should use defaults for missing discord_templates', () => {
         const raw = JSON.stringify({
             plan_id: 'no-templates',
             timezone: 'Asia/Tokyo',
@@ -106,7 +108,10 @@ describe('parsePlanJson', () => {
             prompt: 'test',
             requires_confirmation: false,
         });
-        expect(parsePlanJson(raw)).toBeNull();
+        const result = parsePlanJson(raw);
+        expect(result).not.toBeNull();
+        expect(result!.discord_templates.ack).toBe('✅ 計画を受け付けました。');
+        expect(result!.discord_templates.run_start).toBe('🚀 実行を開始します...');
     });
 
     it('should return null for invalid JSON', () => {
@@ -147,7 +152,7 @@ describe('parsePlanJson', () => {
 
     // ----- ack null/省略/空文字対応テスト -----
 
-    it('should parse when ack is null', () => {
+    it('should parse when ack is null and use default', () => {
         const raw = JSON.stringify({
             plan_id: 'ack-null-001',
             timezone: 'Asia/Tokyo',
@@ -158,11 +163,11 @@ describe('parsePlanJson', () => {
         });
         const result = parsePlanJson(raw);
         expect(result).not.toBeNull();
-        expect(result!.discord_templates.ack).toBeUndefined();
+        expect(result!.discord_templates.ack).toBe('✅ 計画を受け付けました。');
         expect(result!.discord_templates.run_error).toBe('❌ Error');
     });
 
-    it('should parse when ack is omitted', () => {
+    it('should parse when ack is omitted and use default', () => {
         const raw = JSON.stringify({
             plan_id: 'ack-omit-001',
             timezone: 'Asia/Tokyo',
@@ -173,7 +178,7 @@ describe('parsePlanJson', () => {
         });
         const result = parsePlanJson(raw);
         expect(result).not.toBeNull();
-        expect(result!.discord_templates.ack).toBeUndefined();
+        expect(result!.discord_templates.ack).toBe('✅ 計画を受け付けました。');
     });
 
     it('should parse when ack is empty string', () => {

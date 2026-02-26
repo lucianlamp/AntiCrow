@@ -22,58 +22,130 @@ import { logDebug, logWarn } from './logger';
 
 const FIND_MODEL_BUTTON = `
     var modelBtn = null;
-    var _findDebug = { textboxFound: false, levelsSearched: 0, siblingsChecked: 0, fallbackUsed: false, buttonsFound: 0 };
-    var textbox = document.querySelector('div[role="textbox"]');
+    var _findDebug = { textboxFound: false, levelsSearched: 0, siblingsChecked: 0, fallbackUsed: false, buttonsFound: 0, allBtnTexts: [], inIframe: false };
+
+    // getTargetDoc: メインフレームから実行されても cascade iframe 内の document を取得
+    function getTargetDoc() {
+        var iframes = document.querySelectorAll('iframe');
+        for (var fi = 0; fi < iframes.length; fi++) {
+            try {
+                if (iframes[fi].src && iframes[fi].src.includes('cascade-panel') && iframes[fi].contentDocument) {
+                    return iframes[fi].contentDocument;
+                }
+            } catch(e) { /* cross-origin は無視 */ }
+        }
+        return document;
+    }
+    var doc = getTargetDoc();
+    _findDebug.inIframe = (doc !== document);
+
+    function findFirstInTree(root, predicate) {
+        if (!root) return null;
+        var ownerDoc = root.ownerDocument || root;
+        if (root.nodeType === 1 && predicate(root)) return root;
+        var walker = (ownerDoc.createTreeWalker || document.createTreeWalker).call(ownerDoc, root, 1, null, false);
+        var el;
+        while ((el = walker.nextNode())) {
+            if (predicate(el)) return el;
+            if (el.shadowRoot) {
+                var found = findFirstInTree(el.shadowRoot, predicate);
+                if (found) return found;
+            }
+        }
+        return null;
+    }
+
+    function findAllInTree(root, predicate) {
+        if (!root) return [];
+        var matches = [];
+        var ownerDoc = root.ownerDocument || root;
+        if (root.nodeType === 1 && predicate(root)) matches.push(root);
+        var walker = (ownerDoc.createTreeWalker || document.createTreeWalker).call(ownerDoc, root, 1, null, false);
+        var el;
+        while ((el = walker.nextNode())) {
+            if (predicate(el)) matches.push(el);
+            if (el.shadowRoot) {
+                matches = matches.concat(findAllInTree(el.shadowRoot, predicate));
+            }
+        }
+        return matches;
+    }
+
+    // ボタンのテキストを安全に取得（textContent 優先 — innerText はレイアウト依存で iframe 内で空を返す）
+    function getBtnText(el) {
+        var t = (el.textContent || '').trim();
+        if (t) return t;
+        // aria-label フォールバック
+        var ariaLabel = el.getAttribute('aria-label');
+        if (ariaLabel) return ariaLabel.trim();
+        // title フォールバック
+        var title = el.getAttribute('title');
+        if (title) return title.trim();
+        return '';
+    }
+
+    var textbox = findFirstInTree(doc, function(el) {
+        return el.tagName === 'DIV' && el.getAttribute('role') === 'textbox';
+    });
+
     if (textbox) {
         _findDebug.textboxFound = true;
         var container = textbox.parentElement;
 
-        // primary: textbox 兄弟方向で p タグを持つ button を探す（モデル名が p タグ内に表示される）
+        // primary: textbox 兄弟方向(後方)で button/vscode-button/role=button を探す
         for (var d = 0; d < 5; d++) {
             if (!container) break;
             _findDebug.levelsSearched = d + 1;
+
+            var allBtns = [];
+
             var sibling = container.nextElementSibling;
             while (sibling) {
                 _findDebug.siblingsChecked++;
-                var btns = sibling.querySelectorAll('button');
+                var btns = findAllInTree(sibling, function(el) {
+                    var tag = el.tagName.toLowerCase();
+                    return tag === 'button' || tag === 'vscode-button' || el.getAttribute('role') === 'button';
+                });
                 _findDebug.buttonsFound += btns.length;
                 for (var b = 0; b < btns.length; b++) {
-                    var pEl = btns[b].querySelector('p');
-                    if (pEl && (pEl.textContent || '').trim().length > 0) {
-                        modelBtn = btns[b];
-                        break;
+                    var btnText = getBtnText(btns[b]);
+                    if (btnText.length > 0) {
+                        allBtns.push({ el: btns[b], text: btnText });
                     }
                 }
-                if (modelBtn) break;
+                if (allBtns.length > 0) break;
                 sibling = sibling.nextElementSibling;
             }
-            if (modelBtn) break;
-            container = container.parentElement;
-        }
 
-        // フォールバック: previousElementSibling 方向も探す
-        if (!modelBtn) {
-            _findDebug.fallbackUsed = true;
-            container = textbox.parentElement;
-            for (var d2 = 0; d2 < 5; d2++) {
-                if (!container) break;
-                var sibling2 = container.previousElementSibling;
-                while (sibling2) {
-                    var btns2 = sibling2.querySelectorAll('button');
+            // フォールバック: previousElementSibling 方向も探す
+            if (allBtns.length === 0) {
+                _findDebug.fallbackUsed = true;
+                sibling = container.previousElementSibling;
+                while (sibling) {
+                    _findDebug.siblingsChecked++;
+                    var btns2 = findAllInTree(sibling, function(el) {
+                        var tag = el.tagName.toLowerCase();
+                        return tag === 'button' || tag === 'vscode-button' || el.getAttribute('role') === 'button';
+                    });
                     _findDebug.buttonsFound += btns2.length;
                     for (var b2 = 0; b2 < btns2.length; b2++) {
-                        var pEl2 = btns2[b2].querySelector('p');
-                        if (pEl2 && (pEl2.textContent || '').trim().length > 0) {
-                            modelBtn = btns2[b2];
-                            break;
+                        var btnText2 = getBtnText(btns2[b2]);
+                        if (btnText2.length > 0) {
+                            allBtns.push({ el: btns2[b2], text: btnText2 });
                         }
                     }
-                    if (modelBtn) break;
-                    sibling2 = sibling2.previousElementSibling;
+                    if (allBtns.length > 0) break;
+                    sibling = sibling.previousElementSibling;
                 }
-                if (modelBtn) break;
-                container = container.parentElement;
             }
+
+            if (allBtns.length > 0) {
+                _findDebug.allBtnTexts = allBtns.map(function(b) { return b.text; });
+                // モデルボタンは最後のテキスト付きボタン（モードが先、モデルが後）
+                modelBtn = allBtns[allBtns.length - 1].el;
+                break;
+            }
+            container = container.parentElement;
         }
     }
 `;
@@ -92,8 +164,7 @@ export async function getCurrentModel(
 (function() {
     ${FIND_MODEL_BUTTON}
     if (!modelBtn) return null;
-    var p = modelBtn.querySelector('p');
-    return p ? (p.textContent || '').trim() : (modelBtn.innerText || '').trim();
+    return getBtnText(modelBtn);
 })()
         `.trim();
 
@@ -154,8 +225,7 @@ export async function getAvailableModels(
     ${FIND_MODEL_BUTTON}
     if (!modelBtn) return { success: false, error: 'model button not found', findDebug: _findDebug };
 
-    var p = modelBtn.querySelector('p');
-    var curModel = p ? (p.textContent || '').trim() : (modelBtn.innerText || '').trim();
+    var curModel = getBtnText(modelBtn);
 
     modelBtn.click();
     return { success: true, currentModel: curModel, findDebug: _findDebug };
@@ -202,14 +272,73 @@ export async function getAvailableModels(
         const listScript = `
 (function() {
     var items = [];
-    var debugInfo = { dropdownsFound: 0, headerFound: false, labelsFound: 0, fallbackUsed: false, newSelectorUsed: false };
+    var debugInfo = { dropdownsFound: 0, headerFound: false, labelsFound: 0, fallbackUsed: false, newSelectorUsed: false, inIframe: false };
+
+    // getTargetDoc: cascade iframe 内の document を取得
+    function getTargetDoc() {
+        var iframes = document.querySelectorAll('iframe');
+        for (var fi = 0; fi < iframes.length; fi++) {
+            try {
+                if (iframes[fi].src && iframes[fi].src.includes('cascade-panel') && iframes[fi].contentDocument) {
+                    return iframes[fi].contentDocument;
+                }
+            } catch(e) { /* cross-origin */ }
+        }
+        return document;
+    }
+    var doc = getTargetDoc();
+    debugInfo.inIframe = (doc !== document);
+
+    function findAllInTree(root, predicate) {
+        if (!root) return [];
+        var matches = [];
+        var ownerDoc = root.ownerDocument || root;
+        if (root.nodeType === 1 && predicate(root)) matches.push(root);
+        var walker = (ownerDoc.createTreeWalker || document.createTreeWalker).call(ownerDoc, root, 1, null, false);
+        var el;
+        while ((el = walker.nextNode())) {
+            if (predicate(el)) matches.push(el);
+            if (el.shadowRoot) {
+                matches = matches.concat(findAllInTree(el.shadowRoot, predicate));
+            }
+        }
+        return matches;
+    }
+
+    function findFirstInTree(root, predicate) {
+        if (!root) return null;
+        var ownerDoc = root.ownerDocument || root;
+        if (root.nodeType === 1 && predicate(root)) return root;
+        var walker = (ownerDoc.createTreeWalker || document.createTreeWalker).call(ownerDoc, root, 1, null, false);
+        var el;
+        while ((el = walker.nextNode())) {
+            if (predicate(el)) return el;
+            if (el.shadowRoot) {
+                var found = findFirstInTree(el.shadowRoot, predicate);
+                if (found) return found;
+            }
+        }
+        return null;
+    }
 
     // 新しい UI 構造: z-50 rounded-md border shadow-md のドロップダウン
-    var ddNew = document.querySelectorAll('div[class*="z-50"][class*="rounded-md"][class*="border"][class*="shadow-md"]');
+    var ddNew = findAllInTree(doc, function(el) {
+        if (el.tagName !== 'DIV') return false;
+        var c = typeof el.className === 'string' ? el.className : '';
+        return c.indexOf('z-50') >= 0 && c.indexOf('rounded-md') >= 0 && c.indexOf('border') >= 0 && c.indexOf('shadow-md') >= 0;
+    });
     for (var dn = 0; dn < ddNew.length; dn++) {
-        var modelRows = ddNew[dn].querySelectorAll('div[class*="cursor-pointer"][class*="px-2"][class*="py-1"]');
+        var modelRows = findAllInTree(ddNew[dn], function(el) {
+            if (el.tagName !== 'DIV') return false;
+            var c = typeof el.className === 'string' ? el.className : '';
+            return c.indexOf('cursor-pointer') >= 0 && c.indexOf('px-2') >= 0 && c.indexOf('py-1') >= 0;
+        });
         for (var mr = 0; mr < modelRows.length; mr++) {
-            var fontMedium = modelRows[mr].querySelector('div[class*="font-medium"]');
+            var fontMedium = findFirstInTree(modelRows[mr], function(el) {
+                if (el.tagName !== 'DIV') return false;
+                var c = typeof el.className === 'string' ? el.className : '';
+                return c.indexOf('font-medium') >= 0;
+            });
             if (fontMedium) {
                 var text = (fontMedium.textContent || '').trim();
                 if (text.length > 0 && text.length < 100) {
@@ -228,11 +357,19 @@ export async function getAvailableModels(
     // フォールバック: 旧 UI 構造 (absolute + overflow-y-auto + "Model" ヘッダー)
     if (items.length === 0) {
         debugInfo.fallbackUsed = true;
-        var dropdowns = document.querySelectorAll('div[class*="absolute"][class*="overflow-y-auto"][class*="rounded-lg"][class*="border"]');
+        var dropdowns = findAllInTree(doc, function(el) {
+            if (el.tagName !== 'DIV') return false;
+            var c = typeof el.className === 'string' ? el.className : '';
+            return c.indexOf('absolute') >= 0 && c.indexOf('overflow-y-auto') >= 0 && c.indexOf('rounded-lg') >= 0 && c.indexOf('border') >= 0;
+        });
         debugInfo.dropdownsFound = dropdowns.length;
         var ddRoot = null;
         for (var d = 0; d < dropdowns.length; d++) {
-            var headerCheck = dropdowns[d].querySelector('div[class*="opacity-80"]');
+            var headerCheck = findFirstInTree(dropdowns[d], function(el) {
+                if (el.tagName !== 'DIV') return false;
+                var c = typeof el.className === 'string' ? el.className : '';
+                return c.indexOf('opacity-80') >= 0;
+            });
             if (headerCheck && (headerCheck.textContent || '').trim() === 'Model') {
                 ddRoot = dropdowns[d];
                 debugInfo.headerFound = true;
@@ -240,7 +377,11 @@ export async function getAvailableModels(
             }
         }
         if (ddRoot) {
-            var modelLabels = ddRoot.querySelectorAll('p[class*="overflow-hidden"][class*="text-ellipsis"][class*="whitespace-nowrap"]');
+            var modelLabels = findAllInTree(ddRoot, function(el) {
+                if (el.tagName !== 'P') return false;
+                var c = typeof el.className === 'string' ? el.className : '';
+                return c.indexOf('overflow-hidden') >= 0 && c.indexOf('text-ellipsis') >= 0 && c.indexOf('whitespace-nowrap') >= 0;
+            });
             debugInfo.labelsFound = modelLabels.length;
             for (var i = 0; i < modelLabels.length; i++) {
                 var t = (modelLabels[i].textContent || '').trim();
@@ -349,12 +490,70 @@ export async function selectModel(
     var targetModel = ${JSON.stringify(modelName)};
     var targetLower = targetModel.toLowerCase();
 
+    // getTargetDoc: cascade iframe 内の document を取得
+    function getTargetDoc() {
+        var iframes = document.querySelectorAll('iframe');
+        for (var fi = 0; fi < iframes.length; fi++) {
+            try {
+                if (iframes[fi].src && iframes[fi].src.includes('cascade-panel') && iframes[fi].contentDocument) {
+                    return iframes[fi].contentDocument;
+                }
+            } catch(e) { /* cross-origin */ }
+        }
+        return document;
+    }
+    var doc = getTargetDoc();
+
+    function findAllInTree(root, predicate) {
+        if (!root) return [];
+        var matches = [];
+        var ownerDoc = root.ownerDocument || root;
+        if (root.nodeType === 1 && predicate(root)) matches.push(root);
+        var walker = (ownerDoc.createTreeWalker || document.createTreeWalker).call(ownerDoc, root, 1, null, false);
+        var el;
+        while ((el = walker.nextNode())) {
+            if (predicate(el)) matches.push(el);
+            if (el.shadowRoot) {
+                matches = matches.concat(findAllInTree(el.shadowRoot, predicate));
+            }
+        }
+        return matches;
+    }
+
+    function findFirstInTree(root, predicate) {
+        if (!root) return null;
+        var ownerDoc = root.ownerDocument || root;
+        if (root.nodeType === 1 && predicate(root)) return root;
+        var walker = (ownerDoc.createTreeWalker || document.createTreeWalker).call(ownerDoc, root, 1, null, false);
+        var el;
+        while ((el = walker.nextNode())) {
+            if (predicate(el)) return el;
+            if (el.shadowRoot) {
+                var found = findFirstInTree(el.shadowRoot, predicate);
+                if (found) return found;
+            }
+        }
+        return null;
+    }
+
     // 新しい UI 構造: z-50 rounded-md border shadow-md
-    var ddNew = document.querySelectorAll('div[class*="z-50"][class*="rounded-md"][class*="border"][class*="shadow-md"]');
+    var ddNew = findAllInTree(doc, function(el) {
+        if (el.tagName !== 'DIV') return false;
+        var c = typeof el.className === 'string' ? el.className : '';
+        return c.indexOf('z-50') >= 0 && c.indexOf('rounded-md') >= 0 && c.indexOf('border') >= 0 && c.indexOf('shadow-md') >= 0;
+    });
     for (var dn = 0; dn < ddNew.length; dn++) {
-        var modelRows = ddNew[dn].querySelectorAll('div[class*="cursor-pointer"][class*="px-2"][class*="py-1"]');
+        var modelRows = findAllInTree(ddNew[dn], function(el) {
+            if (el.tagName !== 'DIV') return false;
+            var c = typeof el.className === 'string' ? el.className : '';
+            return c.indexOf('cursor-pointer') >= 0 && c.indexOf('px-2') >= 0 && c.indexOf('py-1') >= 0;
+        });
         for (var i = 0; i < modelRows.length; i++) {
-            var fontMedium = modelRows[i].querySelector('div[class*="font-medium"]');
+            var fontMedium = findFirstInTree(modelRows[i], function(el) {
+                if (el.tagName !== 'DIV') return false;
+                var c = typeof el.className === 'string' ? el.className : '';
+                return c.indexOf('font-medium') >= 0;
+            });
             if (!fontMedium) continue;
             var mText = (fontMedium.textContent || '').trim().toLowerCase();
             if (mText === targetLower || mText.includes(targetLower) || targetLower.includes(mText)) {
@@ -365,19 +564,35 @@ export async function selectModel(
     }
 
     // フォールバック: 旧 UI 構造
-    var dropdowns = document.querySelectorAll('div[class*="absolute"][class*="overflow-y-auto"][class*="rounded-lg"][class*="border"]');
+    var dropdowns = findAllInTree(doc, function(el) {
+        if (el.tagName !== 'DIV') return false;
+        var c = typeof el.className === 'string' ? el.className : '';
+        return c.indexOf('absolute') >= 0 && c.indexOf('overflow-y-auto') >= 0 && c.indexOf('rounded-lg') >= 0 && c.indexOf('border') >= 0;
+    });
     var ddRoot = null;
     for (var d = 0; d < dropdowns.length; d++) {
-        var headerCheck = dropdowns[d].querySelector('div[class*="opacity-80"]');
+        var headerCheck = findFirstInTree(dropdowns[d], function(el) {
+            if (el.tagName !== 'DIV') return false;
+            var c = typeof el.className === 'string' ? el.className : '';
+            return c.indexOf('opacity-80') >= 0;
+        });
         if (headerCheck && (headerCheck.textContent || '').trim() === 'Model') {
             ddRoot = dropdowns[d];
             break;
         }
     }
     if (ddRoot) {
-        var oldRows = ddRoot.querySelectorAll('div[class*="cursor-pointer"][class*="px-2"][class*="py-1"]');
+        var oldRows = findAllInTree(ddRoot, function(el) {
+            if (el.tagName !== 'DIV') return false;
+            var c = typeof el.className === 'string' ? el.className : '';
+            return c.indexOf('cursor-pointer') >= 0 && c.indexOf('px-2') >= 0 && c.indexOf('py-1') >= 0;
+        });
         for (var j = 0; j < oldRows.length; j++) {
-            var p = oldRows[j].querySelector('p[class*="text-ellipsis"]');
+            var p = findFirstInTree(oldRows[j], function(el) {
+                if (el.tagName !== 'P') return false;
+                var c = typeof el.className === 'string' ? el.className : '';
+                return c.indexOf('text-ellipsis') >= 0;
+            });
             if (!p) continue;
             var pText = (p.textContent || '').trim().toLowerCase();
             if (pText === targetLower || pText.includes(targetLower) || targetLower.includes(pText)) {

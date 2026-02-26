@@ -35,12 +35,12 @@ import { openHistoryAndGetList, selectConversation, closePopup } from './cdpHist
 import { BridgeContext } from './bridgeContext';
 
 import { getTimezone, isUserAllowed } from './configHelper';
-import { handleWorkspaceButton, getRunningWsNames } from './workspaceHandler';
+import { handleWorkspaceButton, handleWorkspaceModalSubmit, getRunningWsNames } from './workspaceHandler';
 import { fetchQuota } from './quotaProvider';
 import { handleManageSlash } from './adminHandler';
 import { handleTemplateButton, buildTemplateListPanel, handleModalSubmit as handleTemplateModalSubmit } from './templateHandler';
 import { TemplateStore } from './templateStore';
-import { getSuggestion } from './suggestionButtons';
+import { getSuggestion, SUGGEST_AUTO_ID, AUTO_PROMPT } from './suggestionButtons';
 import { processSuggestionPrompt } from './messageHandler';
 
 // Re-export for backward compatibility
@@ -124,6 +124,21 @@ export async function handleButtonInteraction(
 ): Promise<void> {
     const customId = interaction.customId;
     logDebug(`handleButtonInteraction: customId=${customId}`);
+
+    // -----------------------------------------------------------------
+    // 確認フロー関連ボタン: discordReactions.ts のメッセージコレクタで処理される
+    // グローバル interactionCreate でも発火するが、ここでは無視する
+    // 認証チェックよりも前に短絡させることで、コレクタの deferUpdate との
+    // 競合（二重応答やタイムアウト）を防止する。
+    // -----------------------------------------------------------------
+    if (
+        customId === 'confirm_approve' ||
+        customId === 'confirm_reject' ||
+        customId.startsWith('choice_') ||
+        customId.startsWith('mchoice_')
+    ) {
+        return;
+    }
 
     // -----------------------------------------------------------------
     // セキュリティ: ボタン操作にも許可ユーザーID制限を適用
@@ -598,6 +613,16 @@ export async function handleButtonInteraction(
             return;
         }
 
+        // ----- 「エージェントに任せる」ボタン -----
+        if (customId === SUGGEST_AUTO_ID) {
+            const channelId = interaction.channelId;
+            await interaction.reply({ embeds: [buildEmbed('🤖 **エージェントの判断で次のアクションを実行します**', EmbedColor.Info)] });
+            processSuggestionPrompt(ctx, channelId, AUTO_PROMPT, interaction.user.id).catch((e: unknown) => {
+                logError('suggest_auto button: processSuggestionPrompt failed', e);
+            });
+            return;
+        }
+
         // ----- 提案ボタン -----
         if (customId.startsWith('suggest_')) {
             const channelId = interaction.channelId;
@@ -635,6 +660,12 @@ export async function handleModalSubmit(
     ctx: BridgeContext,
     interaction: ModalSubmitInteraction,
 ): Promise<void> {
+    // ワークスペース作成モーダルは workspaceHandler に委譲
+    if (interaction.customId === 'ws_modal_create') {
+        await handleWorkspaceModalSubmit(ctx, interaction);
+        return;
+    }
+
     // Pro ライセンスキー入力モーダル
     if (interaction.customId === 'pro_key_modal') {
         const key = interaction.fields.getTextInputValue('license_key').trim();
@@ -670,8 +701,9 @@ export async function handleModalSubmit(
             logDebug(`pro_key_modal: license key set, valid=${result.valid}, plan=${result.planType}`);
         } catch (e) {
             logError('pro_key_modal: failed to set license key', e);
+            const errDetail = e instanceof Error ? e.message : String(e);
             await interaction.reply({
-                embeds: [buildEmbed('❌ ライセンスキーの設定に失敗しました。VS Code 側で `AntiCrow: Set License Key` コマンドを実行してください。', EmbedColor.Error)],
+                embeds: [buildEmbed(`❌ ライセンスキーの設定中にエラーが発生しました。\n\n**エラー:** ${errDetail}\n\nキーが保存済みの場合は、次回の自動検証で反映されます。手動で再試行する場合は \`/pro\` → 🔑キー入力 を再度お試しください。`, EmbedColor.Error)],
                 ephemeral: true,
             });
         }

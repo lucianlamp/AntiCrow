@@ -3,7 +3,8 @@
   "displayName": "AntiCrow",
   "description": "Discord→Antigravity自動操作ブリッジ。自然文で依頼→定期/即時実行→結果通知。",
   "version": "0.1.0",
-  "publisher": "ytvar",
+  "publisher": "lucianlamp",
+  "author": "lucianlamp",
   "icon": "images/AntiCrowIcon.png",
   "license": "MIT",
   "engines": {
@@ -125,22 +126,18 @@
           "default": 0,
           "description": "タイムアウトや接続断時の自動リトライ回数（0でリトライ無効、デフォルト: 0）。"
         },
-        "antiCrow.convexUrl": {
-          "type": "string",
-          "default": "",
-          "description": "Convex デプロイメント URL（ライセンス管理用）。Convex ダッシュボードで確認できます。"
+        "antiCrow.cdpPort": {
+          "type": "number",
+          "default": 9333,
+          "markdownDescription": "CDP（Chrome DevTools Protocol）接続に使用する固定ポート番号。Antigravity 起動時に `--remote-debugging-port` に使用されます。"
         },
-        "antiCrow.licenseStatus": {
-          "type": "string",
-          "default": "Free",
-          "enum": [
-            "Free",
-            "Trial",
-            "Monthly",
-            "Lifetime"
-          ],
-          "description": "現在のライセンスプラン（自動更新、変更不可）",
-          "scope": "application"
+        "antiCrow.workspaceParentDirs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "markdownDescription": "新規ワークスペース作成時のフォルダ配置先ディレクトリです。例: `C:\\Users\\user\\dev`, `C:\\Users\\user\\projects`"
         }
       }
     }
@@ -158,7 +155,7 @@
   },
   "dependencies": {
     "@clerk/clerk-js": "^5.124.0",
-    "convex": "^1.32.0",
+    "chrome-remote-interface": "^0.34.0",
     "discord.js": "^14.16.3",
     "luxon": "^3.5.0",
     "node-cron": "^3.0.3",
@@ -171,6 +168,7 @@
     "@types/node-cron": "^3.0.11",
     "@types/vscode": "^1.90.0",
     "@types/ws": "^8.5.10",
+    "@vitest/coverage-v8": "^4.0.18",
     "dotenv": "^17.3.1",
     "esbuild": "^0.20.2",
     "typescript": "^5.4.5",

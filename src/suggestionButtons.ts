@@ -16,6 +16,12 @@ import type { SuggestionItem } from './suggestionParser';
 /** ボタン customId のプレフィックス */
 export const SUGGEST_BUTTON_PREFIX = 'suggest_';
 
+/** 「エージェントに任せる」ボタンの固定 customId */
+export const SUGGEST_AUTO_ID = 'suggest_auto';
+
+/** 自律判断ボタン押下時に実行されるプロンプト */
+export const AUTO_PROMPT = '今の状況を見て、次にやるべきことをエージェントの判断で実行してください';
+
 // ---------------------------------------------------------------------------
 // 一時ストア（メモリ内）
 // ---------------------------------------------------------------------------
@@ -68,6 +74,14 @@ export function buildSuggestionRow(
             .setEmoji(emoji);
         row.addComponents(button);
     }
+
+    // 「🤖 エージェントに任せる」ボタンを末尾に追加
+    const autoButton = new ButtonBuilder()
+        .setCustomId(SUGGEST_AUTO_ID)
+        .setLabel('エージェントに任せる')
+        .setStyle(ButtonStyle.Secondary)
+        .setEmoji('🤖');
+    row.addComponents(autoButton);
 
     return row;
 }

@@ -41,6 +41,10 @@ vi.mock('../fileIpc', () => ({
     FileIpc: {
         extractResult: vi.fn((text: string) => text),
     },
+    sanitizeWorkspaceName: (name?: string) => {
+        if (!name) { return ''; }
+        return name.replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 30);
+    },
 }));
 
 vi.mock('../planStore', () => ({
@@ -66,6 +70,7 @@ vi.mock('../suggestionParser', () => ({
 
 vi.mock('../suggestionButtons', () => ({
     buildSuggestionRow: vi.fn(),
+    buildSuggestionContent: vi.fn(() => ''),
     storeSuggestions: vi.fn(),
 }));
 
@@ -103,7 +108,8 @@ vi.mock('../anticrowCustomizer', () => ({
 }));
 
 vi.mock('../embedHelper', () => ({
-    EmbedColor: { Progress: 0x3498db, Response: 0x2ecc71 },
+    EmbedColor: { Progress: 0x3498db, Response: 0x2ecc71, Suggest: 0x9b59b6 },
+    buildEmbed: vi.fn(() => ({ toJSON: () => ({}) })),
 }));
 
 import { Executor } from '../executor';
@@ -159,6 +165,7 @@ function createMockFileIpc() {
         readProgress: vi.fn().mockResolvedValue(null),
         cleanupProgress: vi.fn().mockResolvedValue(undefined),
         cleanupTmpFiles: vi.fn().mockResolvedValue(undefined),
+        writeRequestMeta: vi.fn(),
         getIpcDir: vi.fn(() => '/mock/ipc'),
         getStoragePath: vi.fn(() => '/mock/storage'),
     };
@@ -519,6 +526,254 @@ describe('Executor', () => {
             executor.startUIWatcher();
             expect(() => executor.startUIWatcher()).not.toThrow();
             executor.stopUIWatcher();
+        });
+    });
+
+    // -----------------------------------------------------------------------
+    // enqueueScheduled
+    // -----------------------------------------------------------------------
+
+    describe('enqueueScheduled', () => {
+        it('should enqueue with schedule triggerType', async () => {
+            const { executor, fileIpc } = createExecutor();
+            fileIpc.waitForResponse.mockImplementation(() => new Promise(() => { }));
+
+            const plan = createMockPlan({ plan_id: 'sched-001' });
+            executor.enqueueScheduled(plan);
+
+            // processQueue が動き出して currentJob が設定される
+            await new Promise(r => setTimeout(r, 10));
+            const info = executor.getQueueInfo();
+            expect(info.current).not.toBeNull();
+            expect(info.current!.plan.plan_id).toBe('sched-001');
+
+            executor.forceReset();
+        });
+    });
+
+
+
+    // -----------------------------------------------------------------------
+    // executeJob — CDP 再接続リトライ
+    // -----------------------------------------------------------------------
+
+    describe('executeJob — CDP 再接続リトライ', () => {
+        it('should reconnect and retry on CdpConnectionError', async () => {
+            const { executor, cdp, fileIpc, notifyDiscord } = createExecutor();
+            const { CdpConnectionError } = await import('../errors');
+
+            // 最初の sendPrompt で CdpConnectionError, 再試行で成功
+            let callCount = 0;
+            cdp.sendPrompt.mockImplementation(async () => {
+                callCount++;
+                if (callCount === 1) {
+                    throw new CdpConnectionError('Connection lost');
+                }
+                // 2回目は成功
+            });
+
+            const plan = createMockPlan({ plan_id: 'reconnect-001' });
+            await executor.enqueueImmediate(plan);
+
+            // ensureConnected が再接続のために呼ばれたはず
+            expect(cdp.ensureConnected).toHaveBeenCalled();
+            // sendPrompt が2回呼ばれたはず
+            expect(cdp.sendPrompt).toHaveBeenCalledTimes(2);
+
+            // 再接続通知が送信されているはず
+            const reconnectCalls = notifyDiscord.mock.calls.filter(
+                (call: unknown[]) => typeof call[1] === 'string' && (call[1] as string).includes('再接続'));
+            expect(reconnectCalls.length).toBeGreaterThanOrEqual(1);
+        });
+    });
+
+    // -----------------------------------------------------------------------
+    // executeJob — MEMORY タグ抽出
+    // -----------------------------------------------------------------------
+
+    describe('executeJob — MEMORY タグ抽出', () => {
+        it('should extract memory tags from response and call append functions', async () => {
+            const { executor, fileIpc } = createExecutor();
+            const { extractMemoryTags, appendToGlobalMemory } = await import('../memoryStore');
+
+            // レスポンスに MEMORY タグを含める
+            fileIpc.waitForResponse.mockResolvedValue(
+                'テスト結果 OK\n<!-- MEMORY:global: 重要な教訓 -->'
+            );
+
+            // extractMemoryTags のモックを設定してグローバルタグを返す
+            (extractMemoryTags as any).mockReturnValue([
+                { scope: 'global', content: '重要な教訓' },
+            ]);
+
+            const plan = createMockPlan({ plan_id: 'memory-001' });
+            await executor.enqueueImmediate(plan);
+
+            expect(extractMemoryTags).toHaveBeenCalled();
+            expect(appendToGlobalMemory).toHaveBeenCalledWith('重要な教訓');
+        });
+    });
+
+    // -----------------------------------------------------------------------
+    // executeJob — 提案ボタン送信
+    // -----------------------------------------------------------------------
+
+    describe('executeJob — 提案ボタン送信', () => {
+        it('should send suggestion buttons when suggestions are parsed', async () => {
+            const { executor, fileIpc, postSuggestions } = createExecutor();
+            const { parseSuggestions } = await import('../suggestionParser');
+            const { buildSuggestionRow, storeSuggestions } = await import('../suggestionButtons');
+
+            fileIpc.waitForResponse.mockResolvedValue('result');
+
+            // parseSuggestions が提案を返すように設定
+            (parseSuggestions as any).mockReturnValue({
+                suggestions: [{ label: 'テスト', prompt: 'テストプロンプト' }],
+                cleanContent: 'result',
+            });
+
+            // buildSuggestionRow がモック ActionRow を返す
+            (buildSuggestionRow as any).mockReturnValue({ components: [] });
+
+            const plan = createMockPlan({ plan_id: 'suggest-001' });
+            await executor.enqueueImmediate(plan);
+
+            expect(buildSuggestionRow).toHaveBeenCalled();
+            expect(storeSuggestions).toHaveBeenCalled();
+            expect(postSuggestions).toHaveBeenCalled();
+        });
+    });
+
+    // -----------------------------------------------------------------------
+    // executeJob — recordExecution (PlanStore に登録済み)
+    // -----------------------------------------------------------------------
+
+    describe('executeJob — recordExecution', () => {
+        it('should record execution when plan exists in PlanStore', async () => {
+            const { executor, fileIpc, planStore } = createExecutor();
+
+            const plan = createMockPlan({ plan_id: 'record-001', cron: '0 9 * * *' });
+
+            // PlanStore に事前登録
+            planStore._store.set(plan.plan_id, plan);
+
+            fileIpc.waitForResponse.mockResolvedValue('success result');
+
+            await executor.enqueueImmediate(plan);
+
+            // planStore.update が呼ばれているはず（実行履歴記録）
+            expect(planStore.update).toHaveBeenCalledWith(
+                'record-001',
+                expect.objectContaining({
+                    execution_count: 1,
+                })
+            );
+        });
+    });
+
+    // -----------------------------------------------------------------------
+    // executeJob — recentlyExecutedPlanIds 重複防止
+    // -----------------------------------------------------------------------
+
+    describe('executeJob — recentlyExecutedPlanIds 重複防止', () => {
+        it('should skip recently executed plan_id (immediate execution)', async () => {
+            const { executor, fileIpc, cdp } = createExecutor();
+
+            fileIpc.waitForResponse.mockResolvedValue('done');
+
+            const plan = createMockPlan({ plan_id: 'recent-001', cron: null });
+
+            // 1回目: 成功
+            await executor.enqueueImmediate(plan);
+            expect(cdp.sendPrompt).toHaveBeenCalledTimes(1);
+
+            // 2回目: recently executed として重複スキップ
+            await executor.enqueueImmediate({ ...plan });
+            // sendPrompt は追加で呼ばれていない（スキップされた）
+            expect(cdp.sendPrompt).toHaveBeenCalledTimes(1);
+        });
+    });
+
+    // -----------------------------------------------------------------------
+    // processQueue — abort 処理
+    // -----------------------------------------------------------------------
+
+    describe('processQueue — abort 処理', () => {
+        it('should abort and stop on forceStop during execution', async () => {
+            const { executor, fileIpc } = createExecutor();
+
+            // waitForResponse を遅延させて実行中に forceStop を呼ぶ
+            fileIpc.waitForResponse.mockImplementation(
+                () => new Promise((resolve) => setTimeout(() => resolve('late'), 5000))
+            );
+
+            const plan1 = createMockPlan({ plan_id: 'abort-001' });
+            const plan2 = createMockPlan({ plan_id: 'abort-002' });
+            const promise = executor.enqueueImmediate(plan1);
+
+            // 少し待ってからジョブ追加 + forceStop
+            await new Promise(r => setTimeout(r, 20));
+            executor.enqueue({ plan: plan2, triggerType: 'immediate' });
+            executor.forceStop();
+
+            await promise;
+
+            // forceStop 後の状態確認
+            expect(executor.isRunning()).toBe(false);
+            // forceStop はキューを保持する（forceReset と違い）
+            expect(executor.queueLength()).toBe(1);
+
+            executor.forceReset();
+        });
+    });
+
+    // -----------------------------------------------------------------------
+    // executeJob — 実行詳細通知
+    // -----------------------------------------------------------------------
+
+    describe('executeJob — 実行詳細通知', () => {
+        it('should send execution_summary when available', async () => {
+            const { executor, fileIpc, notifyDiscord } = createExecutor();
+
+            fileIpc.waitForResponse.mockResolvedValue('ok');
+
+            const plan = createMockPlan({
+                plan_id: 'detail-001',
+                execution_summary: 'テストの実行概要です',
+            });
+
+            await executor.enqueueImmediate(plan);
+
+            // execution_summary が通知されているはず
+            const detailCalls = notifyDiscord.mock.calls.filter(
+                (call: unknown[]) => typeof call[1] === 'string' && (call[1] as string).includes('実行内容'));
+            expect(detailCalls.length).toBeGreaterThanOrEqual(1);
+        });
+    });
+
+    // -----------------------------------------------------------------------
+    // executeJob — 添付ファイル付きプロンプト
+    // -----------------------------------------------------------------------
+
+    describe('executeJob — 添付ファイル', () => {
+        it('should include attachment_paths in prompt when present', async () => {
+            const { executor, fileIpc } = createExecutor();
+
+            fileIpc.waitForResponse.mockResolvedValue('done');
+
+            const plan = createMockPlan({
+                plan_id: 'attach-001',
+                attachment_paths: ['/tmp/image.png', '/tmp/doc.pdf'],
+            });
+
+            await executor.enqueueImmediate(plan);
+
+            // fs.writeFileSync のプロンプト書き込みで attachments が含まれていること
+            const { writeFileSync } = await import('fs');
+            const writeCalls = (writeFileSync as any).mock.calls;
+            const promptCall = writeCalls.find(
+                (call: unknown[]) => typeof call[1] === 'string' && (call[1] as string).includes('attachment'));
+            expect(promptCall).toBeDefined();
         });
     });
 });

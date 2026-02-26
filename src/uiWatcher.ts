@@ -9,59 +9,11 @@
 
 import * as vscode from 'vscode';
 import { CdpBridge } from './cdpBridge';
-import { logDebug } from './logger';
-
-// ---------------------------------------------------------------------------
-// 型定義
-// ---------------------------------------------------------------------------
-
-/** UIウォッチャーの自動クリックルール */
-export interface AutoClickRule {
-    name: string;            // ルール名（ログ用）
-    text?: string;           // テキストマッチ
-    selector?: string;       // セレクタマッチ
-    tag?: string;            // タグフィルタ
-    inCascade?: boolean;     // cascade-panel 内（デフォルト: true）
-}
-
-/**
- * デフォルトの自動クリックルール（CDP DOM 操作用）。
- * Accept / Allow / Run 等の承認系はVSCodeコマンドで処理するため、
- * ここには VSCode コマンドでカバーできない UI 操作のみを残す。
- */
-export const DEFAULT_AUTO_CLICK_RULES: AutoClickRule[] = [
-    // Continue: 警告ダイアログの続行ボタン（VSCode コマンド代替なし）
-    { name: 'continue-warning', text: 'Continue', tag: 'button', inCascade: true },
-    // Retry: エラー時のリトライボタン（VSCode コマンド代替なし）
-    { name: 'retry-error', text: 'Retry', tag: 'button', inCascade: true },
-    // Always run: 常時許可ボタン（VSCode コマンド代替なし）
-    { name: 'always-run', text: 'Always run', inCascade: true },
-    // Allow: ブラウザ操作の許可ダイアログ（「Agent needs permission to act on [ドメイン]」）
-    { name: 'allow-browser', text: 'Allow', tag: 'button', inCascade: true },
-    // Always Allow: ブラウザ操作の常時許可
-    { name: 'always-allow-browser', text: 'Always Allow', tag: 'button', inCascade: true },
-    // Expand All: 差分ビューの折りたたみ展開ボタン
-    { name: 'expand-all', selector: '[aria-label="Expand All"]', tag: 'button', inCascade: false },
-    // Expand: 「N Step Requires Input」表示時の展開ボタン
-    { name: 'expand-step-input', text: 'Expand', tag: 'button', inCascade: true },
-    // ScrollDown: 出力が長い場合の下矢印スクロールボタン
-    { name: 'scroll-down-arrow', selector: '.codicon-arrow-down', tag: 'button', inCascade: true },
-    { name: 'scroll-down-arrow-text', text: '↓', tag: 'button', inCascade: true },
-];
-
-// ---------------------------------------------------------------------------
-// 定数
-// ---------------------------------------------------------------------------
+import { logDebug, logInfo } from './logger';
 
 /** UIウォッチャーのポーリング間隔（ms） */
 const UI_WATCHER_INTERVAL_MS = 1_000;
 
-/** VSCode コマンドによる自動承認リスト */
-const COMMAND_APPROVALS = [
-    'antigravity.agent.acceptAgentStep',    // Agent ステップ承認
-    'antigravity.terminalCommand.accept',   // ターミナルコマンド承認
-    'antigravity.command.accept',            // コマンド承認
-];
 
 // ---------------------------------------------------------------------------
 // UIWatcher クラス
@@ -69,11 +21,9 @@ const COMMAND_APPROVALS = [
 
 export class UIWatcher {
     private timer: ReturnType<typeof setInterval> | null = null;
-    private readonly rules: AutoClickRule[] = [...DEFAULT_AUTO_CLICK_RULES];
     private cdp: CdpBridge;
     private isProcessing: () => boolean;
     private isProCheck: () => boolean;
-    private hasLoggedScroll = false;
 
     /**
      * @param cdp - CDP ブリッジ
@@ -88,8 +38,9 @@ export class UIWatcher {
 
     /**
      * UIウォッチャーを開始する。
-     * autoAccept が有効な場合、既知のダイアログ（Continue, Allow, Retry 等）を
-     * 自動検出してクリックし、VSCode コマンド経由で提案を自動承認する。
+     * autoAccept が有効な場合、VSCode コマンド経由で提案を自動承認し、
+     * DOM フォールバックで既知のダイアログ（Continue, Allow, Retry 等）を
+     * 自動検出してクリックする。
      * bridgeLifecycle からブリッジ起動時に呼ばれる（常時動作）。
      *
      * **注意:** autoAccept は Pro 限定機能。Free プランでは設定が ON でも無効。
@@ -110,53 +61,21 @@ export class UIWatcher {
             if (!this.isProCheck()) { return; }
 
             // ANTICROW 経由のジョブ実行中のみ自動承認を行う
-            if (!this.isProcessing()) { return; }
-
-            // =================================================================
-            // 第1層: VSCode コマンドによる自動承認（UI変更に強い）
-            // =================================================================
-            for (const cmd of COMMAND_APPROVALS) {
-                try {
-                    await vscode.commands.executeCommand(cmd);
-                } catch { /* コマンドが存在しない/対象なしは無視 */ }
+            if (!this.isProcessing()) {
+                logInfo('UIWatcher: skipping — not processing');
+                return;
             }
 
             // =================================================================
-            // 第2層: CDP DOM ルールベースの自動クリック（フォールバック）
-            // =================================================================
-            for (const rule of this.rules) {
-                try {
-                    const result = await this.cdp.clickElement({
-                        text: rule.text,
-                        selector: rule.selector,
-                        tag: rule.tag,
-                        inCascade: rule.inCascade !== false,
-                    });
-
-                    if (result.success) {
-                        logDebug(`UIWatcher: auto-clicked "${rule.name}" (method=${result.method})`);
-                    }
-                } catch (e) {
-                    // コンテキスト取得失敗時はキャッシュをリセットして次回再取得を促す
-                    this.cdp.ops.resetCascadeContext();
-                    logDebug(`UIWatcher: rule "${rule.name}" error (context reset): ${e instanceof Error ? e.message : e}`);
-                }
-            }
-
-            // =================================================================
-            // 第3層: チャットパネル外枠の自動スクロール
-            // cascade iframe 内のスクロール可能なコンテナを最下部にスクロールする。
-            // "Scroll to bottom" ボタンがあればそれをクリック、
-            // なければ .overflow-y-auto コンテナの scrollTop を scrollHeight に設定。
+            // 統合処理: autoFollowOutput
+            // scroll → autoApprove → expand → review → permission を一括実行。
+            // 「下にスクロールしながら出てきたボタンを押す」自然なフローで動作。
             // =================================================================
             try {
-                const scrolled = await this.cdp.scrollToBottom();
-                if (scrolled && !this.hasLoggedScroll) {
-                    logDebug('UIWatcher: auto-scroll to bottom — succeeded (first time)');
-                    this.hasLoggedScroll = true;
-                }
-            } catch {
-                // スクロール対象がない場合は無視
+                await this.cdp.autoFollowOutput();
+            } catch (e) {
+                this.cdp.ops.resetCascadeContext();
+                logDebug(`UIWatcher: autoFollowOutput error (context reset): ${e instanceof Error ? e.message : e}`);
             }
         }, UI_WATCHER_INTERVAL_MS);
     }

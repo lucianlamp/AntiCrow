@@ -193,20 +193,32 @@ export async function discoverInstances(ports: number[]): Promise<DiscoveredInst
 
 /**
  * タイトルからワークスペース名を抽出する。
- * 「workspace — Antigravity」→「workspace」
+ * 例: "src/main.ts - my-project - Visual Studio Code" → "my-project"
+ * 例: "workspace — Antigravity" → "workspace"
  */
 export function extractWorkspaceName(title: string): string {
-    // 「 — 」（em dash）で分割し、最初の部分がワークスペース名
-    const parts = title.split(' \u2014 ');
-    if (parts.length >= 2) {
+    if (!title) { return ''; }
+    let name = title;
+
+    // リモートや拡張開発ホストのプレフィックスを除去: "[Extension Development Host] - " など
+    name = name.replace(/^\[[^\]]+\]\s*[-\u2013\u2014]\s*/, '');
+
+    // IDE のサフィックスを除去: " — Antigravity", " - Visual Studio Code" など
+    name = name.replace(/\s*[-\u2013\u2014]\s*(?:Antigravity|Visual Studio(?: Code)?).*$/, '');
+
+    // "ファイル名 - フォルダ名" の形式からフォルダ名（ワークスペース名）を抽出する
+    // '-', '\u2013' (EN dash), '\u2014' (EM dash) をセパレータとして扱う
+    const parts = name.split(/\s+[-\u2013\u2014]\s+/);
+    if (parts.length > 1) {
+        // 「ファイル名 — ワークスペース名」: 最後の要素がワークスペース名
+        return parts[parts.length - 1].trim();
+    }
+    if (parts.length === 1) {
+        // サフィックス除去後に1要素 = 「ワークスペース名」のみ or ファイル名なし
         return parts[0].trim();
     }
-    // 「 - 」（通常のダッシュ）のフォールバック
-    const parts2 = title.split(' - ');
-    if (parts2.length >= 2) {
-        return parts2[0].trim();
-    }
-    return title;
+
+    return name.trim();
 }
 
 /**

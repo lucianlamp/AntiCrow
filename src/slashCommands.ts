@@ -27,7 +27,7 @@ export const slashCommandDefinitions = [
         .setDescription('Antigravity で新しいチャットセッションを開始'),
 
     new SlashCommandBuilder()
-        .setName('workspaces')
+        .setName('workspace')
         .setDescription('検出された Antigravity ワークスペース一覧を表示'),
 
     new SlashCommandBuilder()
@@ -39,7 +39,7 @@ export const slashCommandDefinitions = [
         .setDescription('テンプレート一覧を表示・管理'),
 
     new SlashCommandBuilder()
-        .setName('models')
+        .setName('model')
         .setDescription('利用可能な AI モデル一覧を表示・切り替え'),
 
     new SlashCommandBuilder()
@@ -61,6 +61,10 @@ export const slashCommandDefinitions = [
     new SlashCommandBuilder()
         .setName('pro')
         .setDescription('Pro ライセンスの管理・購入・キー入力'),
+
+    new SlashCommandBuilder()
+        .setName('screenshot')
+        .setDescription('現在の画面のスクリーンショットを取得します'),
 
 ];
 

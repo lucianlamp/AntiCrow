@@ -2,8 +2,8 @@
 // adminHandler.ts — 管理系スラッシュコマンドハンドラ
 // ---------------------------------------------------------------------------
 // 責務:
-//   /status, /schedules, /cancel, /newchat, /workspaces, /queue,
-//   /templates, /models, /mode, /suggest, /pro コマンドの処理
+//   /status, /schedules, /cancel, /newchat, /workspace, /queue,
+//   /templates, /model, /mode, /suggest, /pro コマンドの処理
 // ---------------------------------------------------------------------------
 import {
     ChatInputCommandInteraction,
@@ -11,10 +11,12 @@ import {
     ActionRowBuilder,
     ButtonBuilder,
     ButtonStyle,
+    AttachmentBuilder,
 } from 'discord.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import { logDebug, logError, logWarn } from './logger';
+import { isDeveloper } from './accessControl';
 import { buildEmbed, EmbedColor } from './embedHelper';
 import { buildScheduleListEmbed, buildDeleteConfirmEmbed } from './scheduleButtons';
 import { buildHistoryListEmbed } from './historyButtons';
@@ -38,8 +40,33 @@ import { buildTemplateListPanel } from './templateHandler';
 
 type CommandHandler = (ctx: BridgeContext, interaction: ChatInputCommandInteraction) => Promise<void>;
 
+/**
+ * チャンネルカテゴリーから対象ワークスペースを解決し、
+ * cdpPool から正しい CdpBridge を取得する共通ヘルパー。
+ * フォールバックとして ctx.cdp（デフォルト）を返す。
+ */
+function resolveTargetCdp(
+    ctx: BridgeContext,
+    interaction: ChatInputCommandInteraction,
+): { cdp: BridgeContext['cdp']; wsKey: string | null } {
+    const channel = interaction.channel as TextChannel | null;
+    const wsKey = channel ? DiscordBot.resolveWorkspaceFromChannel(channel) : null;
+    let cdp = ctx.cdp;
+    if (wsKey && ctx.cdpPool) {
+        const poolCdp = ctx.cdpPool.getActive(wsKey);
+        if (poolCdp) {
+            cdp = poolCdp;
+            logDebug(`resolveTargetCdp: using cdpPool for workspace "${wsKey}"`);
+        } else {
+            logDebug(`resolveTargetCdp: cdp for workspace "${wsKey}" not active, fallback to default`);
+        }
+    }
+    return { cdp, wsKey };
+}
+
 async function handleStatus(ctx: BridgeContext, interaction: ChatInputCommandInteraction): Promise<void> {
-    const { cdp, bot, scheduler, executor } = ctx;
+    const { cdp, wsKey } = resolveTargetCdp(ctx, interaction);
+    const { bot, scheduler, executor } = ctx;
     const cdpOk = cdp ? await cdp.testConnection() : false;
     const botOk = bot?.isReady() || false;
     const scheduledIds = scheduler?.getRegisteredPlanIds() || [];
@@ -58,8 +85,9 @@ async function handleStatus(ctx: BridgeContext, interaction: ChatInputCommandInt
         queueDisplay = `${parts.join(' / ')} ${isRunning ? '(実行中)' : ''}`;
     }
 
+    const wsLabel = wsKey ? ` (${wsKey})` : '';
     const statusMsg = [
-        '📊 **AntiCrow 状態**',
+        `📊 **AntiCrow 状態**${wsLabel}`,
         `- Discord Bot: ${botOk ? '🟢 オンライン' : '🔴 オフライン'}`,
         `- Antigravity 接続: ${cdpOk ? '🟢 接続済み' : '🔴 未接続'}`,
         `- アクティブターゲット: ${activeTarget}`,
@@ -83,28 +111,45 @@ async function handleSchedules(ctx: BridgeContext, interaction: ChatInputCommand
 }
 
 async function handleCancel(ctx: BridgeContext, interaction: ChatInputCommandInteraction): Promise<void> {
-    const { cdp, executor } = ctx;
+    const { executor } = ctx;
+    const { cdp: targetCdp, wsKey } = resolveTargetCdp(ctx, interaction);
     try {
-        resetProcessingFlag();
-        cancelPlanGeneration();
-        const execRunning = executor?.isRunning() || false;
-        const poolRunning = ctx.executorPool?.isAnyRunning() || false;
+        // ワークスペース単位でリセット（wsKey 未特定時は全ワークスペース）
+        resetProcessingFlag(wsKey ?? undefined);
+        cancelPlanGeneration(wsKey ?? undefined);
 
-        executor?.forceStop();
-        ctx.executorPool?.forceStopAll();
+        // Executor 停止もワークスペース単位
+        let execRunning = false;
+        let poolRunning = false;
+        if (wsKey) {
+            // 対象ワークスペースの Executor のみ停止
+            execRunning = executor?.isRunning() || false;
+            poolRunning = ctx.executorPool?.isRunning(wsKey) || false;
+            if (execRunning) { executor?.forceStop(); }
+            ctx.executorPool?.forceStop(wsKey);
+            logDebug(`handleCancel: /cancel executed — workspace "${wsKey}" stopped`);
+        } else {
+            // ワークスペース未特定時は全 Executor 停止（後方互換）
+            execRunning = executor?.isRunning() || false;
+            poolRunning = ctx.executorPool?.isAnyRunning() || false;
+            executor?.forceStop();
+            ctx.executorPool?.forceStopAll();
+            logDebug('handleCancel: /cancel executed — all workspaces stopped');
+        }
 
         let cancelResult = 'CDP未接続';
-        if (cdp) {
+
+        if (targetCdp) {
             try {
-                cancelResult = await cdp.clickCancelButton();
+                cancelResult = await targetCdp.clickCancelButton();
             } catch (e) {
                 cancelResult = `エラー: ${e instanceof Error ? e.message : e}`;
                 logWarn(`handleCancel: clickCancelButton failed: ${cancelResult}`);
             }
         }
 
-        logDebug('handleCancel: /cancel executed — current job stopped (executor + executorPool)');
         const debugInfo = [
+            `対象WS: ${wsKey || '全ワークスペース'}`,
             `executor実行中: ${execRunning}`,
             `pool実行中: ${poolRunning}`,
             `Antigravity停止: ${cancelResult}`,
@@ -112,11 +157,16 @@ async function handleCancel(ctx: BridgeContext, interaction: ChatInputCommandInt
 
         // Escape フォールバックのみで停止した場合はメッセージを補足
         const escapeOnly = cancelResult.includes('escape:SENT') && !cancelResult.includes(':OK');
+        const wsLabel = wsKey ? ` (${wsKey})` : '';
         const statusMsg = escapeOnly
-            ? '⏹️ キャンセルしました（Escape キーで停止）。\n- 実行中のジョブ → キャンセル\n- キュー内の待機ジョブ → 保持\n\n⚠️ キャンセルボタンが見つからず Escape キーで停止しました。'
-            : '⏹️ キャンセルしました。\n- 実行中のジョブ → キャンセル\n- キュー内の待機ジョブ → 保持';
+            ? `⏹️ キャンセルしました${wsLabel}（Escape キーで停止）。\n- 実行中のジョブ → キャンセル\n- キュー内の待機ジョブ → 保持\n\n⚠️ キャンセルボタンが見つからず Escape キーで停止しました。`
+            : `⏹️ キャンセルしました${wsLabel}。\n- 実行中のジョブ → キャンセル\n- キュー内の待機ジョブ → 保持`;
 
-        await interaction.reply({ embeds: [buildEmbed(`${statusMsg}\n\n\`\`\`\n${debugInfo}\n\`\`\``, EmbedColor.Success)] });
+        // デバッグ情報は開発者のみ表示
+        const replyMsg = isDeveloper(interaction.user.id)
+            ? `${statusMsg}\n\n\`\`\`\n${debugInfo}\n\`\`\``
+            : statusMsg;
+        await interaction.reply({ embeds: [buildEmbed(replyMsg, EmbedColor.Success)] });
     } catch (e) {
         const errMsg = e instanceof Error ? e.message : String(e);
         logError('handleCancel: /cancel failed', e);
@@ -125,7 +175,7 @@ async function handleCancel(ctx: BridgeContext, interaction: ChatInputCommandInt
 }
 
 async function handleNewchat(ctx: BridgeContext, interaction: ChatInputCommandInteraction): Promise<void> {
-    const { cdp } = ctx;
+    const { cdp } = resolveTargetCdp(ctx, interaction);
     try {
         if (cdp) {
             await cdp.startNewChat();
@@ -281,7 +331,7 @@ async function handleTemplate(ctx: BridgeContext, interaction: ChatInputCommandI
 async function handleModels(ctx: BridgeContext, interaction: ChatInputCommandInteraction): Promise<void> {
     await interaction.deferReply();
     try {
-        const cdp = ctx.cdp;
+        const { cdp } = resolveTargetCdp(ctx, interaction);
         if (!cdp) {
             await interaction.editReply({ embeds: [buildEmbed('⚠️ Antigravity との接続が初期化されていません。', EmbedColor.Warning)] });
             return;
@@ -291,7 +341,9 @@ async function handleModels(ctx: BridgeContext, interaction: ChatInputCommandInt
         const { models, current, debugLog } = await getAvailableModels(cdp.ops);
         logDebug(`handleModels: got ${models.length} models, current=${current}`);
 
-        if (ctx.fileIpc) {
+        // デバッグログファイル書き込みは開発者のみ
+        const isDevUser = isDeveloper(interaction.user.id);
+        if (isDevUser && ctx.fileIpc) {
             try {
                 const debugPath = path.join(ctx.fileIpc.getIpcDir(), 'models_debug.json');
                 fs.writeFileSync(debugPath, JSON.stringify(debugLog, null, 2), 'utf-8');
@@ -301,20 +353,23 @@ async function handleModels(ctx: BridgeContext, interaction: ChatInputCommandInt
             }
         }
 
-        const stepSummary = debugLog.map(e => `${e.step}: ${e.success ? '✅' : '❌'}`).join(' → ');
-
         if (models.length === 0) {
-            const debugLines = [
-                '🔍 **モデル取得デバッグ情報**',
-                '',
-                `**ステップ**: ${stepSummary || '(なし)'}`,
-                '',
-                '**詳細ログ:**',
-                '```json',
-                JSON.stringify(debugLog, null, 2).substring(0, 800),
-                '```',
-            ];
-            await interaction.editReply({ embeds: [buildEmbed(debugLines.join('\n'), EmbedColor.Warning)] });
+            if (isDevUser) {
+                const stepSummary = debugLog.map(e => `${e.step}: ${e.success ? '✅' : '❌'}`).join(' → ');
+                const debugLines = [
+                    '🔍 **モデル取得デバッグ情報**',
+                    '',
+                    `**ステップ**: ${stepSummary || '(なし)'}`,
+                    '',
+                    '**詳細ログ:**',
+                    '```json',
+                    JSON.stringify(debugLog, null, 2).substring(0, 800),
+                    '```',
+                ];
+                await interaction.editReply({ embeds: [buildEmbed(debugLines.join('\n'), EmbedColor.Warning)] });
+            } else {
+                await interaction.editReply({ embeds: [buildEmbed('⚠️ モデル一覧を取得できませんでした。Antigravity の状態を確認してください。', EmbedColor.Warning)] });
+            }
             return;
         }
 
@@ -337,7 +392,7 @@ async function handleModels(ctx: BridgeContext, interaction: ChatInputCommandInt
 async function handleMode(ctx: BridgeContext, interaction: ChatInputCommandInteraction): Promise<void> {
     await interaction.deferReply();
     try {
-        const cdp = ctx.cdp;
+        const { cdp } = resolveTargetCdp(ctx, interaction);
         if (!cdp) {
             await interaction.editReply({ embeds: [buildEmbed('⚠️ Antigravity との接続が初期化されていません。', EmbedColor.Warning)] });
             return;
@@ -347,7 +402,9 @@ async function handleMode(ctx: BridgeContext, interaction: ChatInputCommandInter
         const { modes, current, debugLog } = await getAvailableModes(cdp.ops);
         logDebug(`handleMode: got ${modes.length} modes, current=${current}`);
 
-        if (ctx.fileIpc) {
+        // デバッグログファイル書き込みは開発者のみ
+        const isDevUser = isDeveloper(interaction.user.id);
+        if (isDevUser && ctx.fileIpc) {
             try {
                 const debugPath = path.join(ctx.fileIpc.getIpcDir(), 'modes_debug.json');
                 fs.writeFileSync(debugPath, JSON.stringify(debugLog, null, 2), 'utf-8');
@@ -357,20 +414,23 @@ async function handleMode(ctx: BridgeContext, interaction: ChatInputCommandInter
             }
         }
 
-        const stepSummary = debugLog.map(e => `${e.step}: ${e.success ? '✅' : '❌'}`).join(' → ');
-
         if (modes.length === 0) {
-            const debugLines = [
-                '🔍 **モード取得デバッグ情報**',
-                '',
-                `**ステップ**: ${stepSummary || '(なし)'}`,
-                '',
-                '**詳細ログ:**',
-                '```json',
-                JSON.stringify(debugLog, null, 2).substring(0, 800),
-                '```',
-            ];
-            await interaction.editReply({ embeds: [buildEmbed(debugLines.join('\n'), EmbedColor.Warning)] });
+            if (isDevUser) {
+                const stepSummary = debugLog.map(e => `${e.step}: ${e.success ? '✅' : '❌'}`).join(' → ');
+                const debugLines = [
+                    '🔍 **モード取得デバッグ情報**',
+                    '',
+                    `**ステップ**: ${stepSummary || '(なし)'}`,
+                    '',
+                    '**詳細ログ:**',
+                    '```json',
+                    JSON.stringify(debugLog, null, 2).substring(0, 800),
+                    '```',
+                ];
+                await interaction.editReply({ embeds: [buildEmbed(debugLines.join('\n'), EmbedColor.Warning)] });
+            } else {
+                await interaction.editReply({ embeds: [buildEmbed('⚠️ モード一覧を取得できませんでした。Antigravity の状態を確認してください。', EmbedColor.Warning)] });
+            }
             return;
         }
 
@@ -386,7 +446,7 @@ async function handleMode(ctx: BridgeContext, interaction: ChatInputCommandInter
 async function handleHistory(ctx: BridgeContext, interaction: ChatInputCommandInteraction): Promise<void> {
     await interaction.deferReply();
     try {
-        const cdp = ctx.cdp;
+        const { cdp } = resolveTargetCdp(ctx, interaction);
         if (!cdp) {
             await interaction.editReply({ embeds: [buildEmbed('⚠️ Antigravity との接続が初期化されていません。', EmbedColor.Warning)] });
             return;
@@ -433,10 +493,10 @@ async function handleHelp(_ctx: BridgeContext, interaction: ChatInputCommandInte
         '`/queue` — 実行キューの詳細を表示',
         '`/schedules` — 定期実行の一覧・管理',
         '`/newchat` — Antigravity で新しいチャットを開く',
-        '`/models` — AI モデルの一覧・切替',
+        '`/model` — AI モデルの一覧・切替',
         '`/mode` — AI モード切替（Planning / Fast）',
         '`/history` — 会話履歴を表示・切り替え',
-        '`/workspaces` — ワークスペース一覧を表示',
+        '`/workspace` — ワークスペース一覧を表示',
         '`/templates` — テンプレート一覧・管理',
         '`/pro` — Pro ライセンス管理・購入・キー入力',
         '`/help` — このヘルプを表示',
@@ -453,18 +513,18 @@ async function handleHelp(_ctx: BridgeContext, interaction: ChatInputCommandInte
 
 async function handlePro(ctx: BridgeContext, interaction: ChatInputCommandInteraction): Promise<void> {
     try {
-        const { FREE_DAILY_TASK_LIMIT, FREE_WEEKLY_TASK_LIMIT, FREE_WORKSPACE_LIMIT, PRO_ONLY_FEATURES, PURCHASE_URL_MONTHLY, PURCHASE_URL_LIFETIME } = await import('./licensing');
+        const { FREE_DAILY_TASK_LIMIT, FREE_WEEKLY_TASK_LIMIT, PRO_ONLY_FEATURES, PURCHASE_URL_MONTHLY, PURCHASE_URL_LIFETIME } = await import('./licensing');
 
         const lines: string[] = [
             '💎 **AntiCrow Pro**',
             '',
             '**💰 価格プラン**',
-            `🆓 **Free** — 無料（1日${FREE_DAILY_TASK_LIMIT}タスク、週${FREE_WEEKLY_TASK_LIMIT}タスク、WS ${FREE_WORKSPACE_LIMIT}個）`,
+            `🆓 **Free** — 無料（1日${FREE_DAILY_TASK_LIMIT}タスク、週${FREE_WEEKLY_TASK_LIMIT}タスク）`,
             '📅 **Monthly** — $5/月（全機能無制限）',
             '♾️ **Lifetime** — $50（買い切り永久）',
             '',
             '**🔒 Pro 限定機能**',
-            `${[...PRO_ONLY_FEATURES].map(f => f === 'autoAccept' ? '自動承認' : `\`${f}\``).join(', ')}、無制限タスク、マルチワークスペース`,
+            `${[...PRO_ONLY_FEATURES].map(f => f === 'autoAccept' ? '自動承認' : `\`${f}\``).join(', ')}、無制限タスク`,
         ];
 
         // トライアル情報を追加
@@ -564,6 +624,36 @@ async function handleSuggest(ctx: BridgeContext, interaction: ChatInputCommandIn
 }
 
 // ---------------------------------------------------------------------------
+// /screenshot
+// ---------------------------------------------------------------------------
+
+async function handleScreenshot(ctx: BridgeContext, interaction: ChatInputCommandInteraction): Promise<void> {
+    await interaction.deferReply();
+    try {
+        const { cdp, wsKey } = resolveTargetCdp(ctx, interaction);
+
+        if (!cdp) {
+            await interaction.editReply({ embeds: [buildEmbed('⚠️ Antigravity との接続が初期化されていません。', EmbedColor.Warning)] });
+            return;
+        }
+
+        const buffer = await cdp.getScreenshot();
+        if (buffer) {
+            const wsLabel = wsKey ? ` (${wsKey})` : '';
+            const attachment = new AttachmentBuilder(buffer, { name: 'screenshot.png' });
+            await interaction.editReply({ content: `📸${wsLabel}`, files: [attachment] });
+        } else {
+            await interaction.editReply({ embeds: [buildEmbed('⚠️ スクリーンショットの取得に失敗しました。', EmbedColor.Warning)] });
+        }
+    } catch (e) {
+        const errMsg = e instanceof Error ? e.message : String(e);
+        logError('handleScreenshot: failed', e);
+        await interaction.editReply({ embeds: [buildEmbed(`❌ スクリーンショット取得エラー: ${errMsg}`, EmbedColor.Error)] }).catch(() => { });
+    }
+}
+
+
+// ---------------------------------------------------------------------------
 // コマンドディスパッチマップ
 // ---------------------------------------------------------------------------
 
@@ -572,15 +662,16 @@ const COMMAND_HANDLERS: Record<string, CommandHandler> = {
     schedules: handleSchedules,
     cancel: handleCancel,
     newchat: handleNewchat,
-    workspaces: handleWorkspaces,
+    workspace: handleWorkspaces,
     queue: handleQueue,
     template: handleTemplate,
-    models: handleModels,
+    model: handleModels,
     mode: handleMode,
     history: handleHistory,
     suggest: handleSuggest,
     help: handleHelp,
     pro: handlePro,
+    screenshot: handleScreenshot,
 };
 
 // ---------------------------------------------------------------------------

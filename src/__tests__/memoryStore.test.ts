@@ -149,23 +149,25 @@ describe('archiveMemoryFile', () => {
         } catch { /* ignore */ }
     });
 
-    it('should archive old entries and keep recent ones', () => {
+    it('should archive old entries beyond RECENT_COUNT (10) and RECENT_DAYS (7)', () => {
         const header = '# Memory\n\n---\n';
         const entries = [];
-        for (let i = 1; i <= 4; i++) {
-            entries.push(`### 2026-01-0${i}\n- Entry ${i}\n`);
+        // 12件の古いエントリ
+        for (let i = 1; i <= 12; i++) {
+            const day = i.toString().padStart(2, '0');
+            entries.push(`### 2020-01-${day}\n- Entry ${i}\n`);
         }
         fs.writeFileSync(memoryPath, header + entries.join('\n'), 'utf-8');
 
         archiveMemoryFile(memoryPath, 'test');
 
-        // メインファイルには後半のエントリだけ残る
+        // メインファイルには直近10件（Entry 3 ~ 12）が残る
         const remaining = fs.readFileSync(memoryPath, 'utf-8');
         expect(remaining).toContain('# Memory');
         expect(remaining).toContain('Entry 3');
-        expect(remaining).toContain('Entry 4');
-        expect(remaining).not.toContain('Entry 1');
-        expect(remaining).not.toContain('Entry 2');
+        expect(remaining).toContain('Entry 12');
+        expect(remaining).not.toContain('Entry 1\n');
+        expect(remaining).not.toContain('Entry 2\n');
 
         // アーカイブファイルが作成される
         const archiveFiles = fs.readdirSync(tmpDir).filter(f => f.startsWith('MEMORY_archive_'));
@@ -173,6 +175,35 @@ describe('archiveMemoryFile', () => {
         const archiveContent = fs.readFileSync(path.join(tmpDir, archiveFiles[0]), 'utf-8');
         expect(archiveContent).toContain('Entry 1');
         expect(archiveContent).toContain('Entry 2');
+        expect(archiveContent).not.toContain('Entry 3');
+    });
+
+    it('should keep entries within RECENT_DAYS (7) but fallback to safeguard if all are recent', () => {
+        const header = '# Memory\n\n---\n';
+        const entries = [];
+        const nowMs = Date.now();
+        const msPerDay = 1000 * 60 * 60 * 24;
+        // 12件の新しいエントリ（2日前）
+        const twoDaysAgo = new Date(nowMs - 2 * msPerDay).toISOString().slice(0, 10);
+        for (let i = 1; i <= 12; i++) {
+            entries.push(`### ${twoDaysAgo}\n- Entry ${i}\n`);
+        }
+        fs.writeFileSync(memoryPath, header + entries.join('\n'), 'utf-8');
+
+        archiveMemoryFile(memoryPath, 'test');
+
+        // すべて直近7日以内なので、アーカイブ対象がない。
+        // 無限肥大化防止のセーフガードにより、強制的に最古の1件（Entry 1）だけがアーカイブされる。
+        const remaining = fs.readFileSync(memoryPath, 'utf-8');
+        expect(remaining).not.toContain('- Entry 1\n');
+        expect(remaining).toContain('- Entry 2\n');
+        expect(remaining).toContain('- Entry 12\n');
+
+        const archiveFiles = fs.readdirSync(tmpDir).filter(f => f.startsWith('MEMORY_archive_'));
+        expect(archiveFiles).toHaveLength(1);
+        const archiveContent = fs.readFileSync(path.join(tmpDir, archiveFiles[0]), 'utf-8');
+        expect(archiveContent).toContain('- Entry 1\n');
+        expect(archiveContent).not.toContain('- Entry 2\n');
     });
 
     it('should not archive when fewer than 2 entries', () => {

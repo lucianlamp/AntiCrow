@@ -126,12 +126,28 @@ export class DiscordBot {
         this.client.on('interactionCreate', async (interaction) => {
             // ----- Button Interaction -----
             if (interaction.isButton()) {
-                logDebug(`Discord: button interaction customId=${interaction.customId} from ${interaction.user.tag}`);
+                const cid = interaction.customId;
+                logDebug(`Discord: button interaction customId=${cid} from ${interaction.user.tag}`);
+
+                // 確認フロー関連ボタン: discordReactions.ts のメッセージコンポーネント
+                // コレクタが専用処理する。グローバルハンドラでは一切触らない。
+                // ここでスキップしないと、コレクタの deferUpdate() が呼ばれる前に
+                // Discord API の 3 秒応答期限が切れ「インタラクションに失敗しました」
+                // エラーが発生する。
+                if (
+                    cid === 'confirm_approve' ||
+                    cid === 'confirm_reject' ||
+                    cid.startsWith('choice_') ||
+                    cid.startsWith('mchoice_')
+                ) {
+                    return;
+                }
+
                 if (this.buttonHandler) {
                     try {
                         await this.buttonHandler(interaction);
                     } catch (e) {
-                        logError(`Discord: button handler error for ${interaction.customId}`, e);
+                        logError(`Discord: button handler error for ${cid}`, e);
                         const errMsg = e instanceof Error ? e.message : String(e);
                         if (!interaction.replied && !interaction.deferred) {
                             await interaction.reply({ embeds: [buildEmbed(`❌ エラー: ${errMsg}`, EmbedColor.Error)], ephemeral: true }).catch(() => { });
@@ -216,15 +232,16 @@ export class DiscordBot {
             case 'schedules': return 'admin';
             case 'cancel': return 'admin';
             case 'newchat': return 'admin';
-            case 'workspaces': return 'admin';
+            case 'workspace': return 'admin';
             case 'history': return 'admin';
             case 'queue': return 'admin';
             case 'template': return 'admin';
-            case 'models': return 'admin';
+            case 'model': return 'admin';
             case 'mode': return 'admin';
             case 'help': return 'admin';
             case 'suggest': return 'admin';
             case 'pro': return 'admin';
+            case 'screenshot': return 'admin';
             default: return null;
         }
     }

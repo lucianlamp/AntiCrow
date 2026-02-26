@@ -53,11 +53,11 @@ export async function waitForConfirmation(
         const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
             new ButtonBuilder()
                 .setCustomId('confirm_approve')
-                .setLabel('✅ 承認')
+                .setLabel('承認')
                 .setStyle(ButtonStyle.Success),
             new ButtonBuilder()
                 .setCustomId('confirm_reject')
-                .setLabel('❌ 拒否')
+                .setLabel('却下')
                 .setStyle(ButtonStyle.Danger),
         );
 
@@ -117,7 +117,7 @@ export async function waitForChoice(
     botUserId: string | undefined,
     choiceCount: number,
 ): Promise<number> {
-    const numberLabels = ['1️⃣', '2️⃣', '3️⃣'];
+    const numberLabels = ['1', '2', '3'];
     const clipped = Math.min(choiceCount, 3);
 
     try {
@@ -133,7 +133,7 @@ export async function waitForChoice(
         buttons.push(
             new ButtonBuilder()
                 .setCustomId('choice_reject')
-                .setLabel('❌ 拒否')
+                .setLabel('却下')
                 .setStyle(ButtonStyle.Danger),
         );
 
@@ -203,7 +203,7 @@ export async function waitForMultiChoice(
     botUserId: string | undefined,
     choiceCount: number,
 ): Promise<number[]> {
-    const numberLabels = ['1️⃣', '2️⃣', '3️⃣'];
+    const numberLabels = ['1', '2', '3'];
     const clipped = Math.min(choiceCount, 3);
     const selected = new Set<number>();
 
@@ -225,15 +225,15 @@ export async function waitForMultiChoice(
         const controlRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
             new ButtonBuilder()
                 .setCustomId('mchoice_confirm')
-                .setLabel('☑️ 確定')
+                .setLabel('確定')
                 .setStyle(ButtonStyle.Success),
             new ButtonBuilder()
                 .setCustomId('mchoice_all')
-                .setLabel('✅ 全選択')
+                .setLabel('全選択')
                 .setStyle(ButtonStyle.Primary),
             new ButtonBuilder()
                 .setCustomId('mchoice_reject')
-                .setLabel('❌ 拒否')
+                .setLabel('却下')
                 .setStyle(ButtonStyle.Danger),
         );
 

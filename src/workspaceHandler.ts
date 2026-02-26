@@ -4,22 +4,34 @@
 // 責務:
 //   1. ワークスペース一覧 Embed + ボタン構築
 //   2. ワークスペース関連ボタンインタラクション処理
-//      (ws_refresh, ws_delete, ws_delete_confirm, ws_delete_cancel)
+//      (ws_refresh, ws_delete, ws_delete_confirm, ws_delete_cancel,
+//       ws_create, ws_modal_create)
 // ---------------------------------------------------------------------------
 
 import {
     ButtonInteraction,
+    ModalSubmitInteraction,
     ActionRowBuilder,
     ButtonBuilder,
     ButtonStyle,
     EmbedBuilder,
+    ModalBuilder,
+    TextInputBuilder,
+    TextInputStyle,
+    ChannelType,
 } from 'discord.js';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as vscode from 'vscode';
 import { CdpBridge } from './cdpBridge';
 import { logInfo, logError, logWarn, logDebug } from './logger';
 import { buildEmbed, EmbedColor } from './embedHelper';
 import { BridgeContext } from './bridgeContext';
-import { getArchiveDays } from './configHelper';
+import { getArchiveDays, getWorkspaceParentDirs, getConfig } from './configHelper';
+
 import { snowflakeToTimestamp } from './discordUtils';
+import { WORKSPACE_CATEGORY_PREFIX } from './discordChannels';
+
 
 // ---------------------------------------------------------------------------
 // ヘルパー
@@ -41,7 +53,9 @@ export async function getRunningWsNames(ports?: number[]): Promise<Set<string>> 
 // ワークスペース一覧 Embed + ボタン構築
 // ---------------------------------------------------------------------------
 
-export async function buildWorkspaceListEmbed(ctx: BridgeContext): Promise<{
+const WS_ITEMS_PER_PAGE = 5;
+
+export async function buildWorkspaceListEmbed(ctx: BridgeContext, page = 0): Promise<{
     embeds: EmbedBuilder[];
     components: ActionRowBuilder<ButtonBuilder>[];
 }> {
@@ -53,7 +67,6 @@ export async function buildWorkspaceListEmbed(ctx: BridgeContext): Promise<{
     }
 
     // CDP 稼働中のワークスペース名を取得（バッジ表示用）
-    // 動的ポートも含めてスキャンするため ctx.cdp からポート一覧を取得
     let runningWsNames = new Set<string>();
     try {
         const ports = ctx.cdp?.getPorts();
@@ -75,15 +88,12 @@ export async function buildWorkspaceListEmbed(ctx: BridgeContext): Promise<{
                     if (ts > latestTs) { latestTs = ts; }
                 }
             }
-            // フォールバック 1: カテゴリーの createdTimestamp
             if (latestTs === 0) {
                 const cat = guild.channels.cache.get(catId);
                 if (cat?.createdTimestamp) {
                     latestTs = cat.createdTimestamp;
                 }
             }
-            // フォールバック 2: カテゴリー ID の Snowflake タイムスタンプ
-            // (createdTimestamp がキャッシュ未取得等で利用できない場合)
             if (latestTs === 0) {
                 latestTs = snowflakeToTimestamp(catId);
             }
@@ -91,27 +101,37 @@ export async function buildWorkspaceListEmbed(ctx: BridgeContext): Promise<{
         categories.push({ wsName, categoryId: catId, lastActivity: latestTs });
     }
 
+    // ページネーション計算
+    const totalItems = categories.length;
+    const totalPages = Math.max(1, Math.ceil(totalItems / WS_ITEMS_PER_PAGE));
+    const safePage = Math.max(0, Math.min(page, totalPages - 1));
+    const startIdx = safePage * WS_ITEMS_PER_PAGE;
+    const pageItems = categories.slice(startIdx, startIdx + WS_ITEMS_PER_PAGE);
+
+    const pageIndicator = totalPages > 1 ? ` (${safePage + 1}/${totalPages})` : '';
     const embed = new EmbedBuilder()
         .setTitle('📁 ワークスペースカテゴリー')
-        .setDescription(`${categories.length}件`)
+        .setDescription(`${totalItems}件${pageIndicator}`)
         .setColor(0x5865F2)
         .setTimestamp();
 
     const components: ActionRowBuilder<ButtonBuilder>[] = [];
 
-    for (const [i, cat] of categories.entries()) {
+    for (const [i, cat] of pageItems.entries()) {
         const daysAgo = cat.lastActivity > 0
             ? Math.floor((Date.now() - cat.lastActivity) / (24 * 60 * 60 * 1000))
             : -1;
         const lastActivityStr = daysAgo >= 0 ? `${daysAgo}日前` : '不明';
 
         const cdpBadge = runningWsNames.has(cat.wsName) ? '🟢' : '⚪';
+        const globalIdx = startIdx + i + 1;
         embed.addFields({
-            name: `${cdpBadge} ${i + 1}. ${cat.wsName}`,
+            name: `${cdpBadge} ${globalIdx}. ${cat.wsName}`,
             value: `最終使用: ${lastActivityStr}`,
         });
 
-        if (components.length < 4) {
+        // 削除ボタン行（ActionRow 上限 5 のうちナビ用に2行確保 → 最大3行まで）
+        if (components.length < 3) {
             const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
                 new ButtonBuilder()
                     .setCustomId(`ws_delete:${cat.categoryId}:${cat.wsName}`)
@@ -122,14 +142,41 @@ export async function buildWorkspaceListEmbed(ctx: BridgeContext): Promise<{
         }
     }
 
+    // アクション行（新規作成 + 更新）
     if (components.length < 5) {
-        const refreshRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+        const actionRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder()
+                .setCustomId('ws_create')
+                .setLabel('➕ 新規作成')
+                .setStyle(ButtonStyle.Success),
             new ButtonBuilder()
                 .setCustomId('ws_refresh')
                 .setLabel('🔄 更新')
                 .setStyle(ButtonStyle.Secondary),
         );
-        components.push(refreshRow);
+        components.push(actionRow);
+    }
+
+    // ページネーション行（2ページ以上の場合のみ）
+    if (totalPages > 1 && components.length < 5) {
+        const navRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder()
+                .setCustomId(`ws_page:${safePage - 1}`)
+                .setLabel('◀ 前へ')
+                .setStyle(ButtonStyle.Secondary)
+                .setDisabled(safePage === 0),
+            new ButtonBuilder()
+                .setCustomId('ws_page_info')
+                .setLabel(`${safePage + 1} / ${totalPages}`)
+                .setStyle(ButtonStyle.Secondary)
+                .setDisabled(true),
+            new ButtonBuilder()
+                .setCustomId(`ws_page:${safePage + 1}`)
+                .setLabel('次へ ▶')
+                .setStyle(ButtonStyle.Secondary)
+                .setDisabled(safePage >= totalPages - 1),
+        );
+        components.push(navRow);
     }
 
     const archiveDays = getArchiveDays();
@@ -156,6 +203,29 @@ export async function handleWorkspaceButton(
 ): Promise<boolean> {
     const customId = interaction.customId;
 
+    // ----- ws_page:N (ページネーション) -----
+    if (customId.startsWith('ws_page:')) {
+        const pageNum = parseInt(customId.split(':')[1], 10);
+        if (isNaN(pageNum)) { return false; }
+        try {
+            await interaction.deferUpdate();
+            const { embeds, components } = await buildWorkspaceListEmbed(ctx, pageNum);
+            if (embeds.length === 0) {
+                await interaction.editReply({ embeds: [buildEmbed('⚠️ Antigravity ワークスペースが見つかりませんでした。', EmbedColor.Warning)], components: [] });
+            } else {
+                await interaction.editReply({ embeds, components: components as any });
+            }
+        } catch (e) {
+            logError('handleWorkspaceButton: ws_page failed', e);
+            try {
+                if (!interaction.replied && !interaction.deferred) {
+                    await interaction.reply({ embeds: [buildEmbed('⚠️ ページ切り替えに失敗しました。', EmbedColor.Warning)], ephemeral: true });
+                }
+            } catch (e2) { logDebug(`handleWorkspaceButton: interaction response failed: ${e2}`); }
+        }
+        return true;
+    }
+
     // ----- ws_refresh -----
     if (customId === 'ws_refresh') {
         try {
@@ -174,6 +244,66 @@ export async function handleWorkspaceButton(
                 }
             } catch (e) { logDebug(`handleWorkspaceButton: interaction response failed: ${e}`); }
         }
+        return true;
+    }
+
+    // ----- ws_create -----
+    if (customId === 'ws_create') {
+
+        const parentDirs = getWorkspaceParentDirs();
+        if (parentDirs.length === 0) {
+            await interaction.reply({
+                embeds: [buildEmbed(
+                    '⚠️ **ペアレントディレクトリが未設定です**\n\n' +
+                    'Antigravity の設定で `antiCrow.workspaceParentDirs` に\n' +
+                    '新規ワークスペースを作成するディレクトリを追加してください。\n\n' +
+                    '**設定例:**\n' +
+                    '```json\n' +
+                    '"antiCrow.workspaceParentDirs": [\n' +
+                    '  "C:\\\\Users\\\\user\\\\dev",\n' +
+                    '  "C:\\\\Users\\\\user\\\\projects"\n' +
+                    ']\n' +
+                    '```',
+                    EmbedColor.Warning,
+                )],
+                ephemeral: true,
+            });
+            return true;
+        }
+
+        const modal = new ModalBuilder()
+            .setCustomId('ws_modal_create')
+            .setTitle('新規ワークスペース作成');
+
+        const nameInput = new TextInputBuilder()
+            .setCustomId('ws_name')
+            .setLabel('ワークスペース名（フォルダ名になります）')
+            .setStyle(TextInputStyle.Short)
+            .setRequired(true)
+            .setMinLength(1)
+            .setMaxLength(60)
+            .setPlaceholder('例: my-new-project');
+
+        modal.addComponents(
+            new ActionRowBuilder<TextInputBuilder>().addComponents(nameInput) as any,
+        );
+
+        // ペアレントディレクトリが複数の場合はフィールドを追加
+        if (parentDirs.length > 1) {
+            const dirInput = new TextInputBuilder()
+                .setCustomId('ws_parent_dir')
+                .setLabel('ペアレントディレクトリ（番号を入力）')
+                .setStyle(TextInputStyle.Short)
+                .setRequired(true)
+                .setMaxLength(10)
+                .setPlaceholder(parentDirs.map((d, i) => `${i + 1}: ${path.basename(d)}`).join(' / '));
+
+            modal.addComponents(
+                new ActionRowBuilder<TextInputBuilder>().addComponents(dirInput) as any,
+            );
+        }
+
+        await interaction.showModal(modal);
         return true;
     }
 
@@ -290,4 +420,165 @@ export async function handleWorkspaceButton(
     }
 
     return false;
+}
+
+// ---------------------------------------------------------------------------
+// ワークスペース作成モーダル送信ハンドラ
+// ---------------------------------------------------------------------------
+
+/**
+ * ws_modal_create モーダルの送信を処理する。
+ * フォルダ作成 → カテゴリ作成 → #agent-chat チャンネル作成 → 設定更新。
+ */
+export async function handleWorkspaceModalSubmit(
+    ctx: BridgeContext,
+    interaction: ModalSubmitInteraction,
+): Promise<boolean> {
+    if (interaction.customId !== 'ws_modal_create') {
+        return false;
+    }
+
+    const wsName = interaction.fields.getTextInputValue('ws_name').trim();
+    if (!wsName) {
+        await interaction.reply({
+            embeds: [buildEmbed('⚠️ ワークスペース名が空です。', EmbedColor.Warning)],
+            ephemeral: true,
+        });
+        return true;
+    }
+
+    // ファイルシステム上の不正な文字をチェック
+    if (/[<>:"|?*\/\\]/.test(wsName)) {
+        await interaction.reply({
+            embeds: [buildEmbed('⚠️ ワークスペース名にファイル名として使用できない文字が含まれています。\n使用不可文字: `< > : " | ? * / \\`', EmbedColor.Warning)],
+            ephemeral: true,
+        });
+        return true;
+    }
+
+    const parentDirs = getWorkspaceParentDirs();
+    if (parentDirs.length === 0) {
+        await interaction.reply({
+            embeds: [buildEmbed('⚠️ ペアレントディレクトリが設定されていません。', EmbedColor.Warning)],
+            ephemeral: true,
+        });
+        return true;
+    }
+
+    // ペアレントディレクトリの解決
+    let parentDir: string;
+    if (parentDirs.length === 1) {
+        parentDir = parentDirs[0];
+    } else {
+        const dirInput = interaction.fields.getTextInputValue('ws_parent_dir').trim();
+        const dirIndex = parseInt(dirInput, 10) - 1;
+        if (isNaN(dirIndex) || dirIndex < 0 || dirIndex >= parentDirs.length) {
+            await interaction.reply({
+                embeds: [buildEmbed(
+                    `⚠️ 無効な番号です。1〜${parentDirs.length} の番号を入力してください。\n\n` +
+                    parentDirs.map((d, i) => `**${i + 1}:** \`${d}\``).join('\n'),
+                    EmbedColor.Warning,
+                )],
+                ephemeral: true,
+            });
+            return true;
+        }
+        parentDir = parentDirs[dirIndex];
+    }
+
+    const fullPath = path.join(parentDir, wsName);
+
+    try {
+        await interaction.deferReply();
+
+        // 1. フォルダ作成
+        if (fs.existsSync(fullPath)) {
+            logDebug(`ws_modal_create: folder already exists: ${fullPath}`);
+        } else {
+            fs.mkdirSync(fullPath, { recursive: true });
+            logInfo(`ws_modal_create: created folder: ${fullPath}`);
+        }
+
+        // 2. Discord カテゴリ作成
+        if (!ctx.bot) {
+            await interaction.editReply({
+                embeds: [buildEmbed('⚠️ Bot が初期化されていません。', EmbedColor.Warning)],
+            });
+            return true;
+        }
+
+        const guild = ctx.bot.getFirstGuild();
+        if (!guild) {
+            await interaction.editReply({
+                embeds: [buildEmbed('⚠️ Guild が見つかりません。', EmbedColor.Warning)],
+            });
+            return true;
+        }
+
+        const categoryId = await ctx.bot.ensureWorkspaceCategory(guild.id, wsName);
+        if (!categoryId) {
+            await interaction.editReply({
+                embeds: [buildEmbed('❌ Discord カテゴリの作成に失敗しました。', EmbedColor.Error)],
+            });
+            return true;
+        }
+
+        // 3. #agent-chat チャンネル作成（存在しない場合のみ）
+        const existingChat = guild.channels.cache.find(
+            c => c.parentId === categoryId && c.name === 'agent-chat',
+        );
+        let chatChannelId: string;
+        if (existingChat) {
+            chatChannelId = existingChat.id;
+            logDebug(`ws_modal_create: agent-chat already exists: ${chatChannelId}`);
+        } else {
+            const chatChannel = await guild.channels.create({
+                name: 'agent-chat',
+                type: ChannelType.GuildText,
+                parent: categoryId,
+            });
+            chatChannelId = chatChannel.id;
+            logInfo(`ws_modal_create: created agent-chat channel: ${chatChannelId}`);
+        }
+
+        // 4. workspacePaths 設定に追加
+        const currentPaths = getConfig().get<Record<string, string>>('workspacePaths') || {};
+        if (!currentPaths[wsName]) {
+            currentPaths[wsName] = fullPath;
+            await getConfig().update('workspacePaths', currentPaths, vscode.ConfigurationTarget.Global);
+            logInfo(`ws_modal_create: added workspacePaths["${wsName}"] = "${fullPath}"`);
+        }
+
+        await interaction.editReply({
+            embeds: [buildEmbed(
+                `✅ **ワークスペース「${wsName}」を作成しました！**\n\n` +
+                `📁 フォルダ: \`${fullPath}\`\n` +
+                `📂 カテゴリ: ${WORKSPACE_CATEGORY_PREFIX}${wsName}\n` +
+                `💬 チャンネル: <#${chatChannelId}>\n\n` +
+                '`#agent-chat` にメッセージを送ると、ワークスペースが自動起動します。',
+                EmbedColor.Success,
+            )],
+        });
+
+        logInfo(`ws_modal_create: workspace "${wsName}" created successfully (folder=${fullPath}, category=${categoryId}, chat=${chatChannelId})`);
+    } catch (e) {
+        logError('ws_modal_create: failed', e);
+        const errMsg = e instanceof Error ? e.message : String(e);
+        try {
+            if (interaction.deferred) {
+                await interaction.editReply({
+                    embeds: [buildEmbed(`❌ ワークスペース作成に失敗しました: ${errMsg}`, EmbedColor.Error)],
+                });
+            } else {
+                await interaction.reply({
+                    embeds: [buildEmbed(`❌ ワークスペース作成に失敗しました: ${errMsg}`, EmbedColor.Error)],
+                    ephemeral: true,
+                });
+            }
+        } catch (replyErr) {
+            logDebug(`ws_modal_create: interaction response failed: ${replyErr}`);
+        }
+    }
+
+    return true;
 }

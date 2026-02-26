@@ -5,7 +5,7 @@
 // 要素クリック・存在確認・待機を行う。
 // ---------------------------------------------------------------------------
 
-import { logDebug } from './logger';
+import { logDebug, logInfo } from './logger';
 import { ClickOptions, ClickResult } from './types';
 import { CdpBridgeOps } from './cdpHistory';
 
@@ -68,13 +68,14 @@ export async function clickElement(
         if (!root) return null;
         if (root.querySelector && selectorToFind) {
             try {
-                var found = root.querySelector(selectorToFind);
-                if (found && isVisible(found)) return found;
+                var fast = root.querySelector(selectorToFind);
+                if (fast && isVisible(fast) && predicate(fast)) return fast;
             } catch(e) {}
         }
-        var elements = root.querySelectorAll ? Array.from(root.querySelectorAll('*')) : [];
-        for (var i = 0; i < elements.length; i++) {
-            var el = elements[i];
+        if (root.nodeType === 1 && predicate(root)) return root;
+        var walker = document.createTreeWalker(root, 1 /* NodeFilter.SHOW_ELEMENT */, null, false);
+        var el;
+        while ((el = walker.nextNode())) {
             if (predicate(el)) return el;
             if (el.shadowRoot) {
                 var shadowFound = findInTree(el.shadowRoot, predicate);
@@ -101,7 +102,7 @@ export async function clickElement(
             var parent = el2.parentElement;
             while (parent && parent !== document.body) {
                 var tag = parent.tagName.toLowerCase();
-                if (tag === 'button' || tag === 'a' || parent.getAttribute('role') === 'button' || parent.onclick) {
+                if (tag === 'button' || tag === 'vscode-button' || tag === 'a' || parent.getAttribute('role') === 'button' || parent.onclick) {
                     interactive = parent;
                     break;
                 }
@@ -134,7 +135,7 @@ export async function clickElement(
             var parent2 = match.parentElement;
             while (parent2 && parent2 !== document.body) {
                 var tag2 = parent2.tagName.toLowerCase();
-                if (tag2 === 'button' || tag2 === 'a' || parent2.getAttribute('role') === 'button') {
+                if (tag2 === 'button' || tag2 === 'vscode-button' || tag2 === 'a' || parent2.getAttribute('role') === 'button') {
                     interactive2 = parent2;
                     break;
                 }
@@ -228,9 +229,10 @@ export async function checkElementExists(
 
     function findInTree(root, predicate) {
         if (!root) return null;
-        var elements = root.querySelectorAll ? Array.from(root.querySelectorAll('*')) : [];
-        for (var i = 0; i < elements.length; i++) {
-            var el = elements[i];
+        if (root.nodeType === 1 && predicate(root)) return root;
+        var walker = document.createTreeWalker(root, 1, null, false);
+        var el;
+        while ((el = walker.nextNode())) {
             if (predicate(el)) return el;
             if (el.shadowRoot) {
                 var found = findInTree(el.shadowRoot, predicate);
@@ -345,8 +347,44 @@ export async function scrollToBottom(
 (function() {
     var scrolled = false;
 
+    function findFirstInTree(root, predicate) {
+        if (!root) return null;
+        if (root.nodeType === 1 && predicate(root)) return root;
+        var walker = document.createTreeWalker(root, 1, null, false);
+        var el;
+        while ((el = walker.nextNode())) {
+            if (predicate(el)) return el;
+            if (el.shadowRoot) {
+                var found = findFirstInTree(el.shadowRoot, predicate);
+                if (found) return found;
+            }
+        }
+        return null;
+    }
+
+    function findAllInTree(root, predicate) {
+        if (!root) return [];
+        var matches = [];
+        if (root.nodeType === 1 && predicate(root)) matches.push(root);
+        var walker = document.createTreeWalker(root, 1, null, false);
+        var el;
+        while ((el = walker.nextNode())) {
+            if (predicate(el)) matches.push(el);
+            if (el.shadowRoot) {
+                matches = matches.concat(findAllInTree(el.shadowRoot, predicate));
+            }
+        }
+        return matches;
+    }
+
     // 優先: "Scroll to bottom" ボタンをクリック（最も確実）
-    var scrollBtn = document.querySelector('button[aria-label="Scroll to bottom"]');
+    // Shadow DOM内部にある可能性も考慮
+    var scrollBtn = findFirstInTree(document, function(el) {
+        var tag = el.tagName.toLowerCase();
+        return (tag === 'button' || tag === 'vscode-button' || el.getAttribute('role') === 'button') && 
+               el.getAttribute('aria-label') === 'Scroll to bottom';
+    });
+    
     if (scrollBtn) {
         try {
             scrollBtn.click();
@@ -356,7 +394,11 @@ export async function scrollToBottom(
 
     // フォールバック: overflow-y-auto コンテナを最下部にスクロール
     if (!scrolled) {
-        var containers = document.querySelectorAll('.overflow-y-auto, [class*="overflow-y-auto"]');
+        var containers = findAllInTree(document, function(el) {
+            var className = el.className;
+            return typeof className === 'string' && className.indexOf('overflow-y-auto') >= 0;
+        });
+        
         for (var i = 0; i < containers.length; i++) {
             var el = containers[i];
             if (el.scrollHeight > el.clientHeight + 50) {
@@ -393,8 +435,26 @@ export async function dismissReviewUI(
     // メインウィンドウ（inCascade: false）でレビューUI を探す
     const DISMISS_SCRIPT = `
 (function() {
-    // "Accept All" や "Accept" ボタンを探してクリック
-    var buttons = document.querySelectorAll('button');
+    // "Accept All" や "Accept" ボタンを探してクリック（Shadow DOM対応）
+    function findAllInTree(root, predicate) {
+        if (!root) return [];
+        var matches = [];
+        if (root.nodeType === 1 && predicate(root)) matches.push(root);
+        var walker = document.createTreeWalker(root, 1, null, false);
+        var el;
+        while ((el = walker.nextNode())) {
+            if (predicate(el)) matches.push(el);
+            if (el.shadowRoot) {
+                matches = matches.concat(findAllInTree(el.shadowRoot, predicate));
+            }
+        }
+        return matches;
+    }
+
+    var buttons = findAllInTree(document, function(el) {
+        var tag = el.tagName.toLowerCase();
+        return tag === 'button' || tag === 'vscode-button' || tag === 'a' || el.getAttribute('role') === 'button';
+    });
     var dismissed = 0;
     for (var i = 0; i < buttons.length; i++) {
         var btn = buttons[i];
@@ -419,7 +479,7 @@ export async function dismissReviewUI(
 
     try {
         // メインウィンドウで実行（レビューUIはCascade外にある）
-        const result = await ops.evaluateInCascade(DISMISS_SCRIPT) as { dismissed: number } | null;
+        const result = await ops.conn.evaluate(DISMISS_SCRIPT) as { dismissed: number } | null;
         if (result && result.dismissed > 0) {
             logDebug(`CDP: dismissReviewUI — dismissed ${result.dismissed} review panel(s)`);
             return true;
@@ -440,17 +500,43 @@ export async function dismissPermissionDialog(
 ): Promise<boolean> {
     const PERMISSION_SCRIPT = `
 (function() {
-    var buttons = document.querySelectorAll('button');
+    function findAllInTree(root, predicate) {
+        if (!root) return [];
+        var matches = [];
+        if (root.nodeType === 1 && predicate(root)) matches.push(root);
+        var walker = document.createTreeWalker(root, 1, null, false);
+        var el;
+        while ((el = walker.nextNode())) {
+            if (predicate(el)) matches.push(el);
+            if (el.shadowRoot) {
+                matches = matches.concat(findAllInTree(el.shadowRoot, predicate));
+            }
+        }
+        return matches;
+    }
+
+    var allElements = findAllInTree(document, function(el) {
+        var tag = el.tagName.toLowerCase();
+        return tag === 'button' || tag === 'vscode-button' || tag === 'a' || tag === 'div' || el.getAttribute('role') === 'button';
+    });
     var allowed = 0;
-    for (var i = 0; i < buttons.length; i++) {
-        var btn = buttons[i];
-        var text = (btn.textContent || '').trim();
+    for (var i = 0; i < allElements.length; i++) {
+        var el = allElements[i];
+        var text = (el.textContent || '').replace(/\s+/g, ' ').trim();
         var textLower = text.toLowerCase();
-        if (textLower === 'allow this conversation' ||
+
+        // URL 許可ダイアログ: Allow / Always Allow / Always allow / Allow this conversation / Allow once
+        if (textLower === 'allow' ||
+            textLower === 'always allow' ||
+            textLower === 'allow this conversation' ||
             textLower === 'allow once') {
+            // 可視性チェック
+            var rect = el.getBoundingClientRect();
+            if (rect.width <= 0 || rect.height <= 0) continue;
+
             try {
-                btn.scrollIntoView({ block: 'center', behavior: 'instant' });
-                btn.click();
+                el.scrollIntoView({ block: 'center', behavior: 'instant' });
+                el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
                 allowed++;
             } catch(e) {}
         }
@@ -473,22 +559,257 @@ export async function dismissPermissionDialog(
 }
 
 // -----------------------------------------------------------------------
+// autoApprove — VSCode コマンド優先 + DOM フォールバックの自動承認ロジック
+// -----------------------------------------------------------------------
+
+/**
+ * VSCode コマンドによる自動承認リスト。
+ * メインフレームの conn.evaluate 内で vscode.commands.executeCommand を呼び出す。
+ * Antigravity の Electron メインウィンドウでは vscode グローバルが利用可能。
+ */
+const APPROVE_COMMANDS = [
+    'antigravity.agent.acceptAgentStep',    // Agent ステップ承認
+    'antigravity.terminalCommand.accept',   // ターミナルコマンド承認（Run ボタン）
+    'antigravity.command.accept',           // コマンド承認
+    'antigravity.prioritized.agentAcceptAllInFile', // ファイル変更の一括承認
+];
+
+/**
+ * DOM フォールバックで検出する承認ボタンのテキストパターン。
+ * 大文字小文字を区別しない完全一致で照合する。
+ */
+const APPROVE_BUTTON_TEXTS = [
+    'run', 'allow', 'always allow', 'continue', 'proceed',
+    'accept', 'confirm', 'yes', 'ok', 'retry',
+    'always run', 'allow once', 'allow this conversation',
+];
+
+export async function autoApprove(
+    ops: CdpBridgeOps
+): Promise<{ clicked: number }> {
+    let totalClicked = 0;
+    logInfo('CDP: autoApprove — tick');
+
+    // =================================================================
+    // 第1層: VSCode コマンドによる自動承認（メインフレームで実行）
+    // Antigravity の Electron ウィンドウ内で vscode.commands.executeCommand を呼ぶ。
+    // CDP evaluate はターゲットウィンドウ内で実行されるため、
+    // 複数ワークスペースでもクロスWS誤爆しない。
+    // =================================================================
+    for (const cmd of APPROVE_COMMANDS) {
+        try {
+            const evalJs = `
+                (async () => {
+                    if (typeof vscode !== 'undefined' && vscode.commands) {
+                        await vscode.commands.executeCommand('${cmd}');
+                        return true;
+                    }
+                    return false;
+                })()
+            `;
+            const executed = await ops.conn.evaluate(evalJs);
+            if (executed) {
+                logInfo(`CDP: autoApprove — executed VSCode command: ${cmd}`);
+                totalClicked++;
+            }
+        } catch { /* コマンドが存在しない/対象なしは無視 */ }
+    }
+
+    // =================================================================
+    // 第2層: DOM ベースのボタンクリック（フォールバック）
+    // VSCode コマンドでカバーできない UI 要素（Allow ダイアログ等）に対応。
+    // TreeWalker + Shadow DOM 再帰探索で承認系ボタンを検出してクリックする。
+    // =================================================================
+    const DOM_APPROVE_SCRIPT = `
+(function() {
+    var TEXTS = ${JSON.stringify(APPROVE_BUTTON_TEXTS)};
+    var clicked = 0;
+
+    // getTargetDoc: メインフレームから実行されても cascade iframe 内の document を取得
+    // (CANCEL_BUTTON_JS と同じパターン)
+    function getTargetDoc() {
+        var iframes = document.querySelectorAll('iframe');
+        for (var fi = 0; fi < iframes.length; fi++) {
+            try {
+                if (iframes[fi].src && iframes[fi].src.includes('cascade-panel') && iframes[fi].contentDocument) {
+                    return iframes[fi].contentDocument;
+                }
+            } catch(e) { /* cross-origin は無視 */ }
+        }
+        return document;
+    }
+
+    // 探索対象: cascade iframe があればその中、なければメインフレーム
+    var docs = [];
+    var cascadeDoc = getTargetDoc();
+    docs.push(cascadeDoc);
+    // cascade iframe が見つかった場合はメインフレームも追加（ダイアログが iframe 外にある場合）
+    if (cascadeDoc !== document) {
+        docs.push(document);
+    }
+
+    function findAllInTree(root, predicate) {
+        if (!root) return [];
+        var matches = [];
+        var ownerDoc = root.ownerDocument || root;
+        if (root.nodeType === 1 && predicate(root)) matches.push(root);
+        var walker = (ownerDoc.createTreeWalker || document.createTreeWalker).call(ownerDoc, root, 1, null, false);
+        var el;
+        while ((el = walker.nextNode())) {
+            if (predicate(el)) matches.push(el);
+            if (el.shadowRoot) {
+                matches = matches.concat(findAllInTree(el.shadowRoot, predicate));
+            }
+        }
+        return matches;
+    }
+
+    function isVisible(el) {
+        if (!el) return false;
+        var rect = el.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0) return false;
+        if (el.offsetParent === null && el.tagName !== 'BODY' && el.tagName !== 'HTML') {
+            try {
+                var style = (el.ownerDocument.defaultView || window).getComputedStyle(el);
+                if (style.position !== 'fixed' && style.position !== 'sticky') return false;
+            } catch(e) { return false; }
+        }
+        return true;
+    }
+
+    function clickEl(el) {
+        try { el.scrollIntoView({ block: 'center', behavior: 'instant' }); } catch(e) {}
+        var rect = el.getBoundingClientRect();
+        var cx = rect.left + rect.width / 2;
+        var cy = rect.top + rect.height / 2;
+        var opts = { bubbles: true, cancelable: true, view: el.ownerDocument.defaultView || window, clientX: cx, clientY: cy };
+        el.dispatchEvent(new MouseEvent('mousedown', opts));
+        el.dispatchEvent(new MouseEvent('mouseup', opts));
+        el.dispatchEvent(new MouseEvent('click', opts));
+        try {
+            el.dispatchEvent(new PointerEvent('pointerdown', opts));
+            el.dispatchEvent(new PointerEvent('pointerup', opts));
+        } catch(e) {}
+    }
+
+    // 短いテキスト（完全一致のみ）と長いテキスト（部分一致OK）を分離
+    var SHORT_TEXTS = ['run', 'ok', 'yes', 'allow', 'accept', 'retry', 'confirm', 'proceed'];
+    var LONG_TEXTS = ['always allow', 'continue', 'always run', 'allow once', 'allow this conversation'];
+
+    function isExcluded(el) {
+        if (el.closest('[id*="statusbar"], [class*="statusbar"]')) return true;
+        if (el.closest('[class*="menubar"], [role="menubar"]')) return true;
+        if (el.closest('[class*="titlebar"]')) return true;
+        if (el.closest('[data-headlessui-state], [role="listbox"], [role="option"], [role="combobox"], [class*="dropdown"], [class*="select-box"], [class*="popover"]')) return true;
+        if (el.tagName === 'DIV' && el.getAttribute('data-tooltip-id')) return true;
+        var label = (el.getAttribute('aria-label') || '').toLowerCase();
+        if (label.indexOf('model') >= 0 || label.indexOf('cascade') >= 0 || label.indexOf('agent mode') >= 0) return true;
+        return false;
+    }
+
+    // ショートカットキー修飾を除去する関数（"Run Alt+↵" → "Run"）
+    function cleanText(t) {
+        return t.replace(/\s*(alt|ctrl|shift|cmd|\u2318|\u2325|\u21e7)[+\s]*.{0,3}$/i, '')
+                .replace(/[\u21b5\u23ce\u21a9]/g, '')
+                .replace(/\s+/g, ' ').trim();
+    }
+
+    function isClickable(el) {
+        var tag = el.tagName.toLowerCase();
+        return tag === 'button' || tag === 'vscode-button' || tag === 'a' ||
+               el.getAttribute('role') === 'button' ||
+               (tag === 'div' && !el.getAttribute('data-tooltip-id') && (el.getAttribute('aria-label') || el.classList.contains('action-label')));
+    }
+
+    // 各 document を順に探索（cascade iframe → メインフレーム）
+    for (var di = 0; di < docs.length; di++) {
+        var doc = docs[di];
+        var actionElements = findAllInTree(doc, isClickable);
+
+        for (var i = 0; i < actionElements.length; i++) {
+            var el = actionElements[i];
+            if (!isVisible(el)) continue;
+            if (isExcluded(el)) continue;
+
+            var rawText = cleanText((el.innerText || el.textContent || '')).toLowerCase();
+            var ariaLabel = (el.getAttribute('aria-label') || '').trim().toLowerCase();
+
+            var isApproveBtn = false;
+            for (var s = 0; s < SHORT_TEXTS.length; s++) {
+                if (rawText === SHORT_TEXTS[s] || ariaLabel === SHORT_TEXTS[s]) {
+                    isApproveBtn = true;
+                    break;
+                }
+            }
+            if (!isApproveBtn) {
+                for (var l = 0; l < LONG_TEXTS.length; l++) {
+                    if (rawText === LONG_TEXTS[l] || rawText.indexOf(LONG_TEXTS[l]) >= 0 ||
+                        ariaLabel === LONG_TEXTS[l] || ariaLabel.indexOf(LONG_TEXTS[l]) >= 0) {
+                        isApproveBtn = true;
+                        break;
+                    }
+                }
+            }
+
+            if (isApproveBtn) {
+                clickEl(el);
+                clicked++;
+            }
+        }
+    }
+
+    return { clicked: clicked };
+})()
+`.trim();
+
+    try {
+        // メインフレームで実行（ダイアログは cascade iframe 外にある）
+        const result = await ops.conn.evaluate(DOM_APPROVE_SCRIPT) as { clicked: number } | null;
+        if (result && result.clicked > 0) {
+            logInfo(`CDP: autoApprove DOM fallback — clicked ${result.clicked} approval button(s)`);
+            totalClicked += result.clicked;
+        }
+    } catch (e) {
+        logInfo(`CDP: autoApprove DOM fallback failed — ${e instanceof Error ? e.message : e}`);
+    }
+
+    // cascade iframe 内でも同じスクリプトを実行（iframe 内のダイアログ対応）
+    try {
+        const cascadeResult = await ops.evaluateInCascade(DOM_APPROVE_SCRIPT) as { clicked: number } | null;
+        if (cascadeResult && cascadeResult.clicked > 0) {
+            logInfo(`CDP: autoApprove DOM fallback (cascade) — clicked ${cascadeResult.clicked} approval button(s)`);
+            totalClicked += cascadeResult.clicked;
+        }
+    } catch {
+        // cascade iframe がない場合は無視
+    }
+
+    if (totalClicked > 0) {
+        logInfo(`CDP: autoApprove — total clicked: ${totalClicked}`);
+    }
+    return { clicked: totalClicked };
+}
+
+// -----------------------------------------------------------------------
 // autoFollowOutput — AI出力追従（スクロール + 展開 + レビューUI消去 + 権限承認）
 // -----------------------------------------------------------------------
 
 export async function autoFollowOutput(
     ops: CdpBridgeOps,
 ): Promise<void> {
-    // 1. チャットエリアを最下部にスクロール
+    // 1. チャットエリアを最下部にスクロール（まずスクロールして新しいコンテンツを表示）
     await scrollToBottom(ops);
 
-    // 2. 折りたたまれたセクションを展開
+    // 2. 折りたたまれたセクションを展開（承認ボタンが見えるように先に展開）
     await clickExpandAll(ops);
 
-    // 3. レビューUI を自動 Dismiss
+    // 3. スクロール＆展開で出てきた承認ボタンを自動クリック（VSCodeコマンド + DOM探索）
+    await autoApprove(ops);
+
+    // 4. レビューUI を自動 Dismiss
     await dismissReviewUI(ops);
 
-    // 4. 権限確認ダイアログを自動承認
+    // 5. 権限確認ダイアログを自動承認
     await dismissPermissionDialog(ops);
 
     logDebug('CDP: autoFollowOutput completed');

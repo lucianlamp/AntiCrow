@@ -27,8 +27,72 @@ import { logDebug, logWarn } from './logger';
 
 const FIND_MODE_BUTTON = `
     var modeBtn = null;
-    var _findDebug = { textboxFound: false, levelsSearched: 0, siblingsChecked: 0, buttonsWithP: 0, buttonsWithSpan: 0, found: false };
-    var textbox = document.querySelector('div[role="textbox"]');
+    var _findDebug = { textboxFound: false, levelsSearched: 0, siblingsChecked: 0, buttonsFound: 0, found: false, allBtnTexts: [], inIframe: false };
+
+    // getTargetDoc: メインフレームから実行されても cascade iframe 内の document を取得
+    function getTargetDoc() {
+        var iframes = document.querySelectorAll('iframe');
+        for (var fi = 0; fi < iframes.length; fi++) {
+            try {
+                if (iframes[fi].src && iframes[fi].src.includes('cascade-panel') && iframes[fi].contentDocument) {
+                    return iframes[fi].contentDocument;
+                }
+            } catch(e) { /* cross-origin は無視 */ }
+        }
+        return document;
+    }
+    var doc = getTargetDoc();
+    _findDebug.inIframe = (doc !== document);
+
+    function findFirstInTree(root, predicate) {
+        if (!root) return null;
+        var ownerDoc = root.ownerDocument || root;
+        if (root.nodeType === 1 && predicate(root)) return root;
+        var walker = (ownerDoc.createTreeWalker || document.createTreeWalker).call(ownerDoc, root, 1, null, false);
+        var el;
+        while ((el = walker.nextNode())) {
+            if (predicate(el)) return el;
+            if (el.shadowRoot) {
+                var found = findFirstInTree(el.shadowRoot, predicate);
+                if (found) return found;
+            }
+        }
+        return null;
+    }
+
+    function findAllInTree(root, predicate) {
+        if (!root) return [];
+        var matches = [];
+        var ownerDoc = root.ownerDocument || root;
+        if (root.nodeType === 1 && predicate(root)) matches.push(root);
+        var walker = (ownerDoc.createTreeWalker || document.createTreeWalker).call(ownerDoc, root, 1, null, false);
+        var el;
+        while ((el = walker.nextNode())) {
+            if (predicate(el)) matches.push(el);
+            if (el.shadowRoot) {
+                matches = matches.concat(findAllInTree(el.shadowRoot, predicate));
+            }
+        }
+        return matches;
+    }
+
+    // ボタンのテキストを安全に取得（textContent 優先 — innerText はレイアウト依存で iframe 内で空を返す）
+    function getBtnText(el) {
+        var t = (el.textContent || '').trim();
+        if (t) return t;
+        // aria-label フォールバック
+        var ariaLabel = el.getAttribute('aria-label');
+        if (ariaLabel) return ariaLabel.trim();
+        // title フォールバック
+        var title = el.getAttribute('title');
+        if (title) return title.trim();
+        return '';
+    }
+
+    var textbox = findFirstInTree(doc, function(el) {
+        return el.tagName === 'DIV' && el.getAttribute('role') === 'textbox';
+    });
+
     if (textbox) {
         _findDebug.textboxFound = true;
         var container = textbox.parentElement;
@@ -37,56 +101,46 @@ const FIND_MODE_BUTTON = `
             if (!container) break;
             _findDebug.levelsSearched = d + 1;
 
-            // このコンテナの兄弟を全て走査し、テキストを持つ button を全て収集
             var allBtns = [];
-            var sibling = container.nextElementSibling;
+
+            // 兄弟要素(前方)を探索
+            var sibling = container.previousElementSibling;
             while (sibling) {
                 _findDebug.siblingsChecked++;
-                var btns = sibling.querySelectorAll('button');
-                for (var b = 0; b < btns.length; b++) {
-                    var pEl = btns[b].querySelector('p');
-                    var spanEl = btns[b].querySelector('span');
-                    var hasPText = pEl && (pEl.textContent || '').trim().length > 0;
-                    var hasSpanText = spanEl && (spanEl.textContent || '').trim().length > 0;
-                    if (hasPText) _findDebug.buttonsWithP++;
-                    if (hasSpanText) _findDebug.buttonsWithSpan++;
-                    if (hasPText || hasSpanText) {
-                        allBtns.push({ el: btns[b], hasP: !!hasPText, hasSpan: !!hasSpanText });
-                    }
-                }
-                sibling = sibling.nextElementSibling;
-            }
-            // previousElementSibling 方向も探索
-            sibling = container.previousElementSibling;
-            while (sibling) {
-                _findDebug.siblingsChecked++;
-                var btns2 = sibling.querySelectorAll('button');
+                var btns2 = findAllInTree(sibling, function(el) {
+                    var tag = el.tagName.toLowerCase();
+                    return tag === 'button' || tag === 'vscode-button' || el.getAttribute('role') === 'button';
+                });
                 for (var b2 = 0; b2 < btns2.length; b2++) {
-                    var pEl2 = btns2[b2].querySelector('p');
-                    var spanEl2 = btns2[b2].querySelector('span');
-                    var hasPText2 = pEl2 && (pEl2.textContent || '').trim().length > 0;
-                    var hasSpanText2 = spanEl2 && (spanEl2.textContent || '').trim().length > 0;
-                    if (hasPText2) _findDebug.buttonsWithP++;
-                    if (hasSpanText2) _findDebug.buttonsWithSpan++;
-                    if (hasPText2 || hasSpanText2) {
-                        allBtns.unshift({ el: btns2[b2], hasP: !!hasPText2, hasSpan: !!hasSpanText2 }); // 前方に追加
+                    var btnText2 = getBtnText(btns2[b2]);
+                    if (btnText2.length > 0) {
+                        allBtns.unshift({ el: btns2[b2], text: btnText2 });
                     }
                 }
                 sibling = sibling.previousElementSibling;
             }
 
-            // モードボタンを識別:
-            // - モデルボタン（p タグ有り）が存在し、その前に span タグ有りのボタンがあればそれがモードボタン
-            // - 2つ以上の p ボタンがある場合は従来通り最初のボタンがモードボタン
-            var modelBtnIdx = allBtns.findIndex(function(b) { return b.hasP; });
-            if (modelBtnIdx > 0) {
-                // モデルボタンより前にあるテキストボタン（span）をモードボタンとする
-                modeBtn = allBtns[modelBtnIdx - 1].el;
-                _findDebug.found = true;
-                break;
+            // 兄弟要素(後方)を探索
+            sibling = container.nextElementSibling;
+            while (sibling) {
+                _findDebug.siblingsChecked++;
+                var btns = findAllInTree(sibling, function(el) {
+                    var tag = el.tagName.toLowerCase();
+                    return tag === 'button' || tag === 'vscode-button' || el.getAttribute('role') === 'button';
+                });
+                for (var b = 0; b < btns.length; b++) {
+                    var btnText = getBtnText(btns[b]);
+                    if (btnText.length > 0) {
+                        allBtns.push({ el: btns[b], text: btnText });
+                    }
+                }
+                sibling = sibling.nextElementSibling;
             }
-            if (allBtns.length >= 2) {
-                // フォールバック: 2つ以上のテキストボタンがあれば最初のものがモードボタン
+
+            // 見つかったテキストボタンの最初のものをモードボタンとする
+            if (allBtns.length > 0) {
+                _findDebug.buttonsFound = allBtns.length;
+                _findDebug.allBtnTexts = allBtns.map(function(b) { return b.text; });
                 modeBtn = allBtns[0].el;
                 _findDebug.found = true;
                 break;
@@ -111,10 +165,10 @@ export async function getCurrentMode(
 (function() {
     ${FIND_MODE_BUTTON}
     if (!modeBtn) return null;
-    var p = modeBtn.querySelector('p');
-    var sp = modeBtn.querySelector('span');
+    var p = findFirstInTree(modeBtn, function(el) { return el.tagName === 'P'; });
+    var sp = findFirstInTree(modeBtn, function(el) { return el.tagName === 'SPAN'; });
     var textEl = p || sp;
-    return textEl ? (textEl.textContent || '').trim() : (modeBtn.innerText || '').trim();
+    return textEl ? (textEl.textContent || '').trim() : (modeBtn.innerText || modeBtn.textContent || '').trim();
 })()
         `.trim();
 
@@ -175,10 +229,10 @@ export async function getAvailableModes(
     ${FIND_MODE_BUTTON}
     if (!modeBtn) return { success: false, error: 'mode button not found', findDebug: _findDebug };
 
-    var p = modeBtn.querySelector('p');
-    var sp = modeBtn.querySelector('span');
+    var p = findFirstInTree(modeBtn, function(el) { return el.tagName === 'P'; });
+    var sp = findFirstInTree(modeBtn, function(el) { return el.tagName === 'SPAN'; });
     var textEl = p || sp;
-    var curMode = textEl ? (textEl.textContent || '').trim() : (modeBtn.innerText || '').trim();
+    var curMode = textEl ? (textEl.textContent || '').trim() : (modeBtn.innerText || modeBtn.textContent || '').trim();
 
     modeBtn.click();
     return { success: true, currentMode: curMode, findDebug: _findDebug };
@@ -225,15 +279,76 @@ export async function getAvailableModes(
         const listScript = `
 (function() {
     var items = [];
-    var debugInfo = { dropdownsFound: 0, headerFound: false, labelsFound: 0, fallbackUsed: false, newSelectorUsed: false };
+    var debugInfo = { dropdownsFound: 0, headerFound: false, labelsFound: 0, fallbackUsed: false, newSelectorUsed: false, inIframe: false };
+
+    // getTargetDoc: cascade iframe 内の document を取得
+    function getTargetDoc() {
+        var iframes = document.querySelectorAll('iframe');
+        for (var fi = 0; fi < iframes.length; fi++) {
+            try {
+                if (iframes[fi].src && iframes[fi].src.includes('cascade-panel') && iframes[fi].contentDocument) {
+                    return iframes[fi].contentDocument;
+                }
+            } catch(e) { /* cross-origin */ }
+        }
+        return document;
+    }
+    var doc = getTargetDoc();
+    debugInfo.inIframe = (doc !== document);
+
+    function findAllInTree(root, predicate) {
+        if (!root) return [];
+        var matches = [];
+        var ownerDoc = root.ownerDocument || root;
+        if (root.nodeType === 1 && predicate(root)) matches.push(root);
+        var walker = (ownerDoc.createTreeWalker || document.createTreeWalker).call(ownerDoc, root, 1, null, false);
+        var el;
+        while ((el = walker.nextNode())) {
+            if (predicate(el)) matches.push(el);
+            if (el.shadowRoot) {
+                matches = matches.concat(findAllInTree(el.shadowRoot, predicate));
+            }
+        }
+        return matches;
+    }
+
+    function findFirstInTree(root, predicate) {
+        if (!root) return null;
+        var ownerDoc = root.ownerDocument || root;
+        if (root.nodeType === 1 && predicate(root)) return root;
+        var walker = (ownerDoc.createTreeWalker || document.createTreeWalker).call(ownerDoc, root, 1, null, false);
+        var el;
+        while ((el = walker.nextNode())) {
+            if (predicate(el)) return el;
+            if (el.shadowRoot) {
+                var found = findFirstInTree(el.shadowRoot, predicate);
+                if (found) return found;
+            }
+        }
+        return null;
+    }
 
     // 新しい UI 構造: z-50 rounded-md border shadow-md のドロップダウン
     // モード項目は div.cursor-pointer > div.font-medium にテキスト
-    var ddNew = document.querySelectorAll('div[class*="z-50"][class*="rounded-md"][class*="border"][class*="shadow-md"]');
+    var ddNew = findAllInTree(doc, function(el) {
+        if (el.tagName !== 'DIV') return false;
+        var c = typeof el.className === 'string' ? el.className : '';
+        return c.indexOf('z-50') >= 0 && c.indexOf('rounded-md') >= 0 && c.indexOf('border') >= 0 && c.indexOf('shadow-md') >= 0;
+    });
+
     for (var dn = 0; dn < ddNew.length; dn++) {
-        var modeRows = ddNew[dn].querySelectorAll('div[class*="cursor-pointer"][class*="px-2"][class*="py-1"]');
+        var modeRows = findAllInTree(ddNew[dn], function(el) {
+            if (el.tagName !== 'DIV') return false;
+            var c = typeof el.className === 'string' ? el.className : '';
+            return c.indexOf('cursor-pointer') >= 0 && c.indexOf('px-2') >= 0 && c.indexOf('py-1') >= 0;
+        });
+
         for (var mr = 0; mr < modeRows.length; mr++) {
-            var fontMedium = modeRows[mr].querySelector('div[class*="font-medium"]');
+            var fontMedium = findFirstInTree(modeRows[mr], function(el) {
+                if (el.tagName !== 'DIV') return false;
+                var c = typeof el.className === 'string' ? el.className : '';
+                return c.indexOf('font-medium') >= 0;
+            });
             if (fontMedium) {
                 var text = (fontMedium.textContent || '').trim();
                 if (text.length > 0 && text.length < 100) {
@@ -252,11 +367,19 @@ export async function getAvailableModes(
     // フォールバック: 旧 UI 構造 (absolute + overflow-y-auto + "Mode" ヘッダー)
     if (items.length === 0) {
         debugInfo.fallbackUsed = true;
-        var dropdowns = document.querySelectorAll('div[class*="absolute"][class*="overflow-y-auto"][class*="rounded-lg"][class*="border"]');
+        var dropdowns = findAllInTree(doc, function(el) {
+            if (el.tagName !== 'DIV') return false;
+            var c = typeof el.className === 'string' ? el.className : '';
+            return c.indexOf('absolute') >= 0 && c.indexOf('overflow-y-auto') >= 0 && c.indexOf('rounded-lg') >= 0 && c.indexOf('border') >= 0;
+        });
         debugInfo.dropdownsFound = dropdowns.length;
         var ddRoot = null;
         for (var d = 0; d < dropdowns.length; d++) {
-            var headerCheck = dropdowns[d].querySelector('div[class*="opacity-80"]');
+            var headerCheck = findFirstInTree(dropdowns[d], function(el) {
+                if (el.tagName !== 'DIV') return false;
+                var c = typeof el.className === 'string' ? el.className : '';
+                return c.indexOf('opacity-80') >= 0;
+            });
             if (headerCheck && (headerCheck.textContent || '').trim() === 'Mode') {
                 ddRoot = dropdowns[d];
                 debugInfo.headerFound = true;
@@ -264,7 +387,11 @@ export async function getAvailableModes(
             }
         }
         if (ddRoot) {
-            var modeLabels = ddRoot.querySelectorAll('p[class*="overflow-hidden"][class*="text-ellipsis"][class*="whitespace-nowrap"]');
+            var modeLabels = findAllInTree(ddRoot, function(el) {
+                if (el.tagName !== 'P') return false;
+                var c = typeof el.className === 'string' ? el.className : '';
+                return c.indexOf('overflow-hidden') >= 0 && c.indexOf('text-ellipsis') >= 0 && c.indexOf('whitespace-nowrap') >= 0;
+            });
             debugInfo.labelsFound = modeLabels.length;
             for (var i = 0; i < modeLabels.length; i++) {
                 var t = (modeLabels[i].textContent || '').trim();
@@ -372,12 +499,71 @@ export async function selectMode(
     var targetMode = ${JSON.stringify(modeName)};
     var targetLower = targetMode.toLowerCase();
 
+    // getTargetDoc: cascade iframe 内の document を取得
+    function getTargetDoc() {
+        var iframes = document.querySelectorAll('iframe');
+        for (var fi = 0; fi < iframes.length; fi++) {
+            try {
+                if (iframes[fi].src && iframes[fi].src.includes('cascade-panel') && iframes[fi].contentDocument) {
+                    return iframes[fi].contentDocument;
+                }
+            } catch(e) { /* cross-origin */ }
+        }
+        return document;
+    }
+    var doc = getTargetDoc();
+
+    function findAllInTree(root, predicate) {
+        if (!root) return [];
+        var matches = [];
+        var ownerDoc = root.ownerDocument || root;
+        if (root.nodeType === 1 && predicate(root)) matches.push(root);
+        var walker = (ownerDoc.createTreeWalker || document.createTreeWalker).call(ownerDoc, root, 1, null, false);
+        var el;
+        while ((el = walker.nextNode())) {
+            if (predicate(el)) matches.push(el);
+            if (el.shadowRoot) {
+                matches = matches.concat(findAllInTree(el.shadowRoot, predicate));
+            }
+        }
+        return matches;
+    }
+
+    function findFirstInTree(root, predicate) {
+        if (!root) return null;
+        var ownerDoc = root.ownerDocument || root;
+        if (root.nodeType === 1 && predicate(root)) return root;
+        var walker = (ownerDoc.createTreeWalker || document.createTreeWalker).call(ownerDoc, root, 1, null, false);
+        var el;
+        while ((el = walker.nextNode())) {
+            if (predicate(el)) return el;
+            if (el.shadowRoot) {
+                var found = findFirstInTree(el.shadowRoot, predicate);
+                if (found) return found;
+            }
+        }
+        return null;
+    }
+
     // 新しい UI 構造: z-50 rounded-md border shadow-md
-    var ddNew = document.querySelectorAll('div[class*="z-50"][class*="rounded-md"][class*="border"][class*="shadow-md"]');
+    var ddNew = findAllInTree(doc, function(el) {
+        if (el.tagName !== 'DIV') return false;
+        var c = typeof el.className === 'string' ? el.className : '';
+        return c.indexOf('z-50') >= 0 && c.indexOf('rounded-md') >= 0 && c.indexOf('border') >= 0 && c.indexOf('shadow-md') >= 0;
+    });
+
     for (var dn = 0; dn < ddNew.length; dn++) {
-        var modeRows = ddNew[dn].querySelectorAll('div[class*="cursor-pointer"][class*="px-2"][class*="py-1"]');
+        var modeRows = findAllInTree(ddNew[dn], function(el) {
+            if (el.tagName !== 'DIV') return false;
+            var c = typeof el.className === 'string' ? el.className : '';
+            return c.indexOf('cursor-pointer') >= 0 && c.indexOf('px-2') >= 0 && c.indexOf('py-1') >= 0;
+        });
         for (var i = 0; i < modeRows.length; i++) {
-            var fontMedium = modeRows[i].querySelector('div[class*="font-medium"]');
+            var fontMedium = findFirstInTree(modeRows[i], function(el) {
+                if (el.tagName !== 'DIV') return false;
+                var c = typeof el.className === 'string' ? el.className : '';
+                return c.indexOf('font-medium') >= 0;
+            });
             if (!fontMedium) continue;
             var mText = (fontMedium.textContent || '').trim().toLowerCase();
             if (mText === targetLower || mText.includes(targetLower) || targetLower.includes(mText)) {
@@ -388,19 +574,35 @@ export async function selectMode(
     }
 
     // フォールバック: 旧 UI 構造
-    var dropdowns = document.querySelectorAll('div[class*="absolute"][class*="overflow-y-auto"][class*="rounded-lg"][class*="border"]');
+    var dropdowns = findAllInTree(doc, function(el) {
+        if (el.tagName !== 'DIV') return false;
+        var c = typeof el.className === 'string' ? el.className : '';
+        return c.indexOf('absolute') >= 0 && c.indexOf('overflow-y-auto') >= 0 && c.indexOf('rounded-lg') >= 0 && c.indexOf('border') >= 0;
+    });
     var ddRoot = null;
     for (var d = 0; d < dropdowns.length; d++) {
-        var headerCheck = dropdowns[d].querySelector('div[class*="opacity-80"]');
+        var headerCheck = findFirstInTree(dropdowns[d], function(el) {
+            if (el.tagName !== 'DIV') return false;
+            var c = typeof el.className === 'string' ? el.className : '';
+            return c.indexOf('opacity-80') >= 0;
+        });
         if (headerCheck && (headerCheck.textContent || '').trim() === 'Mode') {
             ddRoot = dropdowns[d];
             break;
         }
     }
     if (ddRoot) {
-        var oldRows = ddRoot.querySelectorAll('div[class*="cursor-pointer"][class*="px-2"][class*="py-1"]');
+        var oldRows = findAllInTree(ddRoot, function(el) {
+            if (el.tagName !== 'DIV') return false;
+            var c = typeof el.className === 'string' ? el.className : '';
+            return c.indexOf('cursor-pointer') >= 0 && c.indexOf('px-2') >= 0 && c.indexOf('py-1') >= 0;
+        });
         for (var j = 0; j < oldRows.length; j++) {
-            var p = oldRows[j].querySelector('p[class*="text-ellipsis"]');
+            var p = findFirstInTree(oldRows[j], function(el) {
+                if (el.tagName !== 'P') return false;
+                var c = typeof el.className === 'string' ? el.className : '';
+                return c.indexOf('text-ellipsis') >= 0;
+            });
             if (!p) continue;
             var pText = (p.textContent || '').trim().toLowerCase();
             if (pText === targetLower || pText.includes(targetLower) || targetLower.includes(pText)) {

@@ -8,7 +8,9 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { logDebug } from './logger';
+import { logDebug, logWarn } from './logger';
+import { trySummarizeIfNeeded, SUMMARIZE_THRESHOLD_BYTES } from './memorySummarizer';
+import type { SummarizeOps } from './memorySummarizer';
 
 // -------------------------------------------------------------------------
 // Constants
@@ -20,8 +22,22 @@ const MEMORY_FILE_NAME = 'MEMORY.md';
 /** グローバル MEMORY.md のパス */
 const GLOBAL_MEMORY_PATH = path.join(os.homedir(), ANTICROW_DIR_NAME, MEMORY_FILE_NAME);
 
-/** MEMORY.md の最大サイズ（バイト）。超過時は古いエントリをアーカイブ。 */
+/** MEMORY.md の最大サイズ（バイト）。超過時は古いエントリをアーカイブ（最終安全ネット）。 */
 export const MAX_MEMORY_SIZE_BYTES = 50 * 1024; // 50KB
+
+/** サマライズ用 Ops コールバック（extension 起動時に注入） */
+let currentSummarizeOps: SummarizeOps | null = null;
+
+/** サマライズ用コールバックを設定する（bridgeLifecycle から呼ぶ） */
+export function setSummarizeOps(ops: SummarizeOps | null): void {
+    currentSummarizeOps = ops;
+    logDebug(`memoryStore: summarize ops ${ops ? 'set' : 'cleared'}`);
+}
+
+/** 現在のサマライズ Ops を取得する（テスト用） */
+export function getSummarizeOps(): SummarizeOps | null {
+    return currentSummarizeOps;
+}
 
 // -------------------------------------------------------------------------
 // Types
@@ -152,10 +168,16 @@ function appendToMemoryFile(filePath: string, entry: string, label: string): voi
         fs.appendFileSync(filePath, formattedEntry, 'utf-8');
         logDebug(`memoryStore: appended to ${label} memory (${entry.length} chars)`);
 
-        // サイズ上限チェック: 超過時はアーカイブ
+        // サイズチェック: サマライズ閾値を超えたら Antigravity に要約を依頼（fire-and-forget）
         try {
             const stat = fs.statSync(filePath);
-            if (stat.size > MAX_MEMORY_SIZE_BYTES) {
+            if (stat.size > SUMMARIZE_THRESHOLD_BYTES && currentSummarizeOps) {
+                // バックグラウンドで非同期実行（完了を待たない）
+                trySummarizeIfNeeded(filePath, label, currentSummarizeOps).catch(e => {
+                    logWarn(`memoryStore: background summarize failed: ${e instanceof Error ? e.message : e}`);
+                });
+            } else if (stat.size > MAX_MEMORY_SIZE_BYTES) {
+                // サマライズ Ops 未設定時のフォールバック: 従来のアーカイブ
                 archiveMemoryFile(filePath, label);
             }
         } catch { /* サイズチェック失敗は無視 */ }
@@ -178,7 +200,43 @@ export function archiveMemoryFile(filePath: string, label: string): void {
         // アーカイブするには最低2エントリ必要
         if (dataEntries.length < 2) { return; }
 
-        const splitIdx = Math.floor(dataEntries.length / 2);
+        // 直近の記憶（最新10件 または 直近7日分）は保持し、それより古いものをアーカイブ対象とする
+        const RECENT_COUNT = 10;
+        const RECENT_DAYS = 7;
+        const nowMs = Date.now();
+        const msPerDay = 1000 * 60 * 60 * 24;
+
+        let splitIdx = 0;
+        for (let i = 0; i < dataEntries.length; i++) {
+            const entry = dataEntries[i];
+            const dateMatch = entry.match(/^### (\d{4}-\d{2}-\d{2})/);
+            let isRecent = false;
+
+            // 最新 N 件以内なら保持
+            if (dataEntries.length - i <= RECENT_COUNT) {
+                isRecent = true;
+            } else if (dateMatch) {
+                // 直近 N 日以内なら保持
+                const entryDate = new Date(dateMatch[1]).getTime();
+                if (!isNaN(entryDate)) {
+                    const daysOld = (nowMs - entryDate) / msPerDay;
+                    if (daysOld <= RECENT_DAYS) {
+                        isRecent = true;
+                    }
+                }
+            }
+
+            if (isRecent) {
+                splitIdx = i;
+                break;
+            }
+        }
+
+        // すべて最新扱いでアーカイブ対象がない場合は、無限肥大化を防ぐため強制的に最古の1件をアーカイブ
+        if (splitIdx === 0) {
+            splitIdx = 1;
+        }
+
         const archiveEntries = dataEntries.slice(0, splitIdx);
         const keepEntries = dataEntries.slice(splitIdx);
 

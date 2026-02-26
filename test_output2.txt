@@ -1,55 +1,454 @@
 
-> anti-crow@0.1.0 test
-> vitest run
+ RUN  v4.0.18 C:/Users/ysk41/dev/anti-crow
+
+ 笨・src/__tests__/botLock.test.ts > botLock > acquireLock > should acquire lock when no lock file exists 7ms
+ 笨・src/__tests__/botLock.test.ts > botLock > acquireLock > should not acquire lock when held by alive process (self) 4ms
+ 笨・src/__tests__/botLock.test.ts > botLock > acquireLock > should override stale lock from dead process 4ms
+ 笨・src/__tests__/botLock.test.ts > botLock > acquireLock > should handle corrupted lock file 4ms
+ 笨・src/__tests__/botLock.test.ts > botLock > acquireLock > should create storage directory if it does not exist 5ms
+ 笨・src/__tests__/botLock.test.ts > botLock > releaseLock > should release own lock 4ms
+ 笨・src/__tests__/botLock.test.ts > botLock > releaseLock > should not release lock owned by different PID 4ms
+ 笨・src/__tests__/botLock.test.ts > botLock > releaseLock > should handle missing lock file gracefully 3ms
+ 笨・src/__tests__/licenseChecker.test.ts > LicenseChecker 窶・繝医Λ繧､繧｢繝ｫ讖溯・ > initTrial・・etGlobalState 邨檎罰・・> globalState 譛ｪ險ｭ螳壽凾縲√ヨ繝ｩ繧､繧｢繝ｫ髢句ｧ区律繧定ｨ倬鹸縺吶ｋ 10ms
+ 笨・src/__tests__/licenseChecker.test.ts > LicenseChecker 窶・繝医Λ繧､繧｢繝ｫ讖溯・ > initTrial・・etGlobalState 邨檎罰・・> 譌｢縺ｫ繝医Λ繧､繧｢繝ｫ髢句ｧ区律縺悟ｭ伜惠縺吶ｋ蝣ｴ蜷医∽ｸ頑嶌縺阪＠縺ｪ縺・4ms
+ 笨・src/__tests__/licenseChecker.test.ts > LicenseChecker 窶・繝医Λ繧､繧｢繝ｫ讖溯・ > initTrial・・etGlobalState 邨檎罰・・> globalState 縺・null 縺ｮ蝣ｴ蜷医∽ｽ輔ｂ縺励↑縺・1ms
+ 笨・src/__tests__/licenseChecker.test.ts > LicenseChecker 窶・繝医Λ繧､繧｢繝ｫ讖溯・ > getTrialDaysRemaining > globalState 譛ｪ險ｭ螳・竊・undefined 繧定ｿ斐☆ 0ms
+ 笨・src/__tests__/licenseChecker.test.ts > LicenseChecker 窶・繝医Λ繧､繧｢繝ｫ讖溯・ > getTrialDaysRemaining > 繝医Λ繧､繧｢繝ｫ髢句ｧ区律譛ｪ險ｭ螳・竊・undefined 繧定ｿ斐☆ 1ms
+ 笨・src/__tests__/licenseChecker.test.ts > LicenseChecker 窶・繝医Λ繧､繧｢繝ｫ讖溯・ > getTrialDaysRemaining > 髢句ｧ狗峩蠕・竊・14 繧定ｿ斐☆ 1ms
+ 笨・src/__tests__/licenseChecker.test.ts > LicenseChecker 窶・繝医Λ繧､繧｢繝ｫ讖溯・ > getTrialDaysRemaining > 7譌･邨碁℃ 竊・7 繧定ｿ斐☆ 1ms
+ 笨・src/__tests__/licenseChecker.test.ts > LicenseChecker 窶・繝医Λ繧､繧｢繝ｫ讖溯・ > getTrialDaysRemaining > 13譌･縺ｨ1譎る俣邨碁℃ 竊・1 繧定ｿ斐☆・・ath.ceil 縺ｧ郢ｰ繧贋ｸ翫￡・・1ms
+ 笨・src/__tests__/licenseChecker.test.ts > LicenseChecker 窶・繝医Λ繧､繧｢繝ｫ讖溯・ > getTrialDaysRemaining > 14譌･邨碁℃ 竊・0 繧定ｿ斐☆ 1ms
+ 笨・src/__tests__/licenseChecker.test.ts > LicenseChecker 窶・繝医Λ繧､繧｢繝ｫ讖溯・ > getTrialDaysRemaining > 15譌･邨碁℃ 竊・雋縺ｮ蛟､繧定ｿ斐☆ 1ms
+ 笨・src/__tests__/licenseChecker.test.ts > LicenseChecker 窶・繝医Λ繧､繧｢繝ｫ讖溯・ > isTrialActive > 髢句ｧ狗峩蠕・竊・true 1ms
+ 笨・src/__tests__/licenseChecker.test.ts > LicenseChecker 窶・繝医Λ繧､繧｢繝ｫ讖溯・ > isTrialActive > 13譌･逶ｮ 竊・true 7ms
+ 笨・src/__tests__/licenseChecker.test.ts > LicenseChecker 窶・繝医Λ繧､繧｢繝ｫ讖溯・ > isTrialActive > 15譌･蠕・竊・false 5ms
+ 笨・src/__tests__/licenseChecker.test.ts > LicenseChecker 窶・繝医Λ繧､繧｢繝ｫ讖溯・ > isTrialActive > globalState 譛ｪ險ｭ螳・竊・false 0ms
+ 笨・src/__tests__/licenseChecker.test.ts > LicenseChecker 窶・繝医Λ繧､繧｢繝ｫ讖溯・ > check() 窶・繝医Λ繧､繧｢繝ｫ蛻・ｲ・> 繧ｭ繝ｼ縺ｪ縺・+ 繝医Λ繧､繧｢繝ｫ荳ｭ 竊・trial_active 1ms
+ 笨・src/__tests__/licenseChecker.test.ts > LicenseChecker 窶・繝医Λ繧､繧｢繝ｫ讖溯・ > check() 窶・繝医Λ繧､繧｢繝ｫ蛻・ｲ・> 繧ｭ繝ｼ縺ｪ縺・+ 繝医Λ繧､繧｢繝ｫ譛滄剞蛻・ｌ 竊・trial_expired 1ms
+ 笨・src/__tests__/licenseChecker.test.ts > LicenseChecker 窶・繝医Λ繧､繧｢繝ｫ讖溯・ > check() 窶・繝医Λ繧､繧｢繝ｫ蛻・ｲ・> 繧ｭ繝ｼ縺ｪ縺・+ globalState 譛ｪ險ｭ螳・竊・no_key 1ms
+ 笨・src/__tests__/licenseChecker.test.ts > LicenseChecker 窶・繝医Λ繧､繧｢繝ｫ讖溯・ > check() 窶・繝医Λ繧､繧｢繝ｫ蛻・ｲ・> 繧ｭ繝ｼ縺ｪ縺・+ 繝医Λ繧､繧｢繝ｫ7譌･逶ｮ 竊・trial_active・域ｮ九ｊ7譌･・・2ms
+ 笨・src/__tests__/licenseChecker.test.ts > LicenseChecker 窶・繝医Λ繧､繧｢繝ｫ讖溯・ > check() 窶・繝医Λ繧､繧｢繝ｫ蛻・ｲ・> 繧ｭ繝ｼ縺ｪ縺・+ 繝医Λ繧､繧｢繝ｫ14譌･縺｡繧・≧縺ｩ 竊・trial_expired 1ms
+ 笨・src/__tests__/licenseChecker.test.ts > LicenseChecker 窶・繝医Λ繧､繧｢繝ｫ讖溯・ > check() 窶・繝医Λ繧､繧｢繝ｫ蛻・ｲ・> check() 縺ｧ initTrial 縺悟他縺ｰ繧後ヨ繝ｩ繧､繧｢繝ｫ縺悟・譛溷喧縺輔ｌ繧・1ms
+ 笨・src/__tests__/licenseChecker.test.ts > LicenseChecker 窶・繝医Λ繧､繧｢繝ｫ讖溯・ > isPro() 窶・繝医Λ繧､繧｢繝ｫ蟇ｾ蠢・> 繝医Λ繧､繧｢繝ｫ荳ｭ 竊・true 0ms
+ 笨・src/__tests__/licenseChecker.test.ts > LicenseChecker 窶・繝医Λ繧､繧｢繝ｫ讖溯・ > isPro() 窶・繝医Λ繧､繧｢繝ｫ蟇ｾ蠢・> 繝医Λ繧､繧｢繝ｫ譛滄剞蛻・ｌ 竊・false 0ms
+ 笨・src/__tests__/licenseChecker.test.ts > LicenseChecker 窶・繝医Λ繧､繧｢繝ｫ讖溯・ > isPro() 窶・繝医Λ繧､繧｢繝ｫ蟇ｾ蠢・> 蛻晄悄迥ｶ諷具ｼ・ree 繝励Λ繝ｳ・俄・ false 0ms
+ 笨・src/__tests__/licenseChecker.test.ts > LicenseChecker 窶・繝医Λ繧､繧｢繝ｫ讖溯・ > isPro() 窶・繝医Λ繧､繧｢繝ｫ蟇ｾ蠢・> 譛牙柑縺ｪ繝ｩ繧､繧ｻ繝ｳ繧ｹ繧ｭ繝ｼ・・onthly・俄・ true 1ms
+ 笨・src/__tests__/licenseChecker.test.ts > LicenseChecker 窶・繝医Λ繧､繧｢繝ｫ讖溯・ > 繧ｹ繝・・繧ｿ繧ｹ螟画峩繝ｪ繧ｹ繝翫・ > 繝医Λ繧､繧｢繝ｫ髢句ｧ九〒繝ｪ繧ｹ繝翫・縺悟他縺ｰ繧後ｋ 1ms
+ 笨・src/__tests__/fileIpc.test.ts > FileIpc.extractResult > should extract "summary" key (highest priority) 2ms
+ 笨・src/__tests__/fileIpc.test.ts > FileIpc.extractResult > should extract "response" key 0ms
+ 笨・src/__tests__/fileIpc.test.ts > FileIpc.extractResult > should extract "result" key 0ms
+ 笨・src/__tests__/fileIpc.test.ts > FileIpc.extractResult > should extract "message" key 0ms
+ 笨・src/__tests__/fileIpc.test.ts > FileIpc.extractResult > should prioritize summary over response 0ms
+ 笨・src/__tests__/fileIpc.test.ts > FileIpc.extractResult > should use longer string value when known key is short 0ms
+ 笨・src/__tests__/fileIpc.test.ts > FileIpc.extractResult > should return short known key if no longer alternatives 0ms
+ 笨・src/__tests__/fileIpc.test.ts > FileIpc.extractResult > should fallback to single string value from unknown schema 0ms
+ 笨・src/__tests__/fileIpc.test.ts > FileIpc.extractResult > should return raw JSON when multiple unknown string values exist 0ms
+ 笨・src/__tests__/fileIpc.test.ts > FileIpc.extractResult > should return raw string for non-JSON input 0ms
+ 笨・src/__tests__/fileIpc.test.ts > FileIpc.extractResult > should return raw string for markdown content 0ms
+ 笨・src/__tests__/fileIpc.test.ts > FileIpc.extractResult > should return raw string when JSON parse fails 0ms
+ 笨・src/__tests__/fileIpc.test.ts > FileIpc.extractResult > should return raw string for empty object 0ms
+ 笨・src/__tests__/fileIpc.test.ts > FileIpc.extractResult > should return raw string for array JSON 0ms
+ 笨・src/__tests__/fileIpc.test.ts > FileIpc.extractResult > should return raw string for empty input 0ms
+ 笨・src/__tests__/fileIpc.test.ts > FileIpc.extractResult > should handle whitespace around JSON 0ms
+ 笨・src/__tests__/fileIpc.test.ts > FileIpc.extractResult > should ignore non-string values 0ms
+ 笨・src/__tests__/fileIpc.test.ts > FileIpc.extractResult > should format complex nested JSON with summary + changes 1ms
+ 笨・src/__tests__/fileIpc.test.ts > FileIpc.extractResult > should format JSON with test_results and deploy 0ms
+ 笨・src/__tests__/fileIpc.test.ts > FileIpc.formatJsonForDiscord > should format object with summary and nested changes 0ms
+ 笨・src/__tests__/fileIpc.test.ts > FileIpc.formatJsonForDiscord > should return null for empty object 0ms
+ 笨・src/__tests__/fileIpc.test.ts > FileIpc.formatJsonForDiscord > should handle flat string-only objects 0ms
+ 笨・src/__tests__/fileIpc.test.ts > FileIpc.formatJsonForDiscord > should handle arrays of objects 0ms
+ 笨・src/__tests__/fileIpc.test.ts > FileIpc instance methods > recoverStaleResponses > should detect stale JSON response files 8ms
+ 笨・src/__tests__/fileIpc.test.ts > FileIpc instance methods > recoverStaleResponses > should detect stale MD response files 5ms
+ 笨・src/__tests__/fileIpc.test.ts > FileIpc instance methods > recoverStaleResponses > should skip empty stale response files 4ms
+ 笨・src/__tests__/fileIpc.test.ts > FileIpc instance methods > recoverStaleResponses > should ignore non-response files 4ms
+ 笨・src/__tests__/fileIpc.test.ts > FileIpc instance methods > recoverStaleResponses > should detect multiple stale responses 5ms
+ 笨・src/__tests__/fileIpc.test.ts > FileIpc instance methods > cleanupStaleResponse > should delete specified stale response file 6ms
+ 笨・src/__tests__/fileIpc.test.ts > FileIpc instance methods > cleanupStaleResponse > should not throw for missing file 29ms
+ ﾃ・src/__tests__/fileIpc.test.ts > FileIpc instance methods > registerActiveRequest / unregisterActiveRequest > should protect registered request files from cleanupOldFiles 38ms
+   竊・expected true to be false // Object.is equality
+ ﾃ・src/__tests__/fileIpc.test.ts > FileIpc instance methods > cleanupOldFiles thresholds > should delete response files only after 10 minutes 11ms
+   竊・expected true to be false // Object.is equality
+ 笨・src/__tests__/fileIpc.test.ts > FileIpc instance methods > cleanupOldFiles thresholds > should delete progress files after 2 minutes 6ms
+ ﾃ・src/__tests__/fileIpc.test.ts > FileIpc instance methods > cleanupOldFiles thresholds > should delete tmp files after 30 seconds 5ms
+   竊・expected true to be false // Object.is equality
+ 笨・src/__tests__/planParser.test.ts > parsePlanJson > should parse valid JSON 2ms
+ 笨・src/__tests__/planParser.test.ts > parsePlanJson > should handle code-fenced JSON 1ms
+ 笨・src/__tests__/planParser.test.ts > parsePlanJson > should handle nested plan objects 0ms
+ 笨・src/__tests__/planParser.test.ts > parsePlanJson > should return null for missing plan_id 0ms
+ 笨・src/__tests__/planParser.test.ts > parsePlanJson > should use default for missing prompt 0ms
+ 笨・src/__tests__/planParser.test.ts > parsePlanJson > should use defaults for missing discord_templates 0ms
+ 笨・src/__tests__/planParser.test.ts > parsePlanJson > should return null for invalid JSON 0ms
+ 笨・src/__tests__/planParser.test.ts > parsePlanJson > should return null for non-object JSON 0ms
+ 笨・src/__tests__/planParser.test.ts > parsePlanJson > should parse optional fields 1ms
+ 笨・src/__tests__/planParser.test.ts > parsePlanJson > should parse when ack is null and use default 0ms
+ 笨・src/__tests__/planParser.test.ts > parsePlanJson > should parse when ack is omitted and use default 0ms
+ 笨・src/__tests__/planParser.test.ts > parsePlanJson > should parse when ack is empty string 0ms
+ 笨・src/__tests__/planParser.test.ts > buildPlan > should build immediate plan with null cron 2ms
+ 笨・src/__tests__/planParser.test.ts > buildPlan > should build scheduled plan preserving cron 0ms
+ 笨・src/__tests__/planParser.test.ts > buildPlan > should set pending_confirmation for confirmation required 0ms
+ 笨・src/__tests__/planParser.test.ts > buildPlan > should treat empty cron as immediate 0ms
+ 笨・src/__tests__/planParser.test.ts > buildPlan > should treat "immediate" cron as immediate 0ms
+ 笨・src/__tests__/planParser.test.ts > buildPlan > should default timezone to getTimezone() when empty 102ms
+ 笨・src/__tests__/scheduler.test.ts > Scheduler > isValidCron > should accept valid 5-part cron expression 5ms
+ 笨・src/__tests__/scheduler.test.ts > Scheduler > isValidCron > should reject invalid cron expression 1ms
+ 笨・src/__tests__/templateStore.test.ts > TemplateStore > save and get > should save and retrieve a template 8ms
+ 笨・src/__tests__/templateStore.test.ts > TemplateStore > save and get > should overwrite existing template with same name 3ms
+ 笨・src/__tests__/templateStore.test.ts > TemplateStore > save and get > should return undefined for non-existent template 1ms
+ 笨・src/__tests__/templateStore.test.ts > TemplateStore > getAll > should return empty array when no templates exist 2ms
+ 笨・src/__tests__/templateStore.test.ts > TemplateStore > getAll > should return all saved templates 4ms
+ 笨・src/__tests__/templateStore.test.ts > TemplateStore > delete > should delete an existing template 3ms
+ 笨・src/__tests__/templateStore.test.ts > TemplateStore > delete > should return false when deleting non-existent template 4ms
+ 笨・src/__tests__/templateStore.test.ts > TemplateStore > persistence > should persist templates to file and reload 3ms
+ 笨・src/__tests__/templateStore.test.ts > TemplateStore > persistence > should handle corrupted template file gracefully 4ms
+ 笨・src/__tests__/templateStore.test.ts > TemplateStore > persistence > should handle missing template file gracefully 2ms
+ 笨・src/__tests__/scheduler.test.ts > Scheduler > register > should register a plan with valid cron 103ms
+ 笨・src/__tests__/scheduler.test.ts > Scheduler > register > should reject plan without cron 1ms
+ 笨・src/__tests__/scheduler.test.ts > Scheduler > register > should reject plan with invalid cron 1ms
+ 笨・src/__tests__/scheduler.test.ts > Scheduler > register > should replace existing registration for same plan_id 2ms
+ 笨・src/__tests__/scheduler.test.ts > Scheduler > unregister > should unregister an existing plan 1ms
+ 笨・src/__tests__/scheduler.test.ts > Scheduler > unregister > should not throw when unregistering non-existent plan 1ms
+ 笨・src/__tests__/scheduler.test.ts > Scheduler > stopAll > should stop all registered tasks 2ms
+ 笨・src/__tests__/scheduler.test.ts > Scheduler > restoreAll > should restore only active plans with cron 4ms
+ 笨・src/__tests__/scheduler.test.ts > Scheduler > restoreAll > should return 0 for empty plan list 46ms
+ 笨・src/__tests__/scheduler.test.ts > Scheduler > getRegisteredPlanIds > should return empty array when no plans registered 3ms
+ 笨・src/__tests__/scheduler.test.ts > Scheduler > getRegisteredPlanIds > should return all registered plan IDs 5ms
+ 笨・src/__tests__/templateStore.test.ts > TemplateStore > expandVariables > should expand {{date}} to YYYY-MM-DD format 75ms
+ 笨・src/__tests__/templateStore.test.ts > TemplateStore > expandVariables > should expand {{time}} to HH:MM format 2ms
+ 笨・src/__tests__/templateStore.test.ts > TemplateStore > expandVariables > should expand {{datetime}} to YYYY-MM-DD HH:MM format 2ms
+ 笨・src/__tests__/templateStore.test.ts > TemplateStore > expandVariables > should expand {{year}}, {{month}}, {{day}} individually 1ms
+ 笨・src/__tests__/templateStore.test.ts > TemplateStore > expandVariables > should expand multiple variables in one string 1ms
+ 笨・src/__tests__/templateStore.test.ts > TemplateStore > expandVariables > should leave unknown variables untouched 2ms
+ 笨・src/__tests__/templateStore.test.ts > TemplateStore > expandVariables > should return string as-is when no variables present 3ms
+ 笨・src/__tests__/templateStore.test.ts > TemplateStore > expandVariables > should expand user-defined args when provided 2ms
+ 笨・src/__tests__/templateStore.test.ts > TemplateStore > expandVariables > should expand both builtin and user args together 2ms
+ 笨・src/__tests__/templateStore.test.ts > TemplateStore > expandVariables > should leave unresolved user args untouched 2ms
+ 笨・src/__tests__/templateStore.test.ts > TemplateStore > expandVariables > should handle empty userArgs object 2ms
+ 笨・src/__tests__/templateStore.test.ts > TemplateStore > parseTemplateArgs > should detect user-defined args from prompt 1ms
+ 笨・src/__tests__/templateStore.test.ts > TemplateStore > parseTemplateArgs > should exclude builtin date/time variables 1ms
+ 笨・src/__tests__/templateStore.test.ts > TemplateStore > parseTemplateArgs > should exclude all builtin variables 2ms
+ 笨・src/__tests__/templateStore.test.ts > TemplateStore > parseTemplateArgs > should deduplicate repeated args 1ms
+ 笨・src/__tests__/templateStore.test.ts > TemplateStore > parseTemplateArgs > should return empty array when no args present 1ms
+ 笨・src/__tests__/templateStore.test.ts > TemplateStore > parseTemplateArgs > should return empty array for builtin-only prompt 28ms
+ 笨・src/__tests__/templateStore.test.ts > TemplateStore > parseTemplateArgs > should set required=true by default 3ms
+ 笨・src/__tests__/templateStore.test.ts > TemplateStore > parseTemplateArgs > should set label same as name by default 6ms
+ 笨・src/__tests__/templateStore.test.ts > TemplateStore > save with args auto-detection > should auto-detect args on save 4ms
+ 笨・src/__tests__/templateStore.test.ts > TemplateStore > save with args auto-detection > should not add args field when no user args detected 4ms
+ 笨・src/__tests__/templateStore.test.ts > TemplateStore > save with args auto-detection > should persist args across reload 5ms
+ 笨・src/__tests__/templateStore.test.ts > TemplateStore > expandVariables 窶・env variables > should expand {{env:XXX}} from process.env 2ms
+ 笨・src/__tests__/templateStore.test.ts > TemplateStore > expandVariables 窶・env variables > should expand undefined env var to empty string 3ms
+ 笨・src/__tests__/templateStore.test.ts > TemplateStore > expandVariables 窶・env variables > should expand multiple env vars 2ms
+ 笨・src/__tests__/templateStore.test.ts > TemplateStore > expandVariables 窶・env variables > should expand env vars alongside builtin vars and user args 3ms
+ 笨・src/__tests__/templateStore.test.ts > TemplateStore > expandVariables 窶・env variables > should leave non-env unknown variables untouched 2ms
+ 笨・src/__tests__/templateStore.test.ts > TemplateStore > parseTemplateArgs 窶・env exclusion > should exclude {{env:XXX}} from detected args 1ms
+ 笨・src/__tests__/templateStore.test.ts > TemplateStore > parseTemplateArgs 窶・env exclusion > should return empty when only env vars and builtins 1ms
+ 笨・src/__tests__/templateStore.test.ts > TemplateStore > parseTemplateArgs 窶・env exclusion > should handle mixed env, builtin, and user args 1ms
+ 笨・src/__tests__/executor.test.ts > Executor > 蛻晄悄迥ｶ諷・> should start with running = false 3ms
+ 笨・src/__tests__/executor.test.ts > Executor > 蛻晄悄迥ｶ諷・> should start with empty queue 1ms
+ 笨・src/__tests__/executor.test.ts > Executor > 蛻晄悄迥ｶ諷・> should start with null queue info 1ms
+ 笨・src/__tests__/executor.test.ts > Executor > enqueue 窶・驥崎､・亟豁｢ > should skip duplicate plan_id already in queue (pending) 31ms
+ 笨・src/__tests__/executor.test.ts > Executor > enqueueImmediate / enqueueScheduled > enqueueImmediate should set triggerType to immediate 15ms
+ 笨・src/__tests__/executor.test.ts > Executor > cancelJob > should remove a pending job from the queue 39ms
+ 笨・src/__tests__/executor.test.ts > Executor > getQueueInfo > should return current job and pending list 21ms
+ 笨・src/__tests__/executor.test.ts > Executor > forceReset > should clear running and queue state 20ms
+ 笨・src/__tests__/executor.test.ts > Executor > forceStop > should stop current job but preserve queue 28ms
+ 笨・src/__tests__/executor.test.ts > Executor > isRunning / queueLength > isRunning should be false before any enqueue 1ms
+ 笨・src/__tests__/executor.test.ts > Executor > isRunning / queueLength > queueLength should count pending jobs only (not current) 30ms
+ 笨・src/__tests__/executor.test.ts > Executor > processQueue 窶・逶ｴ蛻怜ｮ溯｡・> should process jobs sequentially and call notifyDiscord on completion 5ms
+ 笨・src/__tests__/executor.test.ts > Executor > processQueue 窶・逶ｴ蛻怜ｮ溯｡・> should process multiple jobs in FIFO order 6ms
+ 笨・src/__tests__/executor.test.ts > Executor > executeJob 窶・繧ｨ繝ｩ繝ｼ繝上Φ繝峨Μ繝ｳ繧ｰ > should notify on error and not crash 2ms
+ 笨・src/__tests__/executor.test.ts > Executor > executeJob 窶・繧ｨ繝ｩ繝ｼ繝上Φ繝峨Μ繝ｳ繧ｰ > should handle IPC timeout without retry 2ms
+ 笨・src/__tests__/executor.test.ts > Executor > UIWatcher 蟋碑ｭｲ > startUIWatcher should not throw 2ms
+ 笨・src/__tests__/executor.test.ts > Executor > UIWatcher 蟋碑ｭｲ > stopUIWatcher should not throw even when not started 1ms
+ 笨・src/__tests__/executor.test.ts > Executor > UIWatcher 蟋碑ｭｲ > startUIWatcher twice should stop previous watcher 1ms
+ 笨・src/__tests__/executor.test.ts > Executor > enqueueScheduled > should enqueue with schedule triggerType 12ms
+ 笨・src/__tests__/executor.test.ts > Executor > executeJob 窶・CDP 蜀肴磁邯壹Μ繝医Λ繧､ > should reconnect and retry on CdpConnectionError 2ms
+ 笨・src/__tests__/executor.test.ts > Executor > executeJob 窶・MEMORY 繧ｿ繧ｰ謚ｽ蜃ｺ > should extract memory tags from response and call append functions 3ms
+ 笨・src/__tests__/executor.test.ts > Executor > executeJob 窶・謠先｡医・繧ｿ繝ｳ騾∽ｿ｡ > should send suggestion buttons when suggestions are parsed 12ms
+ 笨・src/__tests__/executor.test.ts > Executor > executeJob 窶・recordExecution > should record execution when plan exists in PlanStore 18ms
+ 笨・src/__tests__/executor.test.ts > Executor > executeJob 窶・recentlyExecutedPlanIds 驥崎､・亟豁｢ > should skip recently executed plan_id (immediate execution) 3ms
+ 笨・src/__tests__/executor.test.ts > Executor > processQueue 窶・abort 蜃ｦ逅・> should abort and stop on forceStop during execution 29ms
+ 笨・src/__tests__/executor.test.ts > Executor > executeJob 窶・螳溯｡瑚ｩｳ邏ｰ騾夂衍 > should send execution_summary when available 3ms
+ 笨・src/__tests__/executor.test.ts > Executor > executeJob 窶・豺ｻ莉倥ヵ繧｡繧､繝ｫ > should include attachment_paths in prompt when present 2ms
+ 笨・src/__tests__/configHelper.test.ts > configHelper > getResponseTimeout > should return configured timeout 2ms
+ 笨・src/__tests__/configHelper.test.ts > configHelper > getResponseTimeout > should return default timeout (1,800,000ms = 30min) when not configured 0ms
+ 笨・src/__tests__/configHelper.test.ts > configHelper > getResponseTimeout > should return default when configured value is 0 0ms
+ 笨・src/__tests__/configHelper.test.ts > configHelper > getTimezone > should return configured timezone 0ms
+ 笨・src/__tests__/configHelper.test.ts > configHelper > getTimezone > should auto-detect OS timezone when not configured 31ms
+ 笨・src/__tests__/configHelper.test.ts > configHelper > getTimezone > should return empty-string-configured as auto-detect 2ms
+ 笨・src/__tests__/configHelper.test.ts > configHelper > getArchiveDays > should return configured archive days 0ms
+ 笨・src/__tests__/configHelper.test.ts > configHelper > getArchiveDays > should return default archive days (7) when not configured 0ms
+ 笨・src/__tests__/configHelper.test.ts > configHelper > getArchiveDays > should allow 0 days (uses ?? not ||) 0ms
+ 笨・src/__tests__/configHelper.test.ts > configHelper > getAllowedUserIds > should return configured user IDs 0ms
+ 笨・src/__tests__/configHelper.test.ts > configHelper > getAllowedUserIds > should return empty array when not configured 0ms
+ 笨・src/__tests__/configHelper.test.ts > configHelper > getMaxMessageLength > should return configured max length 0ms
+ 笨・src/__tests__/configHelper.test.ts > configHelper > getMaxMessageLength > should return default (6000) when not configured 0ms
+ 笨・src/__tests__/configHelper.test.ts > configHelper > getMaxMessageLength > should allow 0 as unlimited (uses ?? not ||) 0ms
+ 笨・src/__tests__/configHelper.test.ts > configHelper > EXCLUDED_CDP_PORTS > should exclude port 9222 0ms
+ 笨・src/__tests__/configHelper.test.ts > configHelper > EXCLUDED_CDP_PORTS > should not exclude common CDP ports 0ms
+ 笨・src/__tests__/suggestionParser.test.ts > parseSuggestions > 繧ｿ繧ｰ縺ｪ縺・竊・遨ｺ驟榊・ + body 縺ｯ縺昴・縺ｾ縺ｾ 3ms
+ 笨・src/__tests__/suggestionParser.test.ts > parseSuggestions > 遨ｺ譁・ｭ怜・ 竊・遨ｺ驟榊・ + cleanContent 縺ｯ遨ｺ 0ms
+ 笨・src/__tests__/suggestionParser.test.ts > parseSuggestions > description 縺ｪ縺・窶・label/prompt 縺ｮ縺ｿ縺ｮ JSON 繧呈ｭ｣蟶ｸ繝代・繧ｹ 2ms
+ 笨・src/__tests__/suggestionParser.test.ts > parseSuggestions > description 縺ゅｊ 窶・description 縺梧ｭ｣縺励￥菫晄戟縺輔ｌ繧・1ms
+ 笨・src/__tests__/suggestionParser.test.ts > parseSuggestions > description 豺ｷ蝨ｨ 窶・荳驛ｨ縺ｮ縺ｿ description 縺ゅｊ 1ms
+ 笨・src/__tests__/suggestionParser.test.ts > parseSuggestions > 荳肴ｭ｣ JSON 窶・螢翫ｌ縺・JSON 縺ｯ繧ｨ繝ｩ繝ｼ縺ｫ縺ｪ繧峨★遨ｺ驟榊・繧定ｿ斐☆ 0ms
+ 笨・src/__tests__/suggestionParser.test.ts > parseSuggestions > JSON 縺碁・蛻励〒縺ｪ縺・ｴ蜷・竊・遨ｺ驟榊・ 0ms
+ 笨・src/__tests__/suggestionParser.test.ts > parseSuggestions > label 縺梧ｬ縺代※縺・ｋ荳肴ｭ｣繧｢繧､繝・Β縺ｯ繝輔ぅ繝ｫ繧ｿ縺輔ｌ繧・0ms
+ 笨・src/__tests__/suggestionParser.test.ts > parseSuggestions > prompt 縺梧ｬ縺代※縺・ｋ荳肴ｭ｣繧｢繧､繝・Β縺ｯ繝輔ぅ繝ｫ繧ｿ縺輔ｌ繧・0ms
+ 笨・src/__tests__/suggestionParser.test.ts > parseSuggestions > null 繧｢繧､繝・Β縺ｯ繝輔ぅ繝ｫ繧ｿ縺輔ｌ繧・1ms
+ 笨・src/__tests__/suggestionParser.test.ts > parseSuggestions > MAX_SUGGESTIONS・・・峨ｒ雜・∴繧九い繧､繝・Β 竊・蜈磯ｭ3蛟九・縺ｿ霑斐☆ 1ms
+ 笨・src/__tests__/suggestionParser.test.ts > parseSuggestions > SUGGESTIONS 繧ｿ繧ｰ縺・cleanContent 縺九ｉ髯､蜴ｻ縺輔ｌ繧・0ms
+ 笨・src/__tests__/suggestionParser.test.ts > parseSuggestions > 譛ｫ蟆ｾ縺ｮ繧ｿ繧ｰ繧よｭ｣縺励￥髯､蜴ｻ縺輔ｌ繧・0ms
+ 笨・src/__tests__/suggestionParser.test.ts > parseSuggestions > 髟ｷ縺・Λ繝吶Ν縺ｯ72譁・ｭ励↓蛻・ｊ隧ｰ繧√ｉ繧後ｋ 0ms
+ 笨・src/__tests__/suggestionParser.test.ts > parseSuggestions > SUGGESTIONS: 縺ｮ蜑榊ｾ後↓遨ｺ逋ｽ縺後≠繧句ｴ蜷医ｂ豁｣縺励￥繝代・繧ｹ縺輔ｌ繧・0ms
+ 笨・src/__tests__/suggestionParser.test.ts > stripSuggestionTags > SUGGESTIONS 繧ｿ繧ｰ繧帝勁蜴ｻ縺励※繝医Μ繝縺吶ｋ 0ms
+ 笨・src/__tests__/suggestionParser.test.ts > stripSuggestionTags > 繧ｿ繧ｰ縺ｪ縺・竊・縺昴・縺ｾ縺ｾ霑斐☆ 0ms
+ 笨・src/__tests__/discordFormatter.test.ts > discordFormatter > splitMessage > should return single chunk for short messages 2ms
+ 笨・src/__tests__/discordFormatter.test.ts > discordFormatter > splitMessage > should split long messages at newline boundaries 1ms
+ 笨・src/__tests__/discordFormatter.test.ts > discordFormatter > splitMessage > should preserve code blocks across splits 1ms
+ 笨・src/__tests__/discordFormatter.test.ts > discordFormatter > splitMessage > should handle empty string 0ms
+ 笨・src/__tests__/discordFormatter.test.ts > discordFormatter > splitForEmbeds > should return single group for short text 0ms
+ 笨・src/__tests__/discordFormatter.test.ts > discordFormatter > splitForEmbeds > should split text exceeding embed description limit 1ms
+ 笨・src/__tests__/discordFormatter.test.ts > discordFormatter > splitForEmbeds > should group chunks respecting total embed limit 0ms
+ 笨・src/__tests__/discordFormatter.test.ts > discordFormatter > splitForEmbeds > should preserve code blocks across splits 0ms
+ 笨・src/__tests__/discordFormatter.test.ts > discordFormatter > extractTableFields > should extract fields from markdown table 1ms
+ 笨・src/__tests__/discordFormatter.test.ts > discordFormatter > extractTableFields > should return empty fields for text without tables 0ms
+ 笨・src/__tests__/discordFormatter.test.ts > discordFormatter > extractTableFields > should separate description from table 1ms
+ 笨・src/__tests__/discordFormatter.test.ts > discordFormatter > extractTableFields > should handle tables with 3+ columns 0ms
+ 笨・src/__tests__/discordFormatter.test.ts > discordFormatter > extractTableFields > should set inline to true for table fields 0ms
+ 笨・src/__tests__/discordFormatter.test.ts > discordFormatter > shouldAttachAsFile > should return false for short text 0ms
+ 笨・src/__tests__/discordFormatter.test.ts > discordFormatter > shouldAttachAsFile > should return true for text exceeding 6000 characters 0ms
+ 笨・src/__tests__/discordFormatter.test.ts > discordFormatter > shouldAttachAsFile > should return false for exactly 6000 characters 0ms
+ 笨・src/__tests__/discordFormatter.test.ts > discordFormatter > textToBuffer > should convert text to UTF-8 buffer 0ms
+ 笨・src/__tests__/discordFormatter.test.ts > discordFormatter > markdownToHtml > should wrap output in HTML document 1ms
+ 笨・src/__tests__/discordFormatter.test.ts > discordFormatter > markdownToHtml > should convert headings 0ms
+ 笨・src/__tests__/discordFormatter.test.ts > discordFormatter > markdownToHtml > should convert bold text 0ms
+ 笨・src/__tests__/discordFormatter.test.ts > discordFormatter > markdownToHtml > should convert code blocks 0ms
+ 笨・src/__tests__/discordFormatter.test.ts > discordFormatter > markdownToHtml > should convert inline code 0ms
+ 笨・src/__tests__/discordFormatter.test.ts > discordFormatter > markdownToHtml > should convert bullet lists 0ms
+ 笨・src/__tests__/discordFormatter.test.ts > discordFormatter > markdownToHtml > should convert horizontal rules 0ms
+ 笨・src/__tests__/discordFormatter.test.ts > discordFormatter > markdownToHtml > should escape HTML entities 0ms
+ 笨・src/__tests__/discordFormatter.test.ts > discordFormatter > getDisplayWidth > should return 1 per ASCII character 0ms
+ 笨・src/__tests__/discordFormatter.test.ts > discordFormatter > getDisplayWidth > should return 2 per CJK character 1ms
+ 笨・src/__tests__/discordFormatter.test.ts > discordFormatter > getDisplayWidth > should handle mixed content 0ms
+ 笨・src/__tests__/discordFormatter.test.ts > discordFormatter > getDisplayWidth > should return 0 for empty string 0ms
+ 笨・src/__tests__/discordFormatter.test.ts > discordFormatter > getDisplayWidth > should count hiragana as fullwidth 0ms
+ 笨・src/__tests__/discordFormatter.test.ts > discordFormatter > getDisplayWidth > should count katakana as fullwidth 0ms
+ 笨・src/__tests__/mdToJson.test.ts > markdownToJson > should convert H1 heading to top-level key 2ms
+ 笨・src/__tests__/mdToJson.test.ts > markdownToJson > should convert H2 heading to nested key under H1 0ms
+ 笨・src/__tests__/mdToJson.test.ts > markdownToJson > should convert unordered list to array 2ms
+ 笨・src/__tests__/mdToJson.test.ts > markdownToJson > should convert ordered list to array 1ms
+ 笨・src/__tests__/mdToJson.test.ts > markdownToJson > should parse JSON code block as object 0ms
+ 笨・src/__tests__/mdToJson.test.ts > markdownToJson > should preserve non-JSON code block as string 0ms
+ 笨・src/__tests__/mdToJson.test.ts > markdownToJson > should handle plain text as _text 0ms
+ 笨・src/__tests__/mdToJson.test.ts > markdownToJson > should return empty object for empty input 1ms
+ 笨・src/__tests__/mdToJson.test.ts > markdownToJson > should handle markdown without headings 0ms
+ 笨・src/__tests__/mdToJson.test.ts > markdownToJson > should correctly convert prompt_rules.md structure 1ms
+ 笨・src/__tests__/mdToJson.test.ts > markdownToJson > should produce valid JSON.stringify output 1ms
+ 笨・src/__tests__/memoryStore.test.ts > extractMemoryTags > should extract global memory tag 3ms
+ 笨・src/__tests__/memoryStore.test.ts > extractMemoryTags > should extract workspace memory tag 0ms
+ 笨・src/__tests__/memoryStore.test.ts > extractMemoryTags > should extract multiple tags (up to 3) 1ms
+ 笨・src/__tests__/memoryStore.test.ts > extractMemoryTags > should limit extraction to 3 entries 0ms
+ 笨・src/__tests__/memoryStore.test.ts > extractMemoryTags > should return empty array for text without tags 0ms
+ 笨・src/__tests__/memoryStore.test.ts > extractMemoryTags > should return empty array for empty string 0ms
+ 笨・src/__tests__/memoryStore.test.ts > extractMemoryTags > should handle tags with extra whitespace 0ms
+ 笨・src/__tests__/memoryStore.test.ts > stripMemoryTags > should remove global memory tags 0ms
+ 笨・src/__tests__/memoryStore.test.ts > stripMemoryTags > should remove workspace memory tags 0ms
+ 笨・src/__tests__/memoryStore.test.ts > stripMemoryTags > should remove multiple tags 0ms
+ 笨・src/__tests__/memoryStore.test.ts > stripMemoryTags > should return unchanged text when no tags present 0ms
+ 笨・src/__tests__/memoryStore.test.ts > stripMemoryTags > should handle empty string 0ms
+ 笨・src/__tests__/memoryStore.test.ts > archiveMemoryFile > should archive old entries beyond RECENT_COUNT (10) and RECENT_DAYS (7) 7ms
+ 笨・src/__tests__/memoryStore.test.ts > archiveMemoryFile > should keep entries within RECENT_DAYS (7) but fallback to safeguard if all are recent 4ms
+ 笨・src/__tests__/memoryStore.test.ts > archiveMemoryFile > should not archive when fewer than 2 entries 2ms
+ 笨・src/__tests__/memoryStore.test.ts > MAX_MEMORY_SIZE_BYTES > should be 50KB 0ms
+ 笨・src/__tests__/memorySummarizer.test.ts > memorySummarizer > splitMemoryContent > 繝倥ャ繝繝ｼ縺ｮ縺ｿ縺ｮ蝣ｴ蜷医・遨ｺ驟榊・繧定ｿ斐☆ 4ms
+ 笨・src/__tests__/memorySummarizer.test.ts > memorySummarizer > splitMemoryContent > 逶ｴ霑・莉ｶ莉･荳九・蝣ｴ蜷医・oldEntries縺檎ｩｺ 1ms
+ 笨・src/__tests__/memorySummarizer.test.ts > memorySummarizer > splitMemoryContent > 6莉ｶ縺ｮ蝣ｴ蜷医・莉ｶ縺経ld縲・莉ｶ縺罫ecent 1ms
+ 笨・src/__tests__/memorySummarizer.test.ts > memorySummarizer > splitMemoryContent > 10莉ｶ縺ｮ蝣ｴ蜷医・莉ｶ縺経ld縲・莉ｶ縺罫ecent 1ms
+ 笨・src/__tests__/memorySummarizer.test.ts > memorySummarizer > splitMemoryContent > 譌｢蟄倥・隕∫ｴ・そ繧ｯ繧ｷ繝ｧ繝ｳ繧呈ｭ｣縺励￥謚ｽ蜃ｺ縺吶ｋ 1ms
+ 笨・src/__tests__/memorySummarizer.test.ts > memorySummarizer > rebuildMemoryContent > 繝倥ャ繝繝ｼ + 隕∫ｴ・+ 繧ｨ繝ｳ繝医Μ繧呈ｭ｣縺励￥邨仙粋縺吶ｋ 1ms
+ 笨・src/__tests__/memorySummarizer.test.ts > memorySummarizer > rebuildMemoryContent > 繧ｨ繝ｳ繝医Μ縺檎ｩｺ縺ｧ繧よｭ｣縺励￥蜍穂ｽ懊☆繧・0ms
+ 笨・src/__tests__/memorySummarizer.test.ts > memorySummarizer > trySummarizeIfNeeded > 繧ｵ繧､繧ｺ縺碁明蛟､莉･荳九↑繧峨せ繧ｭ繝・・縺吶ｋ 1ms
+ 笨・src/__tests__/memorySummarizer.test.ts > memorySummarizer > trySummarizeIfNeeded > 繧ｵ繧､繧ｺ縺碁明蛟､雜・℃縺ｧ蜿､縺・お繝ｳ繝医Μ縺後≠繧後・Antigravity縺ｫ隕∫ｴ・ｒ萓晞ｼ縺吶ｋ 2ms
+ 笨・src/__tests__/memorySummarizer.test.ts > memorySummarizer > trySummarizeIfNeeded > 莠碁㍾螳溯｡後ｒ髦ｲ豁｢縺吶ｋ 1ms
+ 笨・src/__tests__/memorySummarizer.test.ts > memorySummarizer > trySummarizeIfNeeded > Antigravity 縺ｮ隕∫ｴ・′螟ｱ謨励＠縺ｦ繧ゅけ繝ｩ繝・す繝･縺励↑縺・2ms
+ 笨・src/__tests__/embedHelper.test.ts > embedHelper > EmbedColor > should have all expected color keys 2ms
+ 笨・src/__tests__/embedHelper.test.ts > embedHelper > EmbedColor > should have number values 0ms
+ 笨・src/__tests__/embedHelper.test.ts > embedHelper > buildEmbed > should create an EmbedBuilder with description and default color 1ms
+ 笨・src/__tests__/embedHelper.test.ts > embedHelper > buildEmbed > should use specified color 0ms
+ 笨・src/__tests__/embedHelper.test.ts > embedHelper > buildEmbed > should use zero-width space for empty description 0ms
+ 笨・src/__tests__/embedHelper.test.ts > embedHelper > buildEmbed > should normalize headings in description 0ms
+ 笨・src/__tests__/embedHelper.test.ts > embedHelper > normalizeHeadings > should convert #### to bold 0ms
+ 笨・src/__tests__/embedHelper.test.ts > embedHelper > normalizeHeadings > should convert ##### to bold 0ms
+ 笨・src/__tests__/embedHelper.test.ts > embedHelper > normalizeHeadings > should convert ###### to bold 0ms
+ 笨・src/__tests__/embedHelper.test.ts > embedHelper > normalizeHeadings > should not convert ### (Discord supports it) 0ms
+ 笨・src/__tests__/embedHelper.test.ts > embedHelper > normalizeHeadings > should not convert ## or # 0ms
+ 笨・src/__tests__/embedHelper.test.ts > embedHelper > normalizeHeadings > should handle multiple headings in text 0ms
+ 笨・src/__tests__/embedHelper.test.ts > embedHelper > normalizeHeadings > should not modify headings not at line start 0ms
+ 笨・src/__tests__/embedHelper.test.ts > embedHelper > normalizeHeadings > should return empty string for empty input 0ms
+ 笨・src/__tests__/embedHelper.test.ts > embedHelper > sanitizeErrorForDiscord > should return original message for safe content 1ms
+ 笨・src/__tests__/embedHelper.test.ts > embedHelper > sanitizeErrorForDiscord > should sanitize Windows file paths 1ms
+ 笨・src/__tests__/embedHelper.test.ts > embedHelper > sanitizeErrorForDiscord > should sanitize Unix file paths 0ms
+ 笨・src/__tests__/embedHelper.test.ts > embedHelper > sanitizeErrorForDiscord > should sanitize port numbers 0ms
+ 笨・src/__tests__/embedHelper.test.ts > embedHelper > sanitizeErrorForDiscord > should sanitize WebSocket URLs 0ms
+ 笨・src/__tests__/embedHelper.test.ts > embedHelper > sanitizeErrorForDiscord > should sanitize localhost URLs 0ms
+ 笨・src/__tests__/embedHelper.test.ts > embedHelper > sanitizeErrorForDiscord > should sanitize 127.0.0.1 URLs 0ms
+ 笨・src/__tests__/embedHelper.test.ts > embedHelper > sanitizeErrorForDiscord > should sanitize CDP mentions 0ms
+ 笨・src/__tests__/embedHelper.test.ts > embedHelper > sanitizeErrorForDiscord > should sanitize Chrome DevTools Protocol mentions 0ms
+ 笨・src/__tests__/embedHelper.test.ts > embedHelper > sanitizeErrorForDiscord > should handle empty string 0ms
+ 笨・src/__tests__/errors.test.ts > Custom Error Classes > BridgeError should be instanceof Error 2ms
+ 笨・src/__tests__/errors.test.ts > Custom Error Classes > CdpConnectionError should extend BridgeError 1ms
+ 笨・src/__tests__/errors.test.ts > Custom Error Classes > CdpCommandError should extend BridgeError 0ms
+ 笨・src/__tests__/errors.test.ts > Custom Error Classes > CdpTargetNotFoundError should have targetId 0ms
+ 笨・src/__tests__/errors.test.ts > Custom Error Classes > AntigravityLaunchError should extend BridgeError 0ms
+ 笨・src/__tests__/errors.test.ts > Custom Error Classes > CascadePanelError should extend BridgeError 0ms
+ 笨・src/__tests__/errors.test.ts > Custom Error Classes > errors should have proper stack traces 4ms
+ 笨・src/__tests__/suggestionButtons.test.ts > buildSuggestionContent > 遨ｺ驟榊・ 竊・繝・ヵ繧ｩ繝ｫ繝郁ｦ句・縺励・縺ｿ霑斐☆ 2ms
+ 笨・src/__tests__/suggestionButtons.test.ts > buildSuggestionContent > description 縺ｪ縺暦ｼ亥・繧｢繧､繝・Β・・竊・繝・ヵ繧ｩ繝ｫ繝郁ｦ句・縺励・縺ｿ霑斐☆ 0ms
+ 笨・src/__tests__/suggestionButtons.test.ts > buildSuggestionContent > description 縺ゅｊ・亥・繧｢繧､繝・Β・・竊・邨ｵ譁・ｭ嶺ｻ倥″繝ｪ繧ｹ繝医〒陦ｨ遉ｺ 0ms
+ 笨・src/__tests__/suggestionButtons.test.ts > buildSuggestionContent > description 豺ｷ蝨ｨ 竊・description 縺後↑縺・い繧､繝・Β縺ｯ label 繧偵ヵ繧ｩ繝ｼ繝ｫ繝舌ャ繧ｯ 0ms
+ 笨・src/__tests__/suggestionButtons.test.ts > buildSuggestionContent > 3蛟九ｒ雜・∴繧九い繧､繝・Β 竊・譛螟ｧ3蛟九∪縺ｧ陦ｨ遉ｺ 0ms
+ 笨・src/__tests__/suggestionButtons.test.ts > buildSuggestionContent > 1蛟九□縺・description 縺ゅｊ 竊・繝ｪ繧ｹ繝郁｡ｨ遉ｺ繝｢繝ｼ繝・0ms
+ 笨・src/__tests__/suggestionButtons.test.ts > buildSuggestionRow > 遨ｺ驟榊・ 竊・null 繧定ｿ斐☆ 0ms
+ 笨・src/__tests__/suggestionButtons.test.ts > buildSuggestionRow > 繧｢繧､繝・Β縺ゅｊ 竊・ActionRowBuilder 繧定ｿ斐☆ 0ms
+ 笨・src/__tests__/suggestionButtons.test.ts > storeSuggestions / getSuggestion > 菫晏ｭ倥＠縺滓署譯医ｒ蜿門ｾ励〒縺阪ｋ 1ms
+ 笨・src/__tests__/suggestionButtons.test.ts > storeSuggestions / getSuggestion > 蟄伜惠縺励↑縺・メ繝｣繝ｳ繝阪Ν 竊・null 0ms
+ 笨・src/__tests__/suggestionButtons.test.ts > storeSuggestions / getSuggestion > 遽・峇螟悶・繧､繝ｳ繝・ャ繧ｯ繧ｹ 竊・null 0ms
+ 笨・src/__tests__/suggestionButtons.test.ts > storeSuggestions / getSuggestion > 荳頑嶌縺・ 譁ｰ縺励＞謠先｡医′譚･繧九→蜿､縺・ｂ縺ｮ縺ｯ豸医∴繧・0ms
+ 笨・src/__tests__/suggestionButtons.test.ts > SUGGEST_BUTTON_PREFIX > 豁｣縺励＞繝励Ξ繝輔ぅ繝・け繧ｹ蛟､繧呈戟縺､ 0ms
+ 笨・src/__tests__/logger.test.ts > Logger > should output all levels at DEBUG 4ms
+ 笨・src/__tests__/logger.test.ts > Logger > should filter DEBUG when level is INFO 0ms
+ 笨・src/__tests__/logger.test.ts > Logger > should filter DEBUG and INFO when level is WARN 0ms
+ 笨・src/__tests__/logger.test.ts > Logger > should always output ERROR regardless of level 0ms
+ 笨・src/__tests__/logger.test.ts > Logger > should include error details when provided 0ms
+ 笨・src/__tests__/logger.test.ts > Logger > should include timestamps 0ms
+ 笨・src/__tests__/promptBuilder.test.ts > cronToPrefix > should return [5m] for */5 * * * * 3ms
+ 笨・src/__tests__/promptBuilder.test.ts > cronToPrefix > should return [10m] for */10 * * * * 0ms
+ 笨・src/__tests__/promptBuilder.test.ts > cronToPrefix > should return [1h] for 0 * * * * 0ms
+ 笨・src/__tests__/promptBuilder.test.ts > cronToPrefix > should return [2h] for 0 */2 * * * 0ms
+ 笨・src/__tests__/promptBuilder.test.ts > cronToPrefix > should return [daily] for 0 0 * * * 0ms
+ 笨・src/__tests__/promptBuilder.test.ts > cronToPrefix > should return [daily] for specific time 30 9 * * * 0ms
+ 笨・src/__tests__/promptBuilder.test.ts > cronToPrefix > should return [weekly] for 0 0 * * 1 0ms
+ 笨・src/__tests__/promptBuilder.test.ts > cronToPrefix > should return [monthly] for 0 0 1 * * 0ms
+ 笨・src/__tests__/promptBuilder.test.ts > cronToPrefix > should return [cron] for unrecognized patterns 0ms
+ 笨・src/__tests__/promptBuilder.test.ts > cronToPrefix > should return [cron] for invalid format 0ms
+ 笨・src/__tests__/promptBuilder.test.ts > cronToPrefix > should handle leading/trailing whitespace 1ms
+ 笨・src/__tests__/promptBuilder.test.ts > countChoiceItems > should return 0 for undefined input 0ms
+ 笨・src/__tests__/promptBuilder.test.ts > countChoiceItems > should return 0 for empty string 0ms
+ 笨・src/__tests__/promptBuilder.test.ts > countChoiceItems > should count number emojis 0ms
+ 笨・src/__tests__/promptBuilder.test.ts > countChoiceItems > should cap at 3 number emojis (4+ are ignored) 0ms
+ 笨・src/__tests__/promptBuilder.test.ts > countChoiceItems > should return 0 for text without number emojis 0ms
+ 笨・src/__tests__/promptBuilder.test.ts > countChoiceItems > should count only present emojis 0ms
+ 笨・src/__tests__/licenseWebview.test.ts > licenseWebview > getWebviewHtml > 豁｣縺励＞ HTML 讒矩繧堤函謌舌☆繧・2ms
+ 笨・src/__tests__/licenseWebview.test.ts > licenseWebview > getWebviewHtml > 雉ｼ蜈･ URL 縺・HTML 蜀・↓蝓九ａ霎ｼ縺ｾ繧後ｋ 0ms
+ 笨・src/__tests__/licenseWebview.test.ts > licenseWebview > getWebviewHtml > CSP 縺ｫ frame-src 縺悟性縺ｾ繧後↑縺・ｼ・frame 荳堺ｽｿ逕ｨ・・0ms
+ 笨・src/__tests__/licenseWebview.test.ts > licenseWebview > getWebviewHtml > Monthly 縺ｨ Lifetime 縺ｮ荳｡繝励Λ繝ｳ縺瑚｡ｨ遉ｺ縺輔ｌ繧・0ms
+ 笨・src/__tests__/licenseWebview.test.ts > licenseWebview > getWebviewHtml > 繝ｩ繧､繧ｻ繝ｳ繧ｹ繧ｭ繝ｼ蜈･蜉帙ヵ繧｣繝ｼ繝ｫ繝峨′蟄伜惠縺吶ｋ 0ms
+ 笨・src/__tests__/licenseWebview.test.ts > licenseWebview > getWebviewHtml > 繧ｹ繝・ャ繝励う繝ｳ繧ｸ繧ｱ繝ｼ繧ｿ繝ｼ縺悟ｭ伜惠縺吶ｋ 0ms
+ 笨・src/__tests__/licenseWebview.test.ts > licenseWebview > getWebviewHtml > acquireVsCodeApi 縺悟他縺ｰ繧後※縺・ｋ 0ms
+ 笨・src/__tests__/licenseWebview.test.ts > licenseWebview > getWebviewHtml > postMessage 縺ｧ繧ｭ繝ｼ讀懆ｨｼ繝｡繝・そ繝ｼ繧ｸ繧帝∽ｿ｡縺吶ｋ JavaScript 縺悟性縺ｾ繧後ｋ 0ms
+ 笨・src/__tests__/licenseWebview.test.ts > licenseWebview > getWebviewHtml > validationResult 繝｡繝・そ繝ｼ繧ｸ縺ｮ繝上Φ繝峨Λ縺悟性縺ｾ繧後ｋ 0ms
+ 笨・src/__tests__/licenseWebview.test.ts > licenseWebview > getWebviewHtml > Enter 繧ｭ繝ｼ繧､繝吶Φ繝医Μ繧ｹ繝翫・縺瑚ｨｭ螳壹＆繧後※縺・ｋ 0ms
+ 笨・src/__tests__/licenseWebview.test.ts > licenseWebview > getWebviewHtml > 繝繝ｼ繧ｯ邉ｻ繧ｫ繝ｩ繝ｼ縺御ｽｿ繧上ｌ縺ｦ縺・ｋ 0ms
+ 笨・src/__tests__/licenseWebview.test.ts > licenseWebview > getWebviewHtml > Pro 讖溯・繝ｪ繧ｹ繝医′陦ｨ遉ｺ縺輔ｌ繧・0ms
+ 笨・src/__tests__/licenseWebview.test.ts > licenseWebview > getWebviewHtml > 繝励Λ繝ｳ蛻･縺ｮ雉ｼ蜈･繝懊ち繝ｳ縺悟ｭ伜惠縺吶ｋ 2ms
+ 笨・src/__tests__/licenseWebview.test.ts > licenseWebview > getWebviewHtml > monthlyUrl / lifetimeUrl 縺梧欠螳壽凾縺ｫ菴ｿ逕ｨ縺輔ｌ繧・0ms
+ 笨・src/__tests__/licenseWebview.test.ts > licenseWebview > getWebviewHtml > monthlyUrl / lifetimeUrl 譛ｪ謖・ｮ壽凾縺ｯ purchaseUrl 縺ｫ繝輔か繝ｼ繝ｫ繝舌ャ繧ｯ 0ms
+ 笨・src/__tests__/accessControl.test.ts > accessControl > isDeveloper > should return true for registered developer ID 1ms
+ 笨・src/__tests__/accessControl.test.ts > accessControl > isDeveloper > should return false for non-developer ID 1ms
+ 笨・src/__tests__/accessControl.test.ts > accessControl > isDeveloper > should return false for empty string 0ms
+ 笨・src/__tests__/accessControl.test.ts > accessControl > isDeveloper > should return false for partial developer ID 0ms
+ 笨・src/__tests__/accessControl.test.ts > accessControl > isDeveloper > should return false for developer ID with extra characters 0ms
+ 笨・src/__tests__/accessControl.test.ts > accessControl > isDeveloper > should return false for undefined-like strings 0ms
+ 笨・src/__tests__/discordUtils.test.ts > snowflakeToTimestamp > should convert a known snowflake to correct timestamp 2ms
+ 笨・src/__tests__/discordUtils.test.ts > snowflakeToTimestamp > should extract timestamp from a real-ish snowflake 0ms
+ 笨・src/__tests__/discordUtils.test.ts > snowflakeToTimestamp > should handle large snowflake values 0ms
+ 笨・src/__tests__/discordUtils.test.ts > snowflakeToTimestamp > should return a number 0ms
+ 笨・src/__tests__/messageHandler.test.ts > messageHandler > getMessageQueueStatus > should return empty status initially 3ms
+ 笨・src/__tests__/messageHandler.test.ts > messageHandler > resetProcessingFlag > should reset all queue counts 0ms
+ 笨・src/__tests__/messageHandler.test.ts > messageHandler > cancelPlanGeneration > should not throw when nothing is in progress 1ms
+ 笨・src/__tests__/messageHandler.test.ts > messageHandler > cancelPlanGeneration > should clear processing statuses 0ms
+ 笨・src/__tests__/messageHandler.test.ts > messageHandler > enqueueMessage 窶・驥崎､・メ繧ｧ繝・け > should skip duplicate message IDs 3ms
+ 笨・src/__tests__/messageHandler.test.ts > messageHandler > handleDiscordMessage 窶・隱崎ｨｼ繝√ぉ繝・け > should reject unauthorized users 1ms
+ 笨・src/__tests__/messageHandler.test.ts > messageHandler > handleDiscordMessage 窶・隱崎ｨｼ繝√ぉ繝・け > should reject messages exceeding max length 1ms
+ 笨・src/__tests__/messageHandler.test.ts > messageHandler > handleDiscordMessage 窶・隱崎ｨｼ繝√ぉ繝・け > should skip empty messages without attachments 0ms
+ 笨・src/__tests__/messageHandler.test.ts > messageHandler > handleDiscordMessage 窶・Bridge 蛻晄悄蛹悶メ繧ｧ繝・け > should reject when fileIpc is missing 1ms
+ 笨・src/__tests__/messageHandler.test.ts > messageHandler > handleDiscordMessage 窶・Bridge 蛻晄悄蛹悶メ繧ｧ繝・け > should reject when planStore is missing 1ms
+ 笨・src/__tests__/messageHandler.test.ts > messageHandler > handleDiscordMessage 窶・Bridge 蛻晄悄蛹悶メ繧ｧ繝・け > should reject when cdp and executor are missing (non-pool mode) 1ms
+ 笨・src/__tests__/discordChannels.test.ts > discordChannels > WORKSPACE_CATEGORY_PREFIX > should be a non-empty string 2ms
+ 笨・src/__tests__/discordChannels.test.ts > discordChannels > workspaceCategoryName > should prepend prefix to workspace name 0ms
+ 笨・src/__tests__/discordChannels.test.ts > discordChannels > workspaceCategoryName > should handle empty workspace name 0ms
+ 笨・src/__tests__/discordChannels.test.ts > discordChannels > workspaceCategoryName > should handle workspace name with special characters 0ms
+ 笨・src/__tests__/discordChannels.test.ts > discordChannels > extractWorkspaceFromCategoryName > should extract workspace name from valid category name 0ms
+ 笨・src/__tests__/discordChannels.test.ts > discordChannels > extractWorkspaceFromCategoryName > should return null if prefix is missing 0ms
+ 笨・src/__tests__/discordChannels.test.ts > discordChannels > extractWorkspaceFromCategoryName > should return empty string if only prefix 0ms
+ 笨・src/__tests__/discordChannels.test.ts > discordChannels > extractWorkspaceFromCategoryName > should handle workspace names with spaces 0ms
+ 笨・src/__tests__/discordChannels.test.ts > discordChannels > resolveWorkspaceFromChannel > should return workspace name for channel in workspace category 0ms
+ 笨・src/__tests__/discordChannels.test.ts > discordChannels > resolveWorkspaceFromChannel > should return null for channel without parent 0ms
+ 笨・src/__tests__/discordChannels.test.ts > discordChannels > resolveWorkspaceFromChannel > should return null for channel in non-category parent 0ms
+ 笨・src/__tests__/discordChannels.test.ts > discordChannels > resolveWorkspaceFromChannel > should return null for channel in non-workspace category 0ms
+
+竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ Failed Tests 3 竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ
+
+ FAIL  src/__tests__/fileIpc.test.ts > FileIpc instance methods > registerActiveRequest / unregisterActiveRequest > should protect registered request files from cleanupOldFiles
+AssertionError: expected true to be false // Object.is equality
+
+- Expected
++ Received
+
+- false
++ true
+
+ 笶ｯ src/__tests__/fileIpc.test.ts:361:49
+    359| 
+    360|             expect(fs.existsSync(progressFile)).toBe(false);
+    361|             expect(fs.existsSync(responseFile)).toBe(false);
+       |                                                 ^
+    362|         });
+    363|     });
+
+竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ[1/3]竡ｯ
+
+ FAIL  src/__tests__/fileIpc.test.ts > FileIpc instance methods > cleanupOldFiles thresholds > should delete response files only after 10 minutes
+AssertionError: expected true to be false // Object.is equality
+
+- Expected
++ Received
+
+- false
++ true
+
+ 笶ｯ src/__tests__/fileIpc.test.ts:382:48
+    380| 
+    381|             expect(fs.existsSync(recentResponse)).toBe(true);  // 7蛻・<窶ｦ
+    382|             expect(fs.existsSync(oldResponse)).toBe(false);     // 15蛻・ｦ
+       |                                                ^
+    383|         });
+    384| 
+
+竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ[2/3]竡ｯ
+
+ FAIL  src/__tests__/fileIpc.test.ts > FileIpc instance methods > cleanupOldFiles thresholds > should delete tmp files after 30 seconds
+AssertionError: expected true to be false // Object.is equality
+
+- Expected
++ Received
+
+- false
++ true
+
+ 笶ｯ src/__tests__/fileIpc.test.ts:404:44
+    402|             await ipc.cleanupOldFiles();
+    403| 
+    404|             expect(fs.existsSync(tmpFile)).toBe(false);
+       |                                            ^
+    405|         });
+    406|     });
+
+竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ[3/3]竡ｯ
 
 
-[1m[46m RUN [49m[22m [36mv4.0.18 [39m[90mC:/Users/ysk41/dev/anti-crow[39m
-
- [32m笨・[39m src/__tests__/logger.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 7[2mms[22m[39m
- [32m笨・[39m src/__tests__/errors.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 9[2mms[22m[39m
- [31m笶ｯ[39m src/__tests__/promptBuilder.test.ts [2m([22m[2m17 tests[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 14[2mms[22m[39m
-     [32m笨・[39m should return [5m] for */5 * * * *[32m 2[2mms[22m[39m
-     [32m笨・[39m should return [10m] for */10 * * * *[32m 0[2mms[22m[39m
-     [32m笨・[39m should return [1h] for 0 * * * *[32m 0[2mms[22m[39m
-     [32m笨・[39m should return [2h] for 0 */2 * * *[32m 0[2mms[22m[39m
-     [32m笨・[39m should return [daily] for 0 0 * * *[32m 0[2mms[22m[39m
-     [32m笨・[39m should return [daily] for specific time 30 9 * * *[32m 0[2mms[22m[39m
-     [32m笨・[39m should return [weekly] for 0 0 * * 1[32m 0[2mms[22m[39m
-     [32m笨・[39m should return [monthly] for 0 0 1 * *[32m 0[2mms[22m[39m
-     [32m笨・[39m should return [cron] for unrecognized patterns[32m 0[2mms[22m[39m
-     [32m笨・[39m should return [cron] for invalid format[32m 0[2mms[22m[39m
-[31m     [31mﾃ・[31m should handle extra whitespace[39m[32m 8[2mms[22m[39m
-     [32m笨・[39m should return 0 for undefined input[32m 0[2mms[22m[39m
-     [32m笨・[39m should return 0 for empty string[32m 0[2mms[22m[39m
-     [32m笨・[39m should count number emojis[32m 0[2mms[22m[39m
-     [32m笨・[39m should count all 10 number emojis[32m 0[2mms[22m[39m
-     [32m笨・[39m should return 0 for text without number emojis[32m 0[2mms[22m[39m
-     [32m笨・[39m should count only present emojis[32m 0[2mms[22m[39m
- [32m笨・[39m src/__tests__/discordUtils.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 4[2mms[22m[39m
- [32m笨・[39m src/__tests__/discordFormatter.test.ts [2m([22m[2m15 tests[22m[2m)[22m[32m 10[2mms[22m[39m
- [32m笨・[39m src/__tests__/planParser.test.ts [2m([22m[2m15 tests[22m[2m)[22m[32m 9[2mms[22m[39m
-
-竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ Failed Tests 1 竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ
-
- FAIL  src/__tests__/promptBuilder.test.ts > cronToPrefix > should handle extra whitespace
-AssertionError: expected '[5m]' to be '[cron]' // Object.is equality
-
-Expected: "[cron]"
-Received: "[5m]"
-
- 笶ｯ src/__tests__/promptBuilder.test.ts:65:53
-     63| 
-     64|     it('should handle extra whitespace', () => {
-     65|         expect(cronToPrefix('  */5  *  *  *  *  ')).toBe('[cron]'); //窶ｦ
-       |                                                     ^
-     66|     });
-     67| });
-
-竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ竡ｯ[1/1]竡ｯ
-
-
-[2m Test Files [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m5 passed[39m[22m[90m (6)[39m
-[2m      Tests [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m63 passed[39m[22m[90m (64)[39m
-[2m   Start at [22m 21:43:10
-[2m   Duration [22m 660ms[2m (transform 1.09s, setup 0ms, import 1.32s, tests 53ms, environment 1ms)[22m
+ Test Files  1 failed | 22 passed (23)
+      Tests  3 failed | 379 passed (382)
+   Start at  11:31:29
+   Duration  3.34s (transform 3.44s, setup 0ms, import 6.69s, tests 1.22s, environment 5ms)
 
