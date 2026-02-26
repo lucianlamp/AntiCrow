@@ -34,7 +34,8 @@ import { getConfig, getResponseTimeout, getTimezone, getArchiveDays, getWorkspac
 import { archiveOldCategories } from './categoryArchiver';
 import { getLicenseGate, getLicenseChecker } from './extension';
 import type { LicenseType } from './licensing';
-import { setSummarizeOps } from './memoryStore';
+import { setSummarizeOps, stripMemoryTags } from './memoryStore';
+import { stripSuggestionTags } from './suggestionParser';
 import * as fs from 'fs';
 
 /** ワークスペース名としてカテゴリ作成すべきでない名前を判定する */
@@ -104,9 +105,10 @@ async function redeliverStaleResponses(
                         text = FileIpc.extractResult(sr.content);
                     }
 
-                    // 再送メッセージにヘッダー付与
+                    // 再送メッセージにヘッダー付与（MEMORY/SUGGESTIONS タグは除去）
                     const header = '⚠️ **前回のセッションで未配信だったレスポンスを再送します:**\\n\\n';
-                    await ctx.bot.sendToChannel(targetChannelId, header + text, 0xFFA500);
+                    const cleanedText = stripSuggestionTags(stripMemoryTags(text));
+                    await ctx.bot.sendToChannel(targetChannelId, header + cleanedText, 0xFFA500);
                     logDebug(`Bridge: stale response re-delivered — requestId=${sr.requestId}, channelId=${targetChannelId} (source=${source}, workspace=${wsName ?? 'none'})`);
                 } else {
                     logWarn(`Bridge: stale response skipped — cannot determine target channel (requestId=${sr.requestId}, workspace=${wsName ?? 'none'}). Cleaning up to prevent re-delivery.`);

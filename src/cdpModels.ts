@@ -171,8 +171,11 @@ const FIND_MODEL_BUTTON = `
                 // 戦略3: モードキーワード（Planning, Fast 等）でないボタンを選択
                 if (!modelBtn) {
                     var MODE_KEYWORDS = ['planning', 'fast', 'normal', 'agent', 'ask', 'edit', 'chat'];
+                    var UI_KEYWORDS = ['閉じる', 'close', 'その他の操作', '次に進む', '前に戻る', 'エディター', 'editor', 'コミット', 'commit', '破棄', 'discard', '受け入れる', 'accept', 'pencil', '分割', 'split', '検索', 'search', '置換', 'replace', '保存', 'save', '実行', 'run', 'debug', 'undo', 'redo', '元に戻す', 'やり直し', 'toggle', 'view', 'open', 'explorer', 'terminal', 'problems', 'output', 'extension'];
                     for (var ni = 0; ni < allBtns.length; ni++) {
                         var btnLower = allBtns[ni].text.toLowerCase();
+                        // テキスト長が40文字超はUI操作系と判定し除外
+                        if (allBtns[ni].text.length > 40) continue;
                         var isMode = false;
                         for (var mk = 0; mk < MODE_KEYWORDS.length; mk++) {
                             if (btnLower === MODE_KEYWORDS[mk] || btnLower.indexOf(MODE_KEYWORDS[mk]) >= 0) {
@@ -180,7 +183,15 @@ const FIND_MODEL_BUTTON = `
                                 break;
                             }
                         }
-                        if (!isMode && allBtns[ni].text.length > 2) {
+                        if (isMode) continue;
+                        var isUI = false;
+                        for (var uk = 0; uk < UI_KEYWORDS.length; uk++) {
+                            if (btnLower.indexOf(UI_KEYWORDS[uk]) >= 0) {
+                                isUI = true;
+                                break;
+                            }
+                        }
+                        if (!isUI && allBtns[ni].text.length > 2) {
                             modelBtn = allBtns[ni].el;
                             _findDebug.matchMethod = 'not-mode';
                             break;

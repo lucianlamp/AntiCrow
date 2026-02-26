@@ -65,6 +65,8 @@ function resolveTargetCdp(
 }
 
 async function handleStatus(ctx: BridgeContext, interaction: ChatInputCommandInteraction): Promise<void> {
+    await interaction.deferReply();
+
     const { cdp, wsKey } = resolveTargetCdp(ctx, interaction);
     const { bot, scheduler, executor } = ctx;
     const cdpOk = cdp ? await cdp.testConnection() : false;
@@ -85,17 +87,73 @@ async function handleStatus(ctx: BridgeContext, interaction: ChatInputCommandInt
         queueDisplay = `${parts.join(' / ')} ${isRunning ? '(実行中)' : ''}`;
     }
 
+    // モデル・モード・クォータ情報を取得（CDP 接続時のみ）
+    let modelDisplay = '取得不可';
+    let modeDisplay = '取得不可';
+    let quotaDisplay = '';
+
+    if (cdpOk && cdp) {
+        try {
+            const [modelName, modeName] = await Promise.all([
+                getCurrentModel(cdp.ops).catch(() => null),
+                getCurrentMode(cdp.ops).catch(() => null),
+            ]);
+            // UIボタン名の誤検出を防ぐバリデーション
+            const isValidName = (name: string | null): boolean => {
+                if (!name || name.length < 2) return false;
+                const lower = name.toLowerCase();
+                // キーボードショートカットを含む文字列は除外
+                if (/ctrl\+|alt\+|shift\+/.test(lower)) return false;
+                // 既知のUIボタン名を除外
+                const uiPatterns = ['閉じる', 'close', 'その他の操作', '次に進む', '前に戻る',
+                    'エディター', 'editor', 'コミット', 'commit', '破棄', 'discard',
+                    '受け入れる', 'accept', '分割', 'split', '検索', 'search',
+                    '置換', 'replace', '保存', 'save', '実行', 'run', 'debug',
+                    'undo', 'redo', '元に戻す', 'やり直し', 'toggle', 'explorer',
+                    'terminal', 'problems', 'output'];
+                for (const p of uiPatterns) {
+                    if (lower.includes(p)) return false;
+                }
+                return true;
+            };
+            if (isValidName(modelName)) { modelDisplay = modelName!; }
+            if (isValidName(modeName)) { modeDisplay = modeName!; }
+        } catch (e) {
+            logWarn(`handleStatus: model/mode fetch failed: ${e instanceof Error ? e.message : e}`);
+        }
+    }
+
+    // クォータ情報取得（CDP 不要）
+    try {
+        const quotaData = await fetchQuota();
+        if (quotaData && quotaData.models.length > 0) {
+            // 残量が少ない順にソートして上位3つを表示
+            const sorted = [...quotaData.models].sort((a, b) => a.remainingPercentage - b.remainingPercentage);
+            const top = sorted.slice(0, 3);
+            const quotaEmoji = (pct: number) => pct <= 0 ? '🔴' : pct <= 20 ? '🟠' : pct <= 50 ? '🟡' : '🟢';
+            quotaDisplay = top.map(q => `${quotaEmoji(q.remainingPercentage)} ${q.displayName}: ${q.remainingPercentage}%`).join(' / ');
+        }
+    } catch {
+        // クォータ取得失敗は無視
+    }
+
     const wsLabel = wsKey ? ` (${wsKey})` : '';
-    const statusMsg = [
+    const lines = [
         `📊 **AntiCrow 状態**${wsLabel}`,
         `- Discord Bot: ${botOk ? '🟢 オンライン' : '🔴 オフライン'}`,
         `- Antigravity 接続: ${cdpOk ? '🟢 接続済み' : '🔴 未接続'}`,
         `- アクティブターゲット: ${activeTarget}`,
+        `- 🤖 モデル: ${modelDisplay}`,
+        `- 🎛️ モード: ${modeDisplay}`,
         `- スケジュール中: ${scheduledIds.length}件`,
         `- キュー: ${queueDisplay}`,
-    ].join('\n');
+    ];
 
-    await interaction.reply({ embeds: [buildEmbed(statusMsg, EmbedColor.Info)] });
+    if (quotaDisplay) {
+        lines.push(`- 📊 クォータ: ${quotaDisplay}`);
+    }
+
+    await interaction.editReply({ embeds: [buildEmbed(lines.join('\n'), EmbedColor.Info)] });
 }
 
 async function handleSchedules(ctx: BridgeContext, interaction: ChatInputCommandInteraction): Promise<void> {
