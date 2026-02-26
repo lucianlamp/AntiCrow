@@ -96,3 +96,7 @@
 
 ### 2026-02-26
 [2026-02-26] IPC tmp ファイル削除問題の修正: activeRequests ガードは req_* プレフィックスでのみマッチし、tmp_* ファイルは保護されていなかった。protectedFiles セットを新設し、registerActiveRequest() に associatedFiles 引数を追加して tmp ファイルを明示的に保護。cleanupOldFiles と cleanupTmpFiles の両方で protectedFiles チェックを追加。tmp_* 閾値を 2分→5分に引き上げ。今後 cleanupOldFiles に新しいファイル種別を追加する際は、protectedFiles チェックが適用されることを確認すること。
+
+
+### 2026-02-26
+[2026-02-26] handleCancel の wsKey=null フォールバック修正: forceStopAll() による全WS巻き添え停止を廃止。Pool サイズ1なら自動解決、複数WS時は対象特定不能エラーを返す安全なフォールバックに変更。wsKey が null になるのはチャンネルにカテゴリーがないか、カテゴリー名に WORKSPACE_CATEGORY_PREFIX がない場合。
