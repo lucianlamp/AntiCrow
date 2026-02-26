@@ -99,7 +99,7 @@ async function detectWindowsByProcessName(): Promise<ProcessInfo | null> {
     const cmd = `chcp 65001 >nul && powershell -NoProfile -Command "${utf8Header}Get-CimInstance Win32_Process -Filter 'name=''${processName}''' | Select-Object ProcessId,CommandLine | ConvertTo-Json"`;
 
     try {
-        const { stdout } = await execAsync(cmd, { timeout: PROCESS_CMD_TIMEOUT_MS });
+        const { stdout } = await execAsync(cmd, { timeout: PROCESS_CMD_TIMEOUT_MS, windowsHide: true });
         logDebug(`detectWindowsByProcessName: stdout length=${stdout?.length || 0}`);
         if (!stdout || !stdout.trim()) {
             logDebug('detectWindowsByProcessName: no process found by name');
@@ -117,7 +117,7 @@ async function detectWindowsByKeyword(): Promise<ProcessInfo | null> {
     const cmd = `chcp 65001 >nul && powershell -NoProfile -Command "${utf8Header}Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match 'csrf_token' } | Select-Object ProcessId,Name,CommandLine | ConvertTo-Json"`;
 
     try {
-        const { stdout } = await execAsync(cmd, { timeout: PROCESS_CMD_TIMEOUT_MS });
+        const { stdout } = await execAsync(cmd, { timeout: PROCESS_CMD_TIMEOUT_MS, windowsHide: true });
         logDebug(`detectWindowsByKeyword: stdout length=${stdout?.length || 0}`);
         if (!stdout || !stdout.trim()) {
             logDebug('detectWindowsByKeyword: no process found by keyword');
@@ -175,7 +175,7 @@ async function detectUnix(): Promise<ProcessInfo | null> {
     const safeName = processName.replace(/[^a-zA-Z0-9._-]/g, '');
     const cmd = `ps -ww -eo pid,args | grep "${safeName}" | grep -v grep`;
 
-    const { stdout } = await execAsync(cmd, { timeout: PROCESS_CMD_TIMEOUT_MS });
+    const { stdout } = await execAsync(cmd, { timeout: PROCESS_CMD_TIMEOUT_MS, windowsHide: true });
     if (!stdout || !stdout.trim()) { return null; }
 
     const lines = stdout.split('\n').filter(l => l.trim());
@@ -248,7 +248,7 @@ async function getListeningPorts(pid: number): Promise<number[]> {
             cmd = `ss -tlnp 2>/dev/null | grep "pid=${pid},"`;
         }
 
-        const { stdout } = await execAsync(cmd, { timeout: PROCESS_CMD_TIMEOUT_MS });
+        const { stdout } = await execAsync(cmd, { timeout: PROCESS_CMD_TIMEOUT_MS, windowsHide: true });
         if (!stdout) { return []; }
 
         const ports: number[] = [];

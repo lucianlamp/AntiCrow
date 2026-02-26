@@ -45,45 +45,41 @@ export function createDesktopShortcut(extensionPath: string): void {
         return;
     }
 
-    const scriptPath = path.join(extensionPath, 'scripts', 'anticrow.ps1');
-    const desktopPath = path.join(process.env.USERPROFILE || '', 'Desktop');
-    const shortcutPath = path.join(desktopPath, 'AntiCrow.lnk');
-    // VSIX パッケージに同梱済みの ICO ファイルを使用
+    const antigravityExe = path.join(
+        process.env.LOCALAPPDATA || '',
+        'Programs', 'antigravity', 'Antigravity.exe',
+    );
     const iconIco = path.join(extensionPath, 'images', 'AntiCrowIcon.ico');
 
-    // CDP 固定ポートを設定から取得
-    let cdpPortArg = '';
+    // CDP 固定ポートを設定から取得（デフォルト 9333）
+    let cdpPort = 9333;
     try {
         const vsc = require('vscode') as typeof import('vscode');
-        const cdpPort = vsc.workspace.getConfiguration('antiCrow').get<number>('cdpPort') ?? 9333;
-        if (cdpPort > 0) {
-            cdpPortArg = ` -CdpPort ${cdpPort}`;
-        }
+        cdpPort = vsc.workspace.getConfiguration('antiCrow').get<number>('cdpPort') ?? 9333;
     } catch { /* テスト環境では vscode が読めない場合がある */ }
 
     // PowerShell で WScript.Shell COM 経由で .lnk を作成
-    const escShortcut = shortcutPath.replace(/'/g, "''");
-    const escWorkDir = path.dirname(scriptPath).replace(/'/g, "''");
-    const escIco = iconIco.replace(/'/g, "''");
+    // OneDrive リダイレクト環境でも正しくデスクトップパスを取得するため
+    // [Environment]::GetFolderPath('Desktop') を使用
     const psScript = [
-        '$ws = New-Object -ComObject WScript.Shell;',
-        `$sc = $ws.CreateShortcut('${escShortcut}');`,
-        "$sc.TargetPath = 'powershell.exe';",
-        `$sc.Arguments = '-ExecutionPolicy Bypass -WindowStyle Hidden -File "${scriptPath.replace(/"/g, '`"')}"${cdpPortArg}';`,
-        `$sc.WorkingDirectory = '${escWorkDir}';`,
-        "$sc.Description = 'AntiCrow — Discord to Antigravity bridge';",
-        `$icoPath = '${escIco}';`,
-        "$antigravityExe = Join-Path $env:LOCALAPPDATA 'Programs\\\\antigravity\\\\Antigravity.exe';",
-        'if (Test-Path $icoPath) { $sc.IconLocation = $icoPath }',
-        'elseif (Test-Path $antigravityExe) { $sc.IconLocation = $antigravityExe };',
-        '$sc.WindowStyle = 7;',
-        '$sc.Save();',
-    ].join(' ');
+        `$desktop = [Environment]::GetFolderPath('Desktop')`,
+        `$lnkPath = Join-Path $desktop 'AntiCrow.lnk'`,
+        `$ws = New-Object -ComObject WScript.Shell`,
+        `$sc = $ws.CreateShortcut($lnkPath)`,
+        `$sc.TargetPath = '${antigravityExe.replace(/'/g, "''")}'`,
+        `$sc.Arguments = '--remote-debugging-port=${cdpPort}'`,
+        `$sc.Description = 'AntiCrow — Launch Antigravity with CDP'`,
+        `$ico = '${iconIco.replace(/'/g, "''")}'`,
+        `if (Test-Path $ico) { $sc.IconLocation = $ico }`,
+        `$sc.Save()`,
+    ].join('; ');
 
-    execSync(`powershell.exe -NoProfile -Command "${psScript}"`, {
+    const encoded = Buffer.from(psScript, 'utf16le').toString('base64');
+
+    execSync(`powershell.exe -NoProfile -EncodedCommand ${encoded}`, {
         timeout: 10000,
         windowsHide: true,
     });
 
-    logDebug(`shortcutInstaller: created desktop shortcut at ${shortcutPath}`);
+    logDebug('shortcutInstaller: created desktop shortcut on Desktop');
 }
