@@ -73,6 +73,11 @@
         "command": "anti-crow.licenseLogout",
         "title": "License Logout",
         "category": "AntiCrow"
+      },
+      {
+        "command": "anti-crow.toggleAutoAccept",
+        "title": "Toggle Auto Accept",
+        "category": "AntiCrow"
       }
     ],
     "configuration": {
@@ -109,7 +114,22 @@
         "antiCrow.autoAccept": {
           "type": "boolean",
           "default": false,
-          "description": "自動承認（Continue / Allow / 提案承認など）を有効にする。ANTICROW 経由のジョブ実行中のみ動作します。手動操作時は自動承認されません。"
+          "description": "自動承認（Run / Allow / Continue 等）を有効にする。ステータスバーのボタンでもトグル可能です。"
+        },
+        "antiCrow.commandBlacklist": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "rm",
+            "rm -rf",
+            "del",
+            "rmdir",
+            "format",
+            "mkfs"
+          ],
+          "description": "自動承認しないコマンドのブラックリスト。コマンド行の先頭に一致した場合、自動承認をスキップします。"
         },
         "antiCrow.maxRetries": {
           "type": "number",

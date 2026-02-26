@@ -30,6 +30,7 @@ export interface BridgeContext {
     globalStoragePath: string;
     extensionPath: string;
     statusBarItem: vscode.StatusBarItem;
+    autoAcceptStatusBarItem: vscode.StatusBarItem | null;
     lockWatchTimer: NodeJS.Timeout | null;
     categoryWatchTimer: NodeJS.Timeout | null;
     autoAcceptWatcherTimer: NodeJS.Timeout | null;

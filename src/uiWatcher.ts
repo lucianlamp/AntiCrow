@@ -60,11 +60,9 @@ export class UIWatcher {
             // Pro 限定: Free プランでは autoAccept を無効化
             if (!this.isProCheck()) { return; }
 
-            // ANTICROW 経由のジョブ実行中のみ自動承認を行う
-            if (!this.isProcessing()) {
-                logInfo('UIWatcher: skipping — not processing');
-                return;
-            }
+            // autoAccept がオンかつ Pro ライセンスであれば、
+            // AntiCrow 経由のジョブ実行中かに関わらず常に自動承認を実行する。
+            // （ユーザーが Antigravity に直接入力した場合も自動承認が動作する）
 
             // =================================================================
             // 統合処理: autoFollowOutput

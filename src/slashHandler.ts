@@ -439,10 +439,13 @@ export async function handleButtonInteraction(
             const resultEmbed = buildModeSwitchResultEmbed(modeName, success);
 
             if (success) {
-                // 切替後にリストを更新
-                await cdp.ops.sleep(500);
+                // 切替後にリストを更新（UI反映を待つため長めに待機）
+                await cdp.ops.sleep(1000);
                 const { modes, current } = await getAvailableModes(cdp.ops);
-                const { embeds, components } = buildModeListEmbed(modes, current);
+                // selectMode 成功時は選択したモード名を current として使用
+                // （getAvailableModes がボタンテキスト読み取り時に UI 未反映の場合があるため）
+                const effectiveCurrent = current || modeName;
+                const { embeds, components } = buildModeListEmbed(modes, effectiveCurrent);
                 await interaction.editReply({ embeds, components: components as any });
             } else {
                 await interaction.followUp({ embeds: [resultEmbed], ephemeral: true });

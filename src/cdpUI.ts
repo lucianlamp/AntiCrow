@@ -5,6 +5,7 @@
 // 要素クリック・存在確認・待機を行う。
 // ---------------------------------------------------------------------------
 
+import * as vscode from 'vscode';
 import { logDebug, logInfo } from './logger';
 import { ClickOptions, ClickResult } from './types';
 import { CdpBridgeOps } from './cdpHistory';
@@ -589,6 +590,79 @@ export async function autoApprove(
 ): Promise<{ clicked: number }> {
     let totalClicked = 0;
     logInfo('CDP: autoApprove — tick');
+
+    // ブラックリスト取得
+    const blacklist: string[] = vscode.workspace.getConfiguration('antiCrow')
+        .get<string[]>('commandBlacklist') ?? [];
+    const blacklistLower = blacklist.map(b => b.toLowerCase().trim());
+
+    // ブラックリストチェック: ダイアログに表示されているコマンドがブラックリストに該当するか確認
+    if (blacklistLower.length > 0) {
+        try {
+            const checkBlacklistScript = `
+(function() {
+    var BLACKLIST = ${JSON.stringify(blacklistLower)};
+
+    function findAllInTree(root, predicate) {
+        if (!root) return [];
+        var matches = [];
+        var ownerDoc = root.ownerDocument || root;
+        if (root.nodeType === 1 && predicate(root)) matches.push(root);
+        var walker = (ownerDoc.createTreeWalker || document.createTreeWalker).call(ownerDoc, root, 1, null, false);
+        var el;
+        while ((el = walker.nextNode())) {
+            if (predicate(el)) matches.push(el);
+            if (el.shadowRoot) {
+                matches = matches.concat(findAllInTree(el.shadowRoot, predicate));
+            }
+        }
+        return matches;
+    }
+
+    // "Run command?" ダイアログ内のコマンドテキストを探す
+    // コマンドは通常 <code> や pre 要素内、または monospace フォントのテキストとして表示される
+    var codeElements = findAllInTree(document, function(el) {
+        var tag = el.tagName;
+        return tag === 'CODE' || tag === 'PRE' || tag === 'SPAN';
+    });
+
+    for (var i = 0; i < codeElements.length; i++) {
+        var cmdText = (codeElements[i].textContent || '').trim().toLowerCase();
+        if (cmdText.length === 0 || cmdText.length > 500) continue;
+
+        // コマンド行の先頭トークンでマッチング
+        var tokens = cmdText.split(/\\s+/);
+        var firstToken = tokens[0] || '';
+
+        for (var b = 0; b < BLACKLIST.length; b++) {
+            var blEntry = BLACKLIST[b];
+            var blTokens = blEntry.split(/\\s+/);
+            // 先頭から blTokens の数だけ一致するかチェック
+            var match = true;
+            for (var t = 0; t < blTokens.length; t++) {
+                if (t >= tokens.length || tokens[t] !== blTokens[t]) {
+                    match = false;
+                    break;
+                }
+            }
+            if (match) {
+                return { blocked: true, command: cmdText.substring(0, 80), rule: blEntry };
+            }
+        }
+    }
+    return { blocked: false };
+})()
+            `.trim();
+
+            const result = await ops.conn.evaluate(checkBlacklistScript) as { blocked: boolean; command?: string; rule?: string } | null;
+            if (result?.blocked) {
+                logInfo(`CDP: autoApprove — BLOCKED by blacklist: command="${result.command}", rule="${result.rule}"`);
+                return { clicked: 0 };
+            }
+        } catch (e) {
+            logDebug(`CDP: autoApprove — blacklist check failed: ${e instanceof Error ? e.message : e}`);
+        }
+    }
 
     // =================================================================
     // 第1層: VSCode コマンドによる自動承認（メインフレームで実行）

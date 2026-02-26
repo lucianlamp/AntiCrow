@@ -22,7 +22,18 @@ import { logDebug, logWarn } from './logger';
 
 const FIND_MODEL_BUTTON = `
     var modelBtn = null;
-    var _findDebug = { textboxFound: false, levelsSearched: 0, siblingsChecked: 0, fallbackUsed: false, buttonsFound: 0, allBtnTexts: [], inIframe: false };
+    var _findDebug = { textboxFound: false, levelsSearched: 0, siblingsChecked: 0, fallbackUsed: false, buttonsFound: 0, allBtnTexts: [], inIframe: false, matchMethod: '' };
+
+    // モデル名キーワード — ボタンテキストにこれらが含まれていればモデルボタン
+    var MODEL_KEYWORDS = ['claude', 'gemini', 'gpt', 'o1-', 'o3-', 'o4-', 'sonnet', 'haiku', 'opus', 'deepseek', 'llama'];
+
+    function isModelText(text) {
+        var lower = text.toLowerCase();
+        for (var ki = 0; ki < MODEL_KEYWORDS.length; ki++) {
+            if (lower.indexOf(MODEL_KEYWORDS[ki]) >= 0) return true;
+        }
+        return false;
+    }
 
     // getTargetDoc: メインフレームから実行されても cascade iframe 内の document を取得
     function getTargetDoc() {
@@ -92,14 +103,31 @@ const FIND_MODEL_BUTTON = `
         _findDebug.textboxFound = true;
         var container = textbox.parentElement;
 
-        // primary: textbox 兄弟方向(後方)で button/vscode-button/role=button を探す
         for (var d = 0; d < 5; d++) {
             if (!container) break;
             _findDebug.levelsSearched = d + 1;
 
             var allBtns = [];
 
-            var sibling = container.nextElementSibling;
+            // 兄弟要素(前方)を探索
+            var sibling = container.previousElementSibling;
+            while (sibling) {
+                _findDebug.siblingsChecked++;
+                var btns2 = findAllInTree(sibling, function(el) {
+                    var tag = el.tagName.toLowerCase();
+                    return tag === 'button' || tag === 'vscode-button' || el.getAttribute('role') === 'button';
+                });
+                for (var b2 = 0; b2 < btns2.length; b2++) {
+                    var btnText2 = getBtnText(btns2[b2]);
+                    if (btnText2.length > 0) {
+                        allBtns.unshift({ el: btns2[b2], text: btnText2 });
+                    }
+                }
+                sibling = sibling.previousElementSibling;
+            }
+
+            // 兄弟要素(後方)を探索
+            sibling = container.nextElementSibling;
             while (sibling) {
                 _findDebug.siblingsChecked++;
                 var btns = findAllInTree(sibling, function(el) {
@@ -113,36 +141,59 @@ const FIND_MODEL_BUTTON = `
                         allBtns.push({ el: btns[b], text: btnText });
                     }
                 }
-                if (allBtns.length > 0) break;
                 sibling = sibling.nextElementSibling;
-            }
-
-            // フォールバック: previousElementSibling 方向も探す
-            if (allBtns.length === 0) {
-                _findDebug.fallbackUsed = true;
-                sibling = container.previousElementSibling;
-                while (sibling) {
-                    _findDebug.siblingsChecked++;
-                    var btns2 = findAllInTree(sibling, function(el) {
-                        var tag = el.tagName.toLowerCase();
-                        return tag === 'button' || tag === 'vscode-button' || el.getAttribute('role') === 'button';
-                    });
-                    _findDebug.buttonsFound += btns2.length;
-                    for (var b2 = 0; b2 < btns2.length; b2++) {
-                        var btnText2 = getBtnText(btns2[b2]);
-                        if (btnText2.length > 0) {
-                            allBtns.push({ el: btns2[b2], text: btnText2 });
-                        }
-                    }
-                    if (allBtns.length > 0) break;
-                    sibling = sibling.previousElementSibling;
-                }
             }
 
             if (allBtns.length > 0) {
                 _findDebug.allBtnTexts = allBtns.map(function(b) { return b.text; });
-                // モデルボタンは最後のテキスト付きボタン（モードが先、モデルが後）
-                modelBtn = allBtns[allBtns.length - 1].el;
+                _findDebug.buttonsFound = allBtns.length;
+
+                // 戦略1: テキストにモデル名キーワードが含まれるボタンを優先
+                for (var mi = 0; mi < allBtns.length; mi++) {
+                    if (isModelText(allBtns[mi].text)) {
+                        modelBtn = allBtns[mi].el;
+                        _findDebug.matchMethod = 'keyword';
+                        break;
+                    }
+                }
+
+                // 戦略2: aria-expanded 属性を持ち、モデル名キーワードを含むボタン
+                if (!modelBtn) {
+                    for (var ai = 0; ai < allBtns.length; ai++) {
+                        if (allBtns[ai].el.hasAttribute('aria-expanded') && isModelText(allBtns[ai].text)) {
+                            modelBtn = allBtns[ai].el;
+                            _findDebug.matchMethod = 'aria-expanded+keyword';
+                            break;
+                        }
+                    }
+                }
+
+                // 戦略3: モードキーワード（Planning, Fast 等）でないボタンを選択
+                if (!modelBtn) {
+                    var MODE_KEYWORDS = ['planning', 'fast', 'normal', 'agent', 'ask', 'edit', 'chat'];
+                    for (var ni = 0; ni < allBtns.length; ni++) {
+                        var btnLower = allBtns[ni].text.toLowerCase();
+                        var isMode = false;
+                        for (var mk = 0; mk < MODE_KEYWORDS.length; mk++) {
+                            if (btnLower === MODE_KEYWORDS[mk] || btnLower.indexOf(MODE_KEYWORDS[mk]) >= 0) {
+                                isMode = true;
+                                break;
+                            }
+                        }
+                        if (!isMode && allBtns[ni].text.length > 2) {
+                            modelBtn = allBtns[ni].el;
+                            _findDebug.matchMethod = 'not-mode';
+                            break;
+                        }
+                    }
+                }
+
+                // 最終フォールバック: 最後のボタン（従来の動作）
+                if (!modelBtn) {
+                    modelBtn = allBtns[allBtns.length - 1].el;
+                    _findDebug.matchMethod = 'last-fallback';
+                }
+
                 break;
             }
             container = container.parentElement;
@@ -321,6 +372,16 @@ export async function getAvailableModels(
         return null;
     }
 
+    // モデル名キーワード — ドロップダウン項目がモデル名かの判定に使用
+    var MODEL_KEYWORDS = ['claude', 'gemini', 'gpt', 'o1-', 'o3-', 'o4-', 'sonnet', 'haiku', 'opus', 'deepseek', 'llama'];
+    function isModelItem(text) {
+        var lower = text.toLowerCase();
+        for (var ki = 0; ki < MODEL_KEYWORDS.length; ki++) {
+            if (lower.indexOf(MODEL_KEYWORDS[ki]) >= 0) return true;
+        }
+        return false;
+    }
+
     // 新しい UI 構造: z-50 rounded-md border shadow-md のドロップダウン
     var ddNew = findAllInTree(doc, function(el) {
         if (el.tagName !== 'DIV') return false;
@@ -328,6 +389,23 @@ export async function getAvailableModels(
         return c.indexOf('z-50') >= 0 && c.indexOf('rounded-md') >= 0 && c.indexOf('border') >= 0 && c.indexOf('shadow-md') >= 0;
     });
     for (var dn = 0; dn < ddNew.length; dn++) {
+        // ヘッダーチェック: "Mode" ヘッダーがあるドロップダウンはスキップ
+        var headerEl = findFirstInTree(ddNew[dn], function(el) {
+            if (el.tagName !== 'DIV') return false;
+            var c = typeof el.className === 'string' ? el.className : '';
+            return c.indexOf('opacity-80') >= 0 || c.indexOf('opacity-60') >= 0;
+        });
+        if (headerEl) {
+            var headerText = (headerEl.textContent || '').trim();
+            if (headerText === 'Mode') {
+                debugInfo.skippedModeDropdown = true;
+                continue; // Mode ドロップダウンはスキップ
+            }
+            if (headerText === 'Model') {
+                debugInfo.headerFound = true;
+            }
+        }
+
         var modelRows = findAllInTree(ddNew[dn], function(el) {
             if (el.tagName !== 'DIV') return false;
             var c = typeof el.className === 'string' ? el.className : '';
@@ -347,6 +425,19 @@ export async function getAvailableModels(
             }
         }
         if (items.length > 0) {
+            // ヘッダーがなかった場合、項目がモデル名かチェック
+            if (!debugInfo.headerFound && items.length > 0) {
+                var hasModelItems = false;
+                for (var ci = 0; ci < items.length; ci++) {
+                    if (isModelItem(items[ci])) { hasModelItems = true; break; }
+                }
+                if (!hasModelItems) {
+                    // モデル名キーワードが1つもない → おそらくモードドロップダウン
+                    debugInfo.rejectedAsMode = true;
+                    items = [];
+                    continue;
+                }
+            }
             debugInfo.newSelectorUsed = true;
             debugInfo.dropdownsFound = ddNew.length;
             debugInfo.labelsFound = items.length;
@@ -543,6 +634,17 @@ export async function selectModel(
         return c.indexOf('z-50') >= 0 && c.indexOf('rounded-md') >= 0 && c.indexOf('border') >= 0 && c.indexOf('shadow-md') >= 0;
     });
     for (var dn = 0; dn < ddNew.length; dn++) {
+        // ヘッダーチェック: "Mode" ヘッダーがあるドロップダウンはスキップ
+        var headerEl = findFirstInTree(ddNew[dn], function(el) {
+            if (el.tagName !== 'DIV') return false;
+            var c = typeof el.className === 'string' ? el.className : '';
+            return c.indexOf('opacity-80') >= 0 || c.indexOf('opacity-60') >= 0;
+        });
+        if (headerEl) {
+            var headerText = (headerEl.textContent || '').trim();
+            if (headerText === 'Mode') continue; // Mode ドロップダウンはスキップ
+        }
+
         var modelRows = findAllInTree(ddNew[dn], function(el) {
             if (el.tagName !== 'DIV') return false;
             var c = typeof el.className === 'string' ? el.className : '';
