@@ -46,7 +46,7 @@ export function cancelActiveConfirmation(channelId: string): boolean {
 export async function waitForConfirmation(
     message: Message,
     botUserId: string | undefined,
-): Promise<boolean> {
+): Promise<boolean | 'agent'> {
     const channelId = message.channelId;
 
     try {
@@ -55,6 +55,11 @@ export async function waitForConfirmation(
                 .setCustomId('confirm_approve')
                 .setLabel('承認')
                 .setStyle(ButtonStyle.Success),
+            new ButtonBuilder()
+                .setCustomId('confirm_agent')
+                .setLabel('エージェントに任せる')
+                .setStyle(ButtonStyle.Secondary)
+                .setEmoji('🤖'),
             new ButtonBuilder()
                 .setCustomId('confirm_reject')
                 .setLabel('却下')
@@ -68,13 +73,13 @@ export async function waitForConfirmation(
         return false;
     }
 
-    return new Promise<boolean>((resolve) => {
+    return new Promise<boolean | 'agent'>((resolve) => {
         const collector = message.createMessageComponentCollector({
             componentType: ComponentType.Button,
             filter: (i) => {
                 const isNotBot = i.user.id !== botUserId;
                 logDebug(`waitForConfirmation: button '${i.customId}' from user ${i.user.id} (bot=${!isNotBot})`);
-                return isNotBot && ['confirm_approve', 'confirm_reject'].includes(i.customId);
+                return isNotBot && ['confirm_approve', 'confirm_reject', 'confirm_agent'].includes(i.customId);
             },
             max: 1,
         });
@@ -92,7 +97,11 @@ export async function waitForConfirmation(
                 await message.edit({ components: disableAllButtons(message) });
             } catch { /* ignore */ }
 
-            resolve(i.customId === 'confirm_approve');
+            if (i.customId === 'confirm_agent') {
+                resolve('agent');
+            } else {
+                resolve(i.customId === 'confirm_approve');
+            }
         });
 
         collector.on('end', (_collected, reason) => {
@@ -132,6 +141,11 @@ export async function waitForChoice(
         }
         buttons.push(
             new ButtonBuilder()
+                .setCustomId('choice_agent')
+                .setLabel('エージェントに任せる')
+                .setStyle(ButtonStyle.Secondary)
+                .setEmoji('🤖'),
+            new ButtonBuilder()
                 .setCustomId('choice_reject')
                 .setLabel('却下')
                 .setStyle(ButtonStyle.Danger),
@@ -145,7 +159,7 @@ export async function waitForChoice(
         return -1;
     }
 
-    const validIds = Array.from({ length: clipped }, (_, i) => `choice_${i + 1}`).concat('choice_reject');
+    const validIds = Array.from({ length: clipped }, (_, i) => `choice_${i + 1}`).concat('choice_agent', 'choice_reject');
     const channelId = message.channelId;
 
     return new Promise<number>((resolve) => {
@@ -173,6 +187,8 @@ export async function waitForChoice(
 
             if (i.customId === 'choice_reject') {
                 resolve(-1);
+            } else if (i.customId === 'choice_agent') {
+                resolve(0); // エージェント判断
             } else {
                 const num = parseInt(i.customId.replace('choice_', ''), 10);
                 resolve(num > 0 ? num : -1);
@@ -232,6 +248,11 @@ export async function waitForMultiChoice(
                 .setLabel('全選択')
                 .setStyle(ButtonStyle.Primary),
             new ButtonBuilder()
+                .setCustomId('mchoice_agent')
+                .setLabel('エージェントに任せる')
+                .setStyle(ButtonStyle.Secondary)
+                .setEmoji('🤖'),
+            new ButtonBuilder()
                 .setCustomId('mchoice_reject')
                 .setLabel('却下')
                 .setStyle(ButtonStyle.Danger),
@@ -249,7 +270,7 @@ export async function waitForMultiChoice(
     }
 
     const choiceIds = Array.from({ length: clipped }, (_, i) => `mchoice_${i + 1}`);
-    const controlIds = ['mchoice_confirm', 'mchoice_all', 'mchoice_reject'];
+    const controlIds = ['mchoice_confirm', 'mchoice_all', 'mchoice_agent', 'mchoice_reject'];
     const allValidIds = [...choiceIds, ...controlIds];
     const channelId = message.channelId;
 
@@ -292,6 +313,18 @@ export async function waitForMultiChoice(
                 return;
             }
 
+            if (customId === 'mchoice_agent') {
+                logDebug(`waitForMultiChoice: agent delegated by ${i.user.tag || i.user.id}`);
+                activeCollectors.delete(channelId);
+                collector.stop('agent');
+                try {
+                    await i.deferUpdate();
+                    await message.edit({ components: disableAllButtons(message) });
+                } catch { /* ignore */ }
+                resolve([0]); // エージェント判断
+                return;
+            }
+
             if (customId === 'mchoice_confirm') {
                 logDebug(`waitForMultiChoice: confirmed [${[...selected].join(',')}] by ${i.user.tag || i.user.id}`);
                 activeCollectors.delete(channelId);
@@ -326,7 +359,7 @@ export async function waitForMultiChoice(
         collector.on('end', (_collected, reason) => {
             logDebug(`waitForMultiChoice: collector ended — reason: ${reason}`);
             activeCollectors.delete(channelId);
-            if (!['rejected', 'all', 'confirmed'].includes(reason || '')) {
+            if (!['rejected', 'all', 'confirmed', 'agent'].includes(reason || '')) {
                 message.edit({ components: disableAllButtons(message) }).catch(() => { /* ignore */ });
                 resolve([]); // 自動却下
             }

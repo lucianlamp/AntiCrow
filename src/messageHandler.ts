@@ -27,6 +27,7 @@ import { BridgeContext } from './bridgeContext';
 import { getResponseTimeout, isUserAllowed, getMaxMessageLength, getWorkspacePaths } from './configHelper';
 import { getCurrentModel } from './cdpModels';
 import { getCurrentMode } from './cdpModes';
+import { AUTO_PROMPT } from './suggestionButtons';
 
 // 委譲先モジュール
 import { buildPlanPrompt, buildConfirmMessage, countChoiceItems, cronToPrefix } from './promptBuilder';
@@ -547,6 +548,8 @@ interface ConfirmationResult {
     confirmed: boolean;
     /** single/multi で選択された番号（1-indexed）。全選択は [-1]。none/all は undefined。 */
     selectedChoices?: number[];
+    /** エージェントに委任された場合 true */
+    agentDelegated?: boolean;
 }
 
 /**
@@ -574,6 +577,10 @@ async function handleConfirmation(
             await channel.send({ embeds: [buildEmbed('❌ 却下しました。', EmbedColor.Error)] });
             return { confirmed: false };
         }
+        if (choices.length === 1 && choices[0] === 0) {
+            await channel.send({ embeds: [buildEmbed('🤖 **エージェントの判断で次のアクションを実行します**', EmbedColor.Info)] });
+            return { confirmed: false, agentDelegated: true };
+        }
         if (choices[0] === -1) {
             await channel.send({ embeds: [buildEmbed('✅ 全て選択しました。', EmbedColor.Success)] });
         } else {
@@ -590,6 +597,10 @@ async function handleConfirmation(
             await channel.send({ embeds: [buildEmbed('❌ 却下しました。', EmbedColor.Error)] });
             return { confirmed: false };
         }
+        if (choice === 0) {
+            await channel.send({ embeds: [buildEmbed('🤖 **エージェントの判断で次のアクションを実行します**', EmbedColor.Info)] });
+            return { confirmed: false, agentDelegated: true };
+        }
         await channel.send({ embeds: [buildEmbed(`✅ 選択肢 ${choice} を承認しました。`, EmbedColor.Success)] });
         plan.status = 'active';
         return { confirmed: true, selectedChoices: [choice] };
@@ -597,6 +608,10 @@ async function handleConfirmation(
     // choiceMode === 'none'
     const sentMsg = await channel.send({ embeds: [buildEmbed(confirmMsg, EmbedColor.Warning)] });
     const confirmed = await bot.waitForConfirmation(sentMsg);
+    if (confirmed === 'agent') {
+        await channel.send({ embeds: [buildEmbed('🤖 **エージェントの判断で次のアクションを実行します**', EmbedColor.Info)] });
+        return { confirmed: false, agentDelegated: true };
+    }
     if (!confirmed) {
         await channel.send({ embeds: [buildEmbed('❌ 却下しました。', EmbedColor.Error)] });
         return { confirmed: false };
@@ -796,6 +811,13 @@ export async function handleDiscordMessage(
                 wsKey: wsKeyForStatus, phase: 'confirming', startTime: Date.now(), messagePreview: msgPreview,
             });
             const confirmResult = await handleConfirmation(plan, channel, bot);
+            if (confirmResult.agentDelegated) {
+                // エージェント委任: AUTO_PROMPT を processSuggestionPrompt 経由で実行
+                processSuggestionPrompt(ctx, channel.id, AUTO_PROMPT, message.author.id).catch((e: unknown) => {
+                    logError('agent delegation from confirmation: processSuggestionPrompt failed', e);
+                });
+                return;
+            }
             if (!confirmResult.confirmed) { return; }
             applyChoiceSelection(plan, confirmResult.selectedChoices);
         }
@@ -940,6 +962,12 @@ export async function processSuggestionPrompt(
                     messagePreview: promptText.substring(0, 50),
                 });
                 const confirmResult = await handleConfirmation(plan, channel, bot);
+                if (confirmResult.agentDelegated) {
+                    processSuggestionPrompt(ctx, channel.id, AUTO_PROMPT, userId).catch((e: unknown) => {
+                        logError('agent delegation from suggestion confirmation: processSuggestionPrompt failed', e);
+                    });
+                    return;
+                }
                 if (!confirmResult.confirmed) { return; }
                 applyChoiceSelection(plan, confirmResult.selectedChoices);
             }
