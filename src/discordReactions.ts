@@ -46,7 +46,7 @@ export function cancelActiveConfirmation(channelId: string): boolean {
 export async function waitForConfirmation(
     message: Message,
     botUserId: string | undefined,
-): Promise<boolean | 'agent'> {
+): Promise<boolean> {
     const channelId = message.channelId;
 
     try {
@@ -55,11 +55,6 @@ export async function waitForConfirmation(
                 .setCustomId('confirm_approve')
                 .setLabel('承認')
                 .setStyle(ButtonStyle.Success),
-            new ButtonBuilder()
-                .setCustomId('confirm_agent')
-                .setLabel('エージェントに任せる')
-                .setStyle(ButtonStyle.Secondary)
-                .setEmoji('🤖'),
             new ButtonBuilder()
                 .setCustomId('confirm_reject')
                 .setLabel('却下')
@@ -73,13 +68,13 @@ export async function waitForConfirmation(
         return false;
     }
 
-    return new Promise<boolean | 'agent'>((resolve) => {
+    return new Promise<boolean>((resolve) => {
         const collector = message.createMessageComponentCollector({
             componentType: ComponentType.Button,
             filter: (i) => {
                 const isNotBot = i.user.id !== botUserId;
                 logDebug(`waitForConfirmation: button '${i.customId}' from user ${i.user.id} (bot=${!isNotBot})`);
-                return isNotBot && ['confirm_approve', 'confirm_reject', 'confirm_agent'].includes(i.customId);
+                return isNotBot && ['confirm_approve', 'confirm_reject'].includes(i.customId);
             },
             max: 1,
         });
@@ -97,11 +92,7 @@ export async function waitForConfirmation(
                 await message.edit({ components: disableAllButtons(message) });
             } catch { /* ignore */ }
 
-            if (i.customId === 'confirm_agent') {
-                resolve('agent');
-            } else {
-                resolve(i.customId === 'confirm_approve');
-            }
+            resolve(i.customId === 'confirm_approve');
         });
 
         collector.on('end', (_collected, reason) => {

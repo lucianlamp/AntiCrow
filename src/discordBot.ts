@@ -137,7 +137,6 @@ export class DiscordBot {
                 if (
                     cid === 'confirm_approve' ||
                     cid === 'confirm_reject' ||
-                    cid === 'confirm_agent' ||
                     cid.startsWith('choice_') ||
                     cid.startsWith('mchoice_')
                 ) {
@@ -461,7 +460,7 @@ export class DiscordBot {
     // -----------------------------------------------------------------------
 
     /** メッセージにリアクション待ちして確認を取る */
-    async waitForConfirmation(message: Message): Promise<boolean | 'agent'> {
+    async waitForConfirmation(message: Message): Promise<boolean> {
         return reactions.waitForConfirmation(message, this.client.user?.id);
     }
 

@@ -426,71 +426,6 @@ export async function scrollToBottom(
     return false;
 }
 
-// -----------------------------------------------------------------------
-// dismissReviewUI — Antigravity のレビュー提案パネルを自動 Accept/Dismiss
-// -----------------------------------------------------------------------
-
-export async function dismissReviewUI(
-    ops: CdpBridgeOps,
-): Promise<boolean> {
-    // メインウィンドウ（inCascade: false）でレビューUI を探す
-    const DISMISS_SCRIPT = `
-(function() {
-    // "Accept All" や "Accept" ボタンを探してクリック（Shadow DOM対応）
-    function findAllInTree(root, predicate) {
-        if (!root) return [];
-        var matches = [];
-        if (root.nodeType === 1 && predicate(root)) matches.push(root);
-        var walker = document.createTreeWalker(root, 1, null, false);
-        var el;
-        while ((el = walker.nextNode())) {
-            if (predicate(el)) matches.push(el);
-            if (el.shadowRoot) {
-                matches = matches.concat(findAllInTree(el.shadowRoot, predicate));
-            }
-        }
-        return matches;
-    }
-
-    var buttons = findAllInTree(document, function(el) {
-        var tag = el.tagName.toLowerCase();
-        return tag === 'button' || tag === 'vscode-button' || tag === 'a' || el.getAttribute('role') === 'button';
-    });
-    var dismissed = 0;
-    for (var i = 0; i < buttons.length; i++) {
-        var btn = buttons[i];
-        var text = (btn.textContent || '').trim().toLowerCase();
-        var ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
-        if (text === 'accept all' || text === 'accept' || text === 'dismiss' ||
-            ariaLabel.includes('accept all') || ariaLabel.includes('dismiss')) {
-            // レビュー系ボタンのみ対象にするため、特定のコンテキストを確認
-            var parent = btn.closest('[class*="review"], [class*="diff"], [class*="notification"], [class*="inline-chat"]');
-            if (parent) {
-                try {
-                    btn.scrollIntoView({ block: 'center', behavior: 'instant' });
-                    btn.click();
-                    dismissed++;
-                } catch(e) {}
-            }
-        }
-    }
-    return { dismissed: dismissed };
-})()
-`;
-
-    try {
-        // メインウィンドウで実行（レビューUIはCascade外にある）
-        const result = await ops.conn.evaluate(DISMISS_SCRIPT) as { dismissed: number } | null;
-        if (result && result.dismissed > 0) {
-            logDebug(`CDP: dismissReviewUI — dismissed ${result.dismissed} review panel(s)`);
-            return true;
-        }
-    } catch (e) {
-        logDebug(`CDP: dismissReviewUI failed — ${e instanceof Error ? e.message : e}`);
-    }
-
-    return false;
-}
 
 // -----------------------------------------------------------------------
 // dismissPermissionDialog — 権限確認ダイアログを自動承認
@@ -880,10 +815,7 @@ export async function autoFollowOutput(
     // 3. スクロール＆展開で出てきた承認ボタンを自動クリック（VSCodeコマンド + DOM探索）
     await autoApprove(ops);
 
-    // 4. レビューUI を自動 Dismiss
-    await dismissReviewUI(ops);
-
-    // 5. 権限確認ダイアログを自動承認
+    // 4. 権限確認ダイアログを自動承認
     await dismissPermissionDialog(ops);
 
     logDebug('CDP: autoFollowOutput completed');

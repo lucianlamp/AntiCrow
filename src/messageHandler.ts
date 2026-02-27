@@ -608,10 +608,6 @@ async function handleConfirmation(
     // choiceMode === 'none'
     const sentMsg = await channel.send({ embeds: [buildEmbed(confirmMsg, EmbedColor.Warning)] });
     const confirmed = await bot.waitForConfirmation(sentMsg);
-    if (confirmed === 'agent') {
-        await channel.send({ embeds: [buildEmbed('🤖 **エージェントの判断で次のアクションを実行します**', EmbedColor.Info)] });
-        return { confirmed: false, agentDelegated: true };
-    }
     if (!confirmed) {
         await channel.send({ embeds: [buildEmbed('❌ 却下しました。', EmbedColor.Error)] });
         return { confirmed: false };
