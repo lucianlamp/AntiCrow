@@ -800,12 +800,111 @@ export async function autoApprove(
 }
 
 // -----------------------------------------------------------------------
-// autoFollowOutput — AI出力追従（スクロール + 展開 + レビューUI消去 + 権限承認）
+// isAgentRunning — エージェント実行中かどうかを検出
+// -----------------------------------------------------------------------
+
+/**
+ * エージェントパネル上のストップボタンの存在を検出して、
+ * エージェントが実行中かどうかを判定する。
+ * ストップボタンが見つかれば true（実行中）、なければ false（アイドル）。
+ */
+export async function isAgentRunning(
+    ops: CdpBridgeOps,
+): Promise<boolean> {
+    const STOP_BUTTON_SCRIPT = `
+(function() {
+    function findInTree(root, predicate) {
+        if (!root) return null;
+        if (root.nodeType === 1 && predicate(root)) return root;
+        var walker = document.createTreeWalker(root, 1, null, false);
+        var el;
+        while ((el = walker.nextNode())) {
+            if (predicate(el)) return el;
+            if (el.shadowRoot) {
+                var found = findInTree(el.shadowRoot, predicate);
+                if (found) return found;
+            }
+        }
+        return null;
+    }
+
+    // ストップボタンの検出パターン（複数フォールバック）
+    // Antigravity のエージェント実行中は Stop/Cancel ボタンが表示される
+    var stopBtn = findInTree(document, function(el) {
+        var tag = el.tagName.toLowerCase();
+        if (tag !== 'button' && tag !== 'vscode-button' && tag !== 'a' && tag !== 'div' && el.getAttribute('role') !== 'button') {
+            return false;
+        }
+
+        // aria-label チェック
+        var ariaLabel = (el.getAttribute('aria-label') || '').toLowerCase();
+        if (ariaLabel === 'stop' || ariaLabel === 'cancel' || ariaLabel === 'stop generation' || ariaLabel === 'interrupt') {
+            return true;
+        }
+
+        // title チェック
+        var title = (el.getAttribute('title') || '').toLowerCase();
+        if (title === 'stop' || title === 'cancel' || title === 'stop generation' || title === 'interrupt') {
+            return true;
+        }
+
+        // テキストコンテンツチェック（短いテキストのみ — 誤検出防止）
+        var text = (el.textContent || '').trim().toLowerCase();
+        if (text.length <= 20 && (text === 'stop' || text === 'cancel')) {
+            return true;
+        }
+
+        // CSS クラスチェック
+        var className = (el.className || '');
+        if (typeof className === 'string' && (className.indexOf('stop') >= 0 || className.indexOf('cancel') >= 0) &&
+            className.indexOf('action') >= 0) {
+            return true;
+        }
+
+        return false;
+    });
+
+    return { running: !!stopBtn };
+})()
+`.trim();
+
+    try {
+        // cascade iframe 内で検出（エージェントチャットパネル）
+        const cascadeResult = await ops.evaluateInCascade(STOP_BUTTON_SCRIPT) as { running: boolean } | null;
+        if (cascadeResult?.running) {
+            return true;
+        }
+    } catch {
+        // cascade iframe がない場合は無視
+    }
+
+    try {
+        // メインフレームでも検出（iframe 外にストップボタンがある場合）
+        const mainResult = await ops.conn.evaluate(STOP_BUTTON_SCRIPT) as { running: boolean } | null;
+        if (mainResult?.running) {
+            return true;
+        }
+    } catch {
+        // 接続エラーは無視
+    }
+
+    return false;
+}
+
+// -----------------------------------------------------------------------
+// autoFollowOutput — AI出力追従（スクロール + 展開 + 権限承認）
 // -----------------------------------------------------------------------
 
 export async function autoFollowOutput(
     ops: CdpBridgeOps,
 ): Promise<void> {
+    // 0. エージェント実行中チェック — ストップボタンが表示されていなければスキップ
+    const running = await isAgentRunning(ops);
+    if (!running) {
+        logDebug('CDP: autoFollowOutput skipped — agent not running');
+        return;
+    }
+
     // 1. チャットエリアを最下部にスクロール（まずスクロールして新しいコンテンツを表示）
     await scrollToBottom(ops);
 
