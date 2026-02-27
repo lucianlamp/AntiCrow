@@ -219,7 +219,7 @@ export async function handleWorkspaceButton(
             logError('handleWorkspaceButton: ws_page failed', e);
             try {
                 if (!interaction.replied && !interaction.deferred) {
-                    await interaction.reply({ embeds: [buildEmbed('⚠️ ページ切り替えに失敗しました。', EmbedColor.Warning)], ephemeral: true });
+                    await interaction.reply({ embeds: [buildEmbed('⚠️ ページ切り替えに失敗しました。', EmbedColor.Warning)] });
                 }
             } catch (e2) { logDebug(`handleWorkspaceButton: interaction response failed: ${e2}`); }
         }
@@ -240,7 +240,7 @@ export async function handleWorkspaceButton(
             logError('handleWorkspaceButton: ws_refresh failed', e);
             try {
                 if (!interaction.replied && !interaction.deferred) {
-                    await interaction.reply({ embeds: [buildEmbed('⚠️ 更新に失敗しました。もう一度お試しください。', EmbedColor.Warning)], ephemeral: true });
+                    await interaction.reply({ embeds: [buildEmbed('⚠️ 更新に失敗しました。もう一度お試しください。', EmbedColor.Warning)] });
                 }
             } catch (e) { logDebug(`handleWorkspaceButton: interaction response failed: ${e}`); }
         }
@@ -266,7 +266,6 @@ export async function handleWorkspaceButton(
                     '```',
                     EmbedColor.Warning,
                 )],
-                ephemeral: true,
             });
             return true;
         }
@@ -313,7 +312,7 @@ export async function handleWorkspaceButton(
         const categoryId = parts[1];
         const wsName = parts.slice(2).join(':');
         if (!ctx.bot) {
-            await interaction.reply({ embeds: [buildEmbed('⚠️ Bot が初期化されていません。', EmbedColor.Warning)], ephemeral: true });
+            await interaction.reply({ embeds: [buildEmbed('⚠️ Bot が初期化されていません。', EmbedColor.Warning)] });
             return true;
         }
 
@@ -337,7 +336,6 @@ export async function handleWorkspaceButton(
             if (hasActivePlan) {
                 await interaction.reply({
                     embeds: [buildEmbed(`⚠️ ワークスペース「**${wsName}**」にはアクティブなスケジュールがあります。\n先に \`/schedules\` コマンドでスケジュールを削除してから、再度お試しください。`, EmbedColor.Warning)],
-                    ephemeral: true,
                 });
                 return true;
             }
@@ -356,7 +354,6 @@ export async function handleWorkspaceButton(
         await interaction.reply({
             embeds: [buildEmbed(`⚠️ ワークスペース「**${wsName}**」のカテゴリーと全チャンネルを削除します。\n\`workspacePaths\` 設定は保持されるため、次回使用時にカテゴリーは自動再作成されます。\n\nよろしいですか？`, EmbedColor.Warning)],
             components: [confirmRow as any],
-            ephemeral: true,
         });
         return true;
     }
@@ -367,7 +364,7 @@ export async function handleWorkspaceButton(
         const categoryId = parts[1];
         const wsName = parts.slice(2).join(':');
         if (!ctx.bot) {
-            await interaction.reply({ embeds: [buildEmbed('⚠️ Bot が初期化されていません。', EmbedColor.Warning)], ephemeral: true });
+            await interaction.reply({ embeds: [buildEmbed('⚠️ Bot が初期化されていません。', EmbedColor.Warning)] });
             return true;
         }
         try {
@@ -442,7 +439,6 @@ export async function handleWorkspaceModalSubmit(
     if (!wsName) {
         await interaction.reply({
             embeds: [buildEmbed('⚠️ ワークスペース名が空です。', EmbedColor.Warning)],
-            ephemeral: true,
         });
         return true;
     }
@@ -451,7 +447,6 @@ export async function handleWorkspaceModalSubmit(
     if (/[<>:"|?*\/\\]/.test(wsName)) {
         await interaction.reply({
             embeds: [buildEmbed('⚠️ ワークスペース名にファイル名として使用できない文字が含まれています。\n使用不可文字: `< > : " | ? * / \\`', EmbedColor.Warning)],
-            ephemeral: true,
         });
         return true;
     }
@@ -460,7 +455,6 @@ export async function handleWorkspaceModalSubmit(
     if (parentDirs.length === 0) {
         await interaction.reply({
             embeds: [buildEmbed('⚠️ ペアレントディレクトリが設定されていません。', EmbedColor.Warning)],
-            ephemeral: true,
         });
         return true;
     }
@@ -479,7 +473,6 @@ export async function handleWorkspaceModalSubmit(
                     parentDirs.map((d, i) => `**${i + 1}:** \`${d}\``).join('\n'),
                     EmbedColor.Warning,
                 )],
-                ephemeral: true,
             });
             return true;
         }
@@ -572,7 +565,6 @@ export async function handleWorkspaceModalSubmit(
             } else {
                 await interaction.reply({
                     embeds: [buildEmbed(`❌ ワークスペース作成に失敗しました: ${errMsg}`, EmbedColor.Error)],
-                    ephemeral: true,
                 });
             }
         } catch (replyErr) {

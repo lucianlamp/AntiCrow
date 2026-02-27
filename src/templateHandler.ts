@@ -105,7 +105,7 @@ export async function handleTemplateButton(
 ): Promise<void> {
     const templateStore = ctx.templateStore;
     if (!templateStore) {
-        await interaction.reply({ embeds: [buildEmbed('⚠️ TemplateStore が初期化されていません。', EmbedColor.Warning)], ephemeral: true });
+        await interaction.reply({ embeds: [buildEmbed('⚠️ TemplateStore が初期化されていません。', EmbedColor.Warning)] });
         return;
     }
 
@@ -151,7 +151,7 @@ export async function handleTemplateButton(
         const name = customId.slice('tpl_run_'.length);
         const template = templateStore.get(name);
         if (!template) {
-            await interaction.reply({ embeds: [buildEmbed(`⚠️ テンプレート「${name}」が見つかりません。`, EmbedColor.Warning)], ephemeral: true });
+            await interaction.reply({ embeds: [buildEmbed(`⚠️ テンプレート「${name}」が見つかりません。`, EmbedColor.Warning)] });
             return;
         }
 
@@ -215,7 +215,7 @@ export async function handleTemplateButton(
         const name = customId.slice('tpl_del_'.length);
         const template = templateStore.get(name);
         if (!template) {
-            await interaction.reply({ embeds: [buildEmbed(`⚠️ テンプレート「${name}」が見つかりません。`, EmbedColor.Warning)], ephemeral: true });
+            await interaction.reply({ embeds: [buildEmbed(`⚠️ テンプレート「${name}」が見つかりません。`, EmbedColor.Warning)] });
             return;
         }
 
@@ -240,7 +240,7 @@ export async function handleTemplateButton(
         const name = customId.slice('tpl_confirm_run_'.length);
         const template = templateStore.get(name);
         if (!template) {
-            await interaction.reply({ embeds: [buildEmbed(`⚠️ テンプレート「${name}」が見つかりません。`, EmbedColor.Warning)], ephemeral: true });
+            await interaction.reply({ embeds: [buildEmbed(`⚠️ テンプレート「${name}」が見つかりません。`, EmbedColor.Warning)] });
             return;
         }
 
@@ -248,7 +248,7 @@ export async function handleTemplateButton(
         const planStore = ctx.planStore;
 
         if (!fileIpc || !planStore) {
-            await interaction.reply({ embeds: [buildEmbed('⚠️ Bridge が初期化されていません。', EmbedColor.Warning)], ephemeral: true });
+            await interaction.reply({ embeds: [buildEmbed('⚠️ Bridge が初期化されていません。', EmbedColor.Warning)] });
             return;
         }
 
@@ -271,7 +271,7 @@ export async function handleTemplateButton(
         }
 
         if (!activeCdp) {
-            await interaction.reply({ embeds: [buildEmbed('⚠️ Antigravity との接続が初期化されていません。', EmbedColor.Warning)], ephemeral: true });
+            await interaction.reply({ embeds: [buildEmbed('⚠️ Antigravity との接続が初期化されていません。', EmbedColor.Warning)] });
             return;
         }
 
@@ -337,13 +337,13 @@ export async function handleTemplateButton(
             const successEmbed = buildEmbed(`🗑️ テンプレート「${name}」を削除しました。`, EmbedColor.Success);
             await interaction.update({ embeds: [successEmbed, ...embeds], components: components as any });
         } else {
-            await interaction.reply({ embeds: [buildEmbed(`⚠️ テンプレート「${name}」が見つかりません。`, EmbedColor.Warning)], ephemeral: true });
+            await interaction.reply({ embeds: [buildEmbed(`⚠️ テンプレート「${name}」が見つかりません。`, EmbedColor.Warning)] });
         }
         return;
     }
 
     logWarn(`handleTemplateButton: unknown tpl_ customId: ${customId}`);
-    await interaction.reply({ embeds: [buildEmbed(`⚠️ 不明なテンプレートボタン: ${customId}`, EmbedColor.Warning)], ephemeral: true });
+    await interaction.reply({ embeds: [buildEmbed(`⚠️ 不明なテンプレートボタン: ${customId}`, EmbedColor.Warning)] });
 }
 
 // ---------------------------------------------------------------------------
@@ -358,7 +358,7 @@ export async function handleModalSubmit(
     if (interaction.customId === 'tpl_modal_save') {
         const templateStore = ctx.templateStore;
         if (!templateStore) {
-            await interaction.reply({ embeds: [buildEmbed('⚠️ TemplateStore が初期化されていません。', EmbedColor.Warning)], ephemeral: true });
+            await interaction.reply({ embeds: [buildEmbed('⚠️ TemplateStore が初期化されていません。', EmbedColor.Warning)] });
             return;
         }
 
@@ -366,7 +366,7 @@ export async function handleModalSubmit(
         const prompt = interaction.fields.getTextInputValue('tpl_prompt').trim();
 
         if (!name || !prompt) {
-            await interaction.reply({ embeds: [buildEmbed('⚠️ テンプレート名とプロンプトの両方を入力してください。', EmbedColor.Warning)], ephemeral: true });
+            await interaction.reply({ embeds: [buildEmbed('⚠️ テンプレート名とプロンプトの両方を入力してください。', EmbedColor.Warning)] });
             return;
         }
 
@@ -388,13 +388,13 @@ export async function handleModalSubmit(
         const name = interaction.customId.slice('tpl_modal_args_'.length);
         const templateStore = ctx.templateStore;
         if (!templateStore) {
-            await interaction.reply({ embeds: [buildEmbed('⚠️ TemplateStore が初期化されていません。', EmbedColor.Warning)], ephemeral: true });
+            await interaction.reply({ embeds: [buildEmbed('⚠️ TemplateStore が初期化されていません。', EmbedColor.Warning)] });
             return;
         }
 
         const template = templateStore.get(name);
         if (!template) {
-            await interaction.reply({ embeds: [buildEmbed(`⚠️ テンプレート「${name}」が見つかりません。`, EmbedColor.Warning)], ephemeral: true });
+            await interaction.reply({ embeds: [buildEmbed(`⚠️ テンプレート「${name}」が見つかりません。`, EmbedColor.Warning)] });
             return;
         }
 
@@ -402,7 +402,7 @@ export async function handleModalSubmit(
         const planStore = ctx.planStore;
 
         if (!fileIpc || !planStore) {
-            await interaction.reply({ embeds: [buildEmbed('⚠️ Bridge が初期化されていません。', EmbedColor.Warning)], ephemeral: true });
+            await interaction.reply({ embeds: [buildEmbed('⚠️ Bridge が初期化されていません。', EmbedColor.Warning)] });
             return;
         }
 
@@ -425,7 +425,7 @@ export async function handleModalSubmit(
         }
 
         if (!activeCdp) {
-            await interaction.reply({ embeds: [buildEmbed('⚠️ Antigravity との接続が初期化されていません。', EmbedColor.Warning)], ephemeral: true });
+            await interaction.reply({ embeds: [buildEmbed('⚠️ Antigravity との接続が初期化されていません。', EmbedColor.Warning)] });
             return;
         }
 

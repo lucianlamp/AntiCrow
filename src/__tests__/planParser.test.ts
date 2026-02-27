@@ -194,6 +194,61 @@ describe('parsePlanJson', () => {
         expect(result).not.toBeNull();
         expect(result!.discord_templates.ack).toBe('');
     });
+
+    // ----- YAML パース対応テスト -----
+
+    it('should parse valid YAML when JSON fails', () => {
+        const yamlRaw = `plan_id: yaml-001
+timezone: Asia/Tokyo
+cron: "now"
+prompt: "YAML形式のテスト"
+requires_confirmation: false
+discord_templates:
+  ack: "✅ OK"
+human_summary: "YAMLテスト"`;
+        const result = parsePlanJson(yamlRaw);
+        expect(result).not.toBeNull();
+        expect(result!.plan_id).toBe('yaml-001');
+        expect(result!.prompt).toBe('YAML形式のテスト');
+        expect(result!.discord_templates.ack).toBe('✅ OK');
+        expect(result!.human_summary).toBe('YAMLテスト');
+    });
+
+    it('should handle code-fenced YAML', () => {
+        const yamlRaw = `\`\`\`yaml
+plan_id: fenced-yaml-001
+timezone: Asia/Tokyo
+cron: "now"
+prompt: "フェンス付きYAML"
+requires_confirmation: true
+discord_templates:
+  ack: "📋 計画"
+\`\`\``;
+        const result = parsePlanJson(yamlRaw);
+        expect(result).not.toBeNull();
+        expect(result!.plan_id).toBe('fenced-yaml-001');
+        expect(result!.requires_confirmation).toBe(true);
+    });
+
+    it('should handle code-fenced yml variant', () => {
+        const yamlRaw = `\`\`\`yml
+plan_id: yml-variant-001
+timezone: Asia/Tokyo
+cron: "now"
+prompt: "yml拡張子テスト"
+requires_confirmation: false
+discord_templates:
+  ack: "OK"
+\`\`\``;
+        const result = parsePlanJson(yamlRaw);
+        expect(result).not.toBeNull();
+        expect(result!.plan_id).toBe('yml-variant-001');
+    });
+
+    it('should return null for YAML that parses to non-object', () => {
+        // 単なる文字列はYAMLとしてパースできるが、オブジェクトではない
+        expect(parsePlanJson('just a plain text string without any structure')).toBeNull();
+    });
 });
 
 describe('buildPlan', () => {

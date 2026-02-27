@@ -1,13 +1,15 @@
 // ---------------------------------------------------------------------------
-// planParser.ts — Plan JSON バリデーション & Plan 構築
+// planParser.ts — Plan JSON/YAML バリデーション & Plan 構築
 // ---------------------------------------------------------------------------
 
+import { parse as parseYaml } from 'yaml';
 import { Plan, PlanOutput, DiscordTemplates, PlanStatus, ChoiceMode } from './types';
-import { logWarn } from './logger';
+import { logWarn, logDebug } from './logger';
 import { getTimezone } from './configHelper';
 
 /**
- * Plan が返した JSON 文字列をパースし、バリデーションする。
+ * Plan が返した JSON/YAML 文字列をパースし、バリデーションする。
+ * JSON パース失敗時は YAML パースにフォールバックする。
  * Zod は依存を増やすので手動バリデーション（計画スキーマは固定なので十分）。
  */
 export function parsePlanJson(raw: string): PlanOutput | null {
@@ -17,8 +19,21 @@ export function parsePlanJson(raw: string): PlanOutput | null {
         const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
         obj = JSON.parse(cleaned);
     } catch {
-        logWarn('planParser: JSON parse failed');
-        return null;
+        // JSON パース失敗 → YAML としてパースを試行
+        try {
+            const yamlCleaned = raw.replace(/^```(?:ya?ml)?\s*/i, '').replace(/\s*```$/i, '').trim();
+            obj = parseYaml(yamlCleaned);
+            if (typeof obj === 'object' && obj !== null) {
+                logDebug('planParser: JSON parse failed, YAML parse succeeded');
+            } else {
+                // YAML パース成功だがオブジェクトでない（文字列や数値など）
+                logWarn('planParser: YAML parsed but result is not an object');
+                return null;
+            }
+        } catch {
+            logWarn('planParser: both JSON and YAML parse failed');
+            return null;
+        }
     }
 
     if (typeof obj !== 'object' || obj === null) { return null; }
