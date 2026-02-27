@@ -42,6 +42,7 @@ import { handleTemplateButton, buildTemplateListPanel, handleModalSubmit as hand
 import { TemplateStore } from './templateStore';
 import { getSuggestion, SUGGEST_AUTO_ID, AUTO_PROMPT } from './suggestionButtons';
 import { processSuggestionPrompt } from './messageHandler';
+import { updateAnticrowMd } from './anticrowCustomizer';
 
 // Re-export for backward compatibility
 export { handleManageSlash } from './adminHandler';
@@ -100,7 +101,7 @@ export async function handleSlashCommand(
     const authResult = isUserAllowed(interaction.user.id);
     if (!authResult.allowed) {
         logWarn(`handleSlashCommand: user ${interaction.user.tag} (${interaction.user.id}) not allowed — ${authResult.reason}`);
-        await interaction.reply({ embeds: [buildEmbed(`🔒 ${authResult.reason}`, EmbedColor.Warning)], ephemeral: true });
+        await interaction.reply({ embeds: [buildEmbed(`🔒 ${authResult.reason}`, EmbedColor.Warning)] });
         return;
     }
 
@@ -111,7 +112,7 @@ export async function handleSlashCommand(
     }
 
     // /schedule コマンドは廃止済み — 未対応コマンドとして応答
-    await interaction.reply({ embeds: [buildEmbed(`⚠️ 未対応のコマンド: /${commandName}`, EmbedColor.Warning)], ephemeral: true });
+    await interaction.reply({ embeds: [buildEmbed(`⚠️ 未対応のコマンド: /${commandName}`, EmbedColor.Warning)] });
 }
 
 // ---------------------------------------------------------------------------
@@ -146,7 +147,7 @@ export async function handleButtonInteraction(
     const authResult = isUserAllowed(interaction.user.id);
     if (!authResult.allowed) {
         logWarn(`handleButtonInteraction: user ${interaction.user.tag} (${interaction.user.id}) not allowed — ${authResult.reason}`);
-        await interaction.reply({ embeds: [buildEmbed(`🔒 ${authResult.reason}`, EmbedColor.Warning)], ephemeral: true });
+        await interaction.reply({ embeds: [buildEmbed(`🔒 ${authResult.reason}`, EmbedColor.Warning)] });
         return;
     }
 
@@ -156,7 +157,7 @@ export async function handleButtonInteraction(
 
     // ----- スケジュール関連ボタン -----
     if (!ctx.planStore || !ctx.scheduler) {
-        await interaction.reply({ embeds: [buildEmbed('⚠️ Bridge が初期化されていません。', EmbedColor.Warning)], ephemeral: true });
+        await interaction.reply({ embeds: [buildEmbed('⚠️ Bridge が初期化されていません。', EmbedColor.Warning)] });
         return;
     }
 
@@ -214,7 +215,7 @@ export async function handleButtonInteraction(
             const planId = customId.replace('sched_toggle_', '');
             const plan = ctx.planStore.get(planId);
             if (!plan) {
-                await interaction.reply({ embeds: [buildEmbed(`⚠️ 計画 \`${planId}\` が見つかりません。`, EmbedColor.Warning)], ephemeral: true });
+                await interaction.reply({ embeds: [buildEmbed(`⚠️ 計画 \`${planId}\` が見つかりません。`, EmbedColor.Warning)] });
                 return;
             }
 
@@ -260,7 +261,7 @@ export async function handleButtonInteraction(
             const planId = customId.replace('sched_delete_', '');
             const plan = ctx.planStore.get(planId);
             if (!plan) {
-                await interaction.reply({ embeds: [buildEmbed(`⚠️ 計画 \`${planId}\` が見つかりません。`, EmbedColor.Warning)], ephemeral: true });
+                await interaction.reply({ embeds: [buildEmbed(`⚠️ 計画 \`${planId}\` が見つかりません。`, EmbedColor.Warning)] });
                 return;
             }
 
@@ -300,7 +301,7 @@ export async function handleButtonInteraction(
             const planId = customId.replace('sched_run_', '');
             const plan = ctx.planStore.get(planId);
             if (!plan) {
-                await interaction.reply({ embeds: [buildEmbed(`⚠️ 計画 \`${planId}\` が見つかりません。`, EmbedColor.Warning)], ephemeral: true });
+                await interaction.reply({ embeds: [buildEmbed(`⚠️ 計画 \`${planId}\` が見つかりません。`, EmbedColor.Warning)] });
                 return;
             }
 
@@ -336,7 +337,7 @@ export async function handleButtonInteraction(
             const planId = customId.replace('sched_edit_', '');
             const plan = ctx.planStore.get(planId);
             if (!plan) {
-                await interaction.reply({ embeds: [buildEmbed(`⚠️ 計画 \`${planId}\` が見つかりません。`, EmbedColor.Warning)], ephemeral: true });
+                await interaction.reply({ embeds: [buildEmbed(`⚠️ 計画 \`${planId}\` が見つかりません。`, EmbedColor.Warning)] });
                 return;
             }
 
@@ -383,17 +384,18 @@ export async function handleButtonInteraction(
         // モデル管理ボタン
         // -------------------------------------------------------------------
         if (customId.startsWith('model_select_')) {
-            const modelName = customId.replace('model_select_', '');
+            const modelIndex = parseInt(customId.replace('model_select_', ''), 10);
             await interaction.deferUpdate();
 
             const cdp = ctx.cdp;
             if (!cdp) {
-                await interaction.followUp({ embeds: [buildEmbed('⚠️ Antigravity との接続が初期化されていません。', EmbedColor.Warning)], ephemeral: true });
+                await interaction.followUp({ embeds: [buildEmbed('⚠️ Antigravity との接続が初期化されていません。', EmbedColor.Warning)] });
                 return;
             }
 
-            const success = await selectModel(cdp.ops, modelName);
-            const resultEmbed = buildModelSwitchResultEmbed(modelName, success);
+            // インデックスベースで直接選択（getAvailableModels の再呼出しを省略）
+            const success = await selectModel(cdp.ops, modelIndex);
+            const resultEmbed = buildModelSwitchResultEmbed(`モデル #${modelIndex}`, success);
 
             if (success) {
                 // 切替後にリストを更新
@@ -402,7 +404,7 @@ export async function handleButtonInteraction(
                 const { embeds, components } = buildModelListEmbed(models, current, (await fetchQuota())?.models);
                 await interaction.editReply({ embeds, components: components as any });
             } else {
-                await interaction.followUp({ embeds: [resultEmbed], ephemeral: true });
+                await interaction.followUp({ embeds: [resultEmbed] });
             }
             return;
         }
@@ -412,7 +414,7 @@ export async function handleButtonInteraction(
 
             const cdp = ctx.cdp;
             if (!cdp) {
-                await interaction.followUp({ embeds: [buildEmbed('⚠️ Antigravity との接続が初期化されていません。', EmbedColor.Warning)], ephemeral: true });
+                await interaction.followUp({ embeds: [buildEmbed('⚠️ Antigravity との接続が初期化されていません。', EmbedColor.Warning)] });
                 return;
             }
 
@@ -426,12 +428,20 @@ export async function handleButtonInteraction(
         // モード管理ボタン
         // -------------------------------------------------------------------
         if (customId.startsWith('mode_select_')) {
-            const modeName = customId.replace('mode_select_', '');
+            const modeIndex = parseInt(customId.replace('mode_select_', ''), 10);
             await interaction.deferUpdate();
 
             const cdp = ctx.cdp;
             if (!cdp) {
-                await interaction.followUp({ embeds: [buildEmbed('⚠️ Antigravity との接続が初期化されていません。', EmbedColor.Warning)], ephemeral: true });
+                await interaction.followUp({ embeds: [buildEmbed('⚠️ Antigravity との接続が初期化されていません。', EmbedColor.Warning)] });
+                return;
+            }
+
+            // インデックスからモード名を逆引き
+            const { modes: currentModes } = await getAvailableModes(cdp.ops);
+            const modeName = currentModes[modeIndex];
+            if (!modeName) {
+                await interaction.followUp({ embeds: [buildEmbed(`⚠️ モードインデックス ${modeIndex} が範囲外です。一覧を更新してください。`, EmbedColor.Warning)] });
                 return;
             }
 
@@ -448,7 +458,7 @@ export async function handleButtonInteraction(
                 const { embeds, components } = buildModeListEmbed(modes, effectiveCurrent);
                 await interaction.editReply({ embeds, components: components as any });
             } else {
-                await interaction.followUp({ embeds: [resultEmbed], ephemeral: true });
+                await interaction.followUp({ embeds: [resultEmbed] });
             }
             return;
         }
@@ -458,7 +468,7 @@ export async function handleButtonInteraction(
 
             const cdp = ctx.cdp;
             if (!cdp) {
-                await interaction.followUp({ embeds: [buildEmbed('⚠️ Antigravity との接続が初期化されていません。', EmbedColor.Warning)], ephemeral: true });
+                await interaction.followUp({ embeds: [buildEmbed('⚠️ Antigravity との接続が初期化されていません。', EmbedColor.Warning)] });
                 return;
             }
 
@@ -483,7 +493,7 @@ export async function handleButtonInteraction(
 
             const cdp = ctx.cdp;
             if (!cdp) {
-                await interaction.followUp({ embeds: [buildEmbed('⚠️ Antigravity との接続が初期化されていません。', EmbedColor.Warning)], ephemeral: true });
+                await interaction.followUp({ embeds: [buildEmbed('⚠️ Antigravity との接続が初期化されていません。', EmbedColor.Warning)] });
                 return;
             }
 
@@ -500,7 +510,7 @@ export async function handleButtonInteraction(
             if (success) {
                 await interaction.editReply({ embeds: [resultEmbed], components: [] });
             } else {
-                await interaction.followUp({ embeds: [resultEmbed], ephemeral: true });
+                await interaction.followUp({ embeds: [resultEmbed] });
             }
             return;
         }
@@ -510,7 +520,7 @@ export async function handleButtonInteraction(
 
             const cdp = ctx.cdp;
             if (!cdp) {
-                await interaction.followUp({ embeds: [buildEmbed('⚠️ Antigravity との接続が初期化されていません。', EmbedColor.Warning)], ephemeral: true });
+                await interaction.followUp({ embeds: [buildEmbed('⚠️ Antigravity との接続が初期化されていません。', EmbedColor.Warning)] });
                 return;
             }
 
@@ -555,13 +565,11 @@ export async function handleButtonInteraction(
                 await vscode.commands.executeCommand('anti-crow.licenseInfo');
                 await interaction.reply({
                     embeds: [buildEmbed('📋 VS Code 側にライセンス情報を表示しました。', EmbedColor.Success)],
-                    ephemeral: true,
                 });
             } catch (e) {
                 logError('pro_info button failed', e);
                 await interaction.reply({
                     embeds: [buildEmbed('❌ ライセンス情報の取得に失敗しました。', EmbedColor.Error)],
-                    ephemeral: true,
                 });
             }
             return;
@@ -632,7 +640,7 @@ export async function handleButtonInteraction(
             const index = parseInt(customId.replace('suggest_', ''), 10);
             const suggestion = getSuggestion(channelId, index);
             if (!suggestion) {
-                await interaction.reply({ embeds: [buildEmbed('⚠️ この提案は既に無効です。', EmbedColor.Warning)], ephemeral: true });
+                await interaction.reply({ embeds: [buildEmbed('⚠️ この提案は既に無効です。', EmbedColor.Warning)] });
                 return;
             }
             await interaction.reply({ embeds: [buildEmbed(`💡 **提案を実行:** ${suggestion.label}`, EmbedColor.Info)] });
@@ -644,13 +652,13 @@ export async function handleButtonInteraction(
         }
 
         logWarn(`ButtonHandler: unknown customId: ${customId}`);
-        await interaction.reply({ embeds: [buildEmbed(`⚠️ 不明なボタン: ${customId}`, EmbedColor.Warning)], ephemeral: true });
+        await interaction.reply({ embeds: [buildEmbed(`⚠️ 不明なボタン: ${customId}`, EmbedColor.Warning)] });
 
     } catch (e) {
         logError(`handleButtonInteraction failed for ${customId}`, e);
         const errMsg = e instanceof Error ? e.message : String(e);
         if (!interaction.replied && !interaction.deferred) {
-            await interaction.reply({ embeds: [buildEmbed(`❌ エラー: ${sanitizeErrorForDiscord(errMsg)}`, EmbedColor.Error)], ephemeral: true });
+            await interaction.reply({ embeds: [buildEmbed(`❌ エラー: ${sanitizeErrorForDiscord(errMsg)}`, EmbedColor.Error)] });
         }
     }
 }
@@ -669,13 +677,29 @@ export async function handleModalSubmit(
         return;
     }
 
+    // SOUL.md 編集モーダル
+    if (interaction.customId === 'soul_edit_modal') {
+        const content = interaction.fields.getTextInputValue('soul_content');
+        const result = updateAnticrowMd(content, 'overwrite');
+        if (result.success) {
+            const bytes = Buffer.byteLength(content, 'utf-8');
+            await interaction.reply({
+                embeds: [buildEmbed(`✅ SOUL.md を更新しました（${bytes} bytes）`, EmbedColor.Success)],
+            });
+        } else {
+            await interaction.reply({
+                embeds: [buildEmbed(`❌ SOUL.md の更新に失敗しました: ${result.error || '不明なエラー'}`, EmbedColor.Error)],
+            });
+        }
+        return;
+    }
+
     // Pro ライセンスキー入力モーダル
     if (interaction.customId === 'pro_key_modal') {
         const key = interaction.fields.getTextInputValue('license_key').trim();
         if (!key) {
             await interaction.reply({
                 embeds: [buildEmbed('⚠️ ライセンスキーが空です。', EmbedColor.Warning)],
-                ephemeral: true,
             });
             return;
         }
@@ -683,7 +707,6 @@ export async function handleModalSubmit(
         if (!ctx.setLicenseKeyFn) {
             await interaction.reply({
                 embeds: [buildEmbed('⚠️ ライセンスシステムが初期化されていません。VS Code 側で `AntiCrow: Set License Key` コマンドを実行してください。', EmbedColor.Warning)],
-                ephemeral: true,
             });
             return;
         }
@@ -693,12 +716,10 @@ export async function handleModalSubmit(
             if (result.valid && result.planType !== 'free') {
                 await interaction.reply({
                     embeds: [buildEmbed(`✅ ライセンス認証成功！\n\nプラン: **${result.planType}**\nキー: \`${key.substring(0, 8)}...\``, EmbedColor.Success)],
-                    ephemeral: true,
                 });
             } else {
                 await interaction.reply({
                     embeds: [buildEmbed(`⚠️ ライセンスキーが無効です。正しいキーを入力してください。\n\nキー: \`${key.substring(0, 8)}...\``, EmbedColor.Warning)],
-                    ephemeral: true,
                 });
             }
             logDebug(`pro_key_modal: license key set, valid=${result.valid}, plan=${result.planType}`);
@@ -707,7 +728,6 @@ export async function handleModalSubmit(
             const errDetail = e instanceof Error ? e.message : String(e);
             await interaction.reply({
                 embeds: [buildEmbed(`❌ ライセンスキーの設定中にエラーが発生しました。\n\n**エラー:** ${errDetail}\n\nキーが保存済みの場合は、次回の自動検証で反映されます。手動で再試行する場合は \`/pro\` → 🔑キー入力 を再度お試しください。`, EmbedColor.Error)],
-                ephemeral: true,
             });
         }
         return;
@@ -728,7 +748,6 @@ export async function handleModalSubmit(
         if (!prompt) {
             await interaction.reply({
                 embeds: [buildEmbed('⚠️ プロンプトが空です。', EmbedColor.Warning)],
-                ephemeral: true,
             });
             return;
         }
@@ -748,7 +767,6 @@ export async function handleModalSubmit(
                     '- cron 式: `0 9 * * *`',
                     EmbedColor.Warning,
                 )],
-                ephemeral: true,
             });
             return;
         }
@@ -756,7 +774,6 @@ export async function handleModalSubmit(
         if (!ctx.planStore || !ctx.scheduler) {
             await interaction.reply({
                 embeds: [buildEmbed('⚠️ Bridge が初期化されていません。', EmbedColor.Warning)],
-                ephemeral: true,
             });
             return;
         }
@@ -807,7 +824,6 @@ export async function handleModalSubmit(
         if (!prompt) {
             await interaction.reply({
                 embeds: [buildEmbed('⚠️ プロンプトが空です。', EmbedColor.Warning)],
-                ephemeral: true,
             });
             return;
         }
@@ -826,7 +842,6 @@ export async function handleModalSubmit(
                     '- cron 式: `0 9 * * *`',
                     EmbedColor.Warning,
                 )],
-                ephemeral: true,
             });
             return;
         }
@@ -834,7 +849,6 @@ export async function handleModalSubmit(
         if (!ctx.planStore || !ctx.scheduler) {
             await interaction.reply({
                 embeds: [buildEmbed('⚠️ Bridge が初期化されていません。', EmbedColor.Warning)],
-                ephemeral: true,
             });
             return;
         }
@@ -843,7 +857,6 @@ export async function handleModalSubmit(
         if (!oldPlan) {
             await interaction.reply({
                 embeds: [buildEmbed(`⚠️ 計画 \`${planId}\` が見つかりません。`, EmbedColor.Warning)],
-                ephemeral: true,
             });
             return;
         }

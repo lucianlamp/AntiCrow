@@ -12,6 +12,9 @@ import {
     ButtonBuilder,
     ButtonStyle,
     AttachmentBuilder,
+    ModalBuilder,
+    TextInputBuilder,
+    TextInputStyle,
 } from 'discord.js';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -33,6 +36,8 @@ import { DiscordBot } from './discordBot';
 import { getRunningWsNames, buildWorkspaceListEmbed } from './workspaceHandler';
 import { fetchQuota } from './quotaProvider';
 import { buildTemplateListPanel } from './templateHandler';
+import { SUGGEST_AUTO_ID } from './suggestionButtons';
+import { readAnticrowMd } from './anticrowCustomizer';
 
 // ---------------------------------------------------------------------------
 // コマンドハンドラ（各コマンドの処理を独立関数に分離）
@@ -94,10 +99,12 @@ async function handleStatus(ctx: BridgeContext, interaction: ChatInputCommandInt
 
     if (cdpOk && cdp) {
         try {
-            const [modelName, modeName] = await Promise.all([
-                getCurrentModel(cdp.ops).catch(() => null),
-                getCurrentMode(cdp.ops).catch(() => null),
+            const [modelResult, modeResult] = await Promise.all([
+                getAvailableModels(cdp.ops).catch(() => ({ models: [] as string[], current: null as string | null, debugLog: [] as unknown[] })),
+                getAvailableModes(cdp.ops).catch(() => ({ modes: [] as string[], current: null as string | null, debugLog: [] as unknown[] })),
             ]);
+            const modelName = modelResult.current;
+            const modeName = modeResult.current;
             // UIボタン名の誤検出を防ぐバリデーション
             const isValidName = (name: string | null): boolean => {
                 if (!name || name.length < 2) return false;
@@ -159,7 +166,7 @@ async function handleStatus(ctx: BridgeContext, interaction: ChatInputCommandInt
 async function handleSchedules(ctx: BridgeContext, interaction: ChatInputCommandInteraction): Promise<void> {
     const { planStore } = ctx;
     if (!planStore) {
-        await interaction.reply({ embeds: [buildEmbed('⚠️ PlanStore が初期化されていません。', EmbedColor.Warning)], ephemeral: true });
+        await interaction.reply({ embeds: [buildEmbed('⚠️ PlanStore が初期化されていません。', EmbedColor.Warning)] });
         return;
     }
     const plans = planStore.getAll();
@@ -191,7 +198,6 @@ async function handleCancel(ctx: BridgeContext, interaction: ChatInputCommandInt
                         `キャンセルしたいワークスペースのカテゴリー配下のチャンネルから \`/cancel\` を送信してください。`,
                         EmbedColor.Warning,
                     )],
-                    ephemeral: true,
                 });
                 return;
             }
@@ -252,7 +258,7 @@ async function handleCancel(ctx: BridgeContext, interaction: ChatInputCommandInt
     } catch (e) {
         const errMsg = e instanceof Error ? e.message : String(e);
         logError('handleCancel: /cancel failed', e);
-        await interaction.reply({ embeds: [buildEmbed(`❌ キャンセル失敗: ${errMsg}`, EmbedColor.Error)], ephemeral: true });
+        await interaction.reply({ embeds: [buildEmbed(`❌ キャンセル失敗: ${errMsg}`, EmbedColor.Error)] });
     }
 }
 
@@ -264,12 +270,12 @@ async function handleNewchat(ctx: BridgeContext, interaction: ChatInputCommandIn
             logDebug('handleNewchat: new chat started via Ctrl+Shift+L');
             await interaction.reply({ embeds: [buildEmbed('🆕 新しいチャットを開きました。', EmbedColor.Success)] });
         } else {
-            await interaction.reply({ embeds: [buildEmbed('⚠️ Antigravity との接続が初期化されていません。', EmbedColor.Warning)], ephemeral: true });
+            await interaction.reply({ embeds: [buildEmbed('⚠️ Antigravity との接続が初期化されていません。', EmbedColor.Warning)] });
         }
     } catch (e) {
         const errMsg = e instanceof Error ? e.message : String(e);
         logError('handleNewchat: failed', e);
-        await interaction.reply({ embeds: [buildEmbed(`❌ 新しいチャットの開始に失敗: ${errMsg}`, EmbedColor.Error)], ephemeral: true });
+        await interaction.reply({ embeds: [buildEmbed(`❌ 新しいチャットの開始に失敗: ${errMsg}`, EmbedColor.Error)] });
     }
 }
 
@@ -289,7 +295,7 @@ async function handleWorkspaces(ctx: BridgeContext, interaction: ChatInputComman
         if (interaction.deferred || interaction.replied) {
             await interaction.editReply({ embeds: [buildEmbed(`❌ ワークスペース検出失敗: ${errMsg}`, EmbedColor.Error)] }).catch(() => { });
         } else {
-            await interaction.reply({ embeds: [buildEmbed(`❌ ワークスペース検出失敗: ${errMsg}`, EmbedColor.Error)], ephemeral: true });
+            await interaction.reply({ embeds: [buildEmbed(`❌ ワークスペース検出失敗: ${errMsg}`, EmbedColor.Error)] });
         }
     }
 }
@@ -298,7 +304,7 @@ async function handleQueue(ctx: BridgeContext, interaction: ChatInputCommandInte
     const { executor } = ctx;
     const queueInfo = executor?.getQueueInfo();
     if (!queueInfo) {
-        await interaction.reply({ embeds: [buildEmbed('⚠️ Executor が初期化されていません。', EmbedColor.Warning)], ephemeral: true });
+        await interaction.reply({ embeds: [buildEmbed('⚠️ Executor が初期化されていません。', EmbedColor.Warning)] });
         return;
     }
 
@@ -403,7 +409,7 @@ async function handleQueue(ctx: BridgeContext, interaction: ChatInputCommandInte
 async function handleTemplate(ctx: BridgeContext, interaction: ChatInputCommandInteraction): Promise<void> {
     const templateStore = ctx.templateStore;
     if (!templateStore) {
-        await interaction.reply({ embeds: [buildEmbed('⚠️ TemplateStore が初期化されていません。', EmbedColor.Warning)], ephemeral: true });
+        await interaction.reply({ embeds: [buildEmbed('⚠️ TemplateStore が初期化されていません。', EmbedColor.Warning)] });
         return;
     }
     const { embeds, components } = buildTemplateListPanel(templateStore);
@@ -652,7 +658,7 @@ async function handlePro(ctx: BridgeContext, interaction: ChatInputCommandIntera
     } catch (e) {
         const errMsg = e instanceof Error ? e.message : String(e);
         logError('handlePro: failed', e);
-        await interaction.reply({ embeds: [buildEmbed(`❌ Pro 情報取得エラー: ${errMsg}`, EmbedColor.Error)], ephemeral: true });
+        await interaction.reply({ embeds: [buildEmbed(`❌ Pro 情報取得エラー: ${errMsg}`, EmbedColor.Error)] });
     }
 }
 
@@ -680,12 +686,21 @@ const SUGGEST_PROMPT =
 async function handleSuggest(ctx: BridgeContext, interaction: ChatInputCommandInteraction): Promise<void> {
     const channel = interaction.channel;
     if (!channel || !channel.isTextBased()) {
-        await interaction.reply({ embeds: [buildEmbed('⚠️ テキストチャンネルでのみ使用できます。', EmbedColor.Warning)], ephemeral: true });
+        await interaction.reply({ embeds: [buildEmbed('⚠️ テキストチャンネルでのみ使用できます。', EmbedColor.Warning)] });
         return;
     }
 
-    // スラッシュコマンドの応答としてエフェメラルで返す
-    await interaction.reply({ embeds: [buildEmbed('💡 プロジェクトを分析して提案を生成中なのだ…\nしばらく待ってほしいのだ！', EmbedColor.Info)], ephemeral: true });
+    // スラッシュコマンドの応答（「エージェントに任せる」ボタン付き）
+    const autoButton = new ButtonBuilder()
+        .setCustomId(SUGGEST_AUTO_ID)
+        .setLabel('エージェントに任せる')
+        .setStyle(ButtonStyle.Secondary)
+        .setEmoji('🤖');
+    const autoRow = new ActionRowBuilder<ButtonBuilder>().addComponents(autoButton);
+    await interaction.reply({
+        embeds: [buildEmbed('💡 プロジェクトを分析して提案を生成中なのだ…\nしばらく待ってほしいのだ！', EmbedColor.Info)],
+        components: [autoRow],
+    });
 
     // 合成 Message オブジェクトを作成して enqueueMessage に流す
     const syntheticMessage = {
@@ -736,6 +751,48 @@ async function handleScreenshot(ctx: BridgeContext, interaction: ChatInputComman
 
 
 // ---------------------------------------------------------------------------
+// /soul — SOUL.md 編集モーダル
+// ---------------------------------------------------------------------------
+
+async function handleSoul(
+    _ctx: BridgeContext,
+    interaction: ChatInputCommandInteraction,
+): Promise<void> {
+    const current = readAnticrowMd() ?? '';
+
+    // Discord モーダルの TextInput は最大4000文字
+    if (current.length > 4000) {
+        await interaction.reply({
+            embeds: [buildEmbed(
+                `⚠️ SOUL.md が ${current.length} 文字あり、Discord モーダルの上限（4000文字）を超えています。\nテキストエディタで直接編集してください。`,
+                EmbedColor.Warning,
+            )],
+        });
+        return;
+    }
+
+    const textInput = new TextInputBuilder()
+        .setCustomId('soul_content')
+        .setLabel('SOUL.md の内容')
+        .setStyle(TextInputStyle.Paragraph)
+        .setRequired(false)
+        .setMaxLength(4000);
+
+    if (current.length > 0) {
+        textInput.setValue(current);
+    }
+
+    const row = new ActionRowBuilder<TextInputBuilder>().addComponents(textInput);
+
+    const modal = new ModalBuilder()
+        .setCustomId('soul_edit_modal')
+        .setTitle('SOUL.md 編集')
+        .addComponents(row);
+
+    await interaction.showModal(modal);
+}
+
+// ---------------------------------------------------------------------------
 // コマンドディスパッチマップ
 // ---------------------------------------------------------------------------
 
@@ -754,6 +811,7 @@ const COMMAND_HANDLERS: Record<string, CommandHandler> = {
     help: handleHelp,
     pro: handlePro,
     screenshot: handleScreenshot,
+    soul: handleSoul,
 };
 
 // ---------------------------------------------------------------------------
@@ -769,7 +827,7 @@ export async function handleManageSlash(
     if (handler) {
         await handler(ctx, interaction);
     } else {
-        await interaction.reply({ embeds: [buildEmbed(`⚠️ 未対応の管理コマンド: /${commandName}`, EmbedColor.Warning)], ephemeral: true });
+        await interaction.reply({ embeds: [buildEmbed(`⚠️ 未対応の管理コマンド: /${commandName}`, EmbedColor.Warning)] });
     }
 }
 

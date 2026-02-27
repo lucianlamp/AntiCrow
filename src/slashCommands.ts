@@ -66,6 +66,10 @@ export const slashCommandDefinitions = [
         .setName('screenshot')
         .setDescription('現在の画面のスクリーンショットを取得します'),
 
+    new SlashCommandBuilder()
+        .setName('soul')
+        .setDescription('SOUL.md（カスタマイズ設定）を編集します'),
+
 ];
 
 // -----------------------------------------------------------------------
