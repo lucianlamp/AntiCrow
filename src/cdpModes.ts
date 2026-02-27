@@ -97,7 +97,7 @@ const FIND_MODE_BUTTON = `
         _findDebug.textboxFound = true;
         var container = textbox.parentElement;
 
-        for (var d = 0; d < 5; d++) {
+        for (var d = 0; d < 8; d++) {
             if (!container) break;
             _findDebug.levelsSearched = d + 1;
 
@@ -148,6 +148,38 @@ const FIND_MODE_BUTTON = `
             container = container.parentElement;
         }
     }
+
+    // 戦略B: ドキュメント全体からモード名キーワードでボタンを検索（textbox親探索で見つからなかった場合）
+    if (!modeBtn) {
+        _findDebug.fallbackUsed = true;
+        var MODE_KW_SEARCH = ['planning', 'fast', 'normal'];
+        var MODEL_EXCLUDE = ['claude', 'gpt', 'gemini', 'sonnet', 'opus', 'haiku', 'o1', 'o3', 'deepseek', 'llama', 'mistral', 'codestral'];
+        var allDocBtns = doc.querySelectorAll('button');
+        var fallbackCandidates = [];
+        for (var fb = 0; fb < allDocBtns.length; fb++) {
+            var fbText = getBtnText(allDocBtns[fb]).toLowerCase();
+            if (fbText.length < 2 || fbText.length > 40) continue;
+            var hasModeKw = false;
+            for (var mkw = 0; mkw < MODE_KW_SEARCH.length; mkw++) {
+                if (fbText === MODE_KW_SEARCH[mkw] || fbText.indexOf(MODE_KW_SEARCH[mkw]) >= 0) { hasModeKw = true; break; }
+            }
+            if (!hasModeKw) continue;
+            var hasModelExclude = false;
+            for (var mex = 0; mex < MODEL_EXCLUDE.length; mex++) {
+                if (fbText.indexOf(MODEL_EXCLUDE[mex]) >= 0) { hasModelExclude = true; break; }
+            }
+            if (!hasModelExclude) {
+                fallbackCandidates.push({ el: allDocBtns[fb], text: fbText });
+            }
+        }
+        _findDebug.fallbackCandidates = fallbackCandidates.length;
+        if (fallbackCandidates.length > 0) {
+            modeBtn = fallbackCandidates[0].el;
+            _findDebug.matchMethod = 'doc-wide-keyword';
+            _findDebug.fallbackBtnText = fallbackCandidates[0].text;
+            _findDebug.found = true;
+        }
+    }
 `;
 
 
@@ -164,21 +196,48 @@ export async function getCurrentMode(
         const script = `
 (function() {
     ${FIND_MODE_BUTTON}
-    if (!modeBtn) return null;
+    if (!modeBtn) return { text: null, debug: _findDebug };
     var p = findFirstInTree(modeBtn, function(el) { return el.tagName === 'P'; });
     var sp = findFirstInTree(modeBtn, function(el) { return el.tagName === 'SPAN'; });
     var textEl = p || sp;
-    return textEl ? (textEl.textContent || '').trim() : (modeBtn.innerText || modeBtn.textContent || '').trim();
+    var btnText = textEl ? (textEl.textContent || '').trim() : (modeBtn.innerText || modeBtn.textContent || '').trim();
+    return { text: btnText, debug: _findDebug };
 })()
         `.trim();
 
-        const result = await ops.evaluateInCascade(script);
-        if (typeof result === 'string' && result.length > 0) {
-            logDebug(`cdpModes: getCurrentMode = "${result}"`);
+        // 1. cascade コンテキストで試行
+        const result = await ops.evaluateInCascade(script) as { text: string | null; debug: Record<string, unknown> } | string | null;
+
+        if (result && typeof result === 'object' && 'debug' in result) {
+            logDebug(`cdpModes: getCurrentMode cascade debug=${JSON.stringify(result.debug)}`);
+            if (typeof result.text === 'string' && result.text.length > 0) {
+                logDebug(`cdpModes: getCurrentMode = "${result.text}" (cascade)`);
+                return result.text;
+            }
+        } else if (typeof result === 'string' && result.length > 0) {
+            logDebug(`cdpModes: getCurrentMode = "${result}" (cascade/legacy)`);
             return result;
         }
 
-        logDebug('cdpModes: getCurrentMode — mode selector not found');
+        // 2. メインフレームフォールバック
+        logDebug('cdpModes: getCurrentMode — cascade failed, trying main frame');
+        try {
+            const mainResult = await ops.conn.evaluate(script) as { text: string | null; debug: Record<string, unknown> } | string | null;
+            if (mainResult && typeof mainResult === 'object' && 'debug' in mainResult) {
+                logDebug(`cdpModes: getCurrentMode main debug=${JSON.stringify(mainResult.debug)}`);
+                if (typeof mainResult.text === 'string' && mainResult.text.length > 0) {
+                    logDebug(`cdpModes: getCurrentMode = "${mainResult.text}" (main)`);
+                    return mainResult.text;
+                }
+            } else if (typeof mainResult === 'string' && mainResult.length > 0) {
+                logDebug(`cdpModes: getCurrentMode = "${mainResult}" (main/legacy)`);
+                return mainResult;
+            }
+        } catch (mainErr) {
+            logDebug(`cdpModes: getCurrentMode main frame fallback failed: ${mainErr instanceof Error ? mainErr.message : mainErr}`);
+        }
+
+        logDebug('cdpModes: getCurrentMode — not found in cascade or main frame');
         return null;
     } catch (e) {
         logWarn(`cdpModes: getCurrentMode failed — ${e instanceof Error ? e.message : e}`);
@@ -434,7 +493,16 @@ export async function getAvailableModes(
     }
     debugInfo.activeMode = activeMode;
 
-    return { items: items, debug: debugInfo, activeMode: activeMode };
+    // 重複排除（findAllInTree が shadowRoot を含む再帰的トラバースで同一要素を複数回収集する場合がある）
+    var uniqueItems = [];
+    var seen = {};
+    for (var ui = 0; ui < items.length; ui++) {
+        if (!seen[items[ui]]) {
+            seen[items[ui]] = true;
+            uniqueItems.push(items[ui]);
+        }
+    }
+    return { items: uniqueItems, debug: debugInfo, activeMode: activeMode };
 })()
         `.trim();
 
@@ -482,8 +550,8 @@ export async function getAvailableModes(
             log('dropdown_close', false, `${closeErr instanceof Error ? closeErr.message : closeErr}`);
         }
 
-        const modeList = Array.isArray(modes) ? modes : [];
-        logDebug(`cdpModes: getAvailableModes — found ${modeList.length} modes, current = "${currentMode}"`);
+        const modeList = Array.isArray(modes) ? [...new Set(modes)] : [];
+        logDebug(`cdpModes: getAvailableModes — found ${modeList.length} modes (deduped), current = "${currentMode}"`);
 
         return {
             modes: modeList,

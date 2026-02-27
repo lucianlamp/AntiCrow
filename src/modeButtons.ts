@@ -65,18 +65,20 @@ export function buildModeListEmbed(
         const row = new ActionRowBuilder<ButtonBuilder>();
         const chunk = displayModes.slice(i, i + 5);
 
-        for (const mode of chunk) {
+        for (let j = 0; j < chunk.length; j++) {
+            const mode = chunk[j];
             const modeLower = mode.trim().toLowerCase();
             const isCurrent = normalizedCurrentBtn.length > 0 && (
                 modeLower === normalizedCurrentBtn ||
                 modeLower.includes(normalizedCurrentBtn) ||
                 normalizedCurrentBtn.includes(modeLower)
             );
-            const shortName = mode.substring(0, 80);
+            // インデックスベースの custom_id で一意性を保証
+            const modeIndex = i + j;
 
             row.addComponents(
                 new ButtonBuilder()
-                    .setCustomId(`mode_select_${shortName}`)
+                    .setCustomId(`mode_select_${modeIndex}`)
                     .setLabel(mode.length > 20 ? mode.substring(0, 17) + '...' : mode)
                     .setStyle(isCurrent ? ButtonStyle.Success : ButtonStyle.Secondary)
                     .setDisabled(!!isCurrent),

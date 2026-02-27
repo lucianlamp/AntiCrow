@@ -105,19 +105,20 @@ export function buildModelListEmbed(
         const row = new ActionRowBuilder<ButtonBuilder>();
         const chunk = displayModels.slice(i, i + 5);
 
-        for (const model of chunk) {
+        for (let j = 0; j < chunk.length; j++) {
+            const model = chunk[j];
             const modelLower = model.trim().toLowerCase();
             const isCurrent = normalizedCurrentBtn.length > 0 && (
                 modelLower === normalizedCurrentBtn ||
                 modelLower.includes(normalizedCurrentBtn) ||
                 normalizedCurrentBtn.includes(modelLower)
             );
-            // customId は100文字制限があるため、モデル名をハッシュ化せず短縮
-            const shortName = model.substring(0, 80);
+            // インデックスベースの custom_id で一意性を保証（モデル名重複問題を解消）
+            const modelIndex = i + j;
 
             row.addComponents(
                 new ButtonBuilder()
-                    .setCustomId(`model_select_${shortName}`)
+                    .setCustomId(`model_select_${modelIndex}`)
                     .setLabel(model.length > 20 ? model.substring(0, 17) + '...' : model)
                     .setStyle(isCurrent ? ButtonStyle.Success : ButtonStyle.Secondary)
                     .setDisabled(!!isCurrent),
