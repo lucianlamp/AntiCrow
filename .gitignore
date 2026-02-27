@@ -5,3 +5,4 @@ out/
 .licensing-setup.json
 convex/_generated/
 .env
+tsconfig.tsbuildinfo
