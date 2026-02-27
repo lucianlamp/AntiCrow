@@ -18,6 +18,7 @@ import { getPromptRulesMd, EXECUTION_PROMPT_TEMPLATE } from './embeddedRules';
 import { buildEmbed, EmbedColor } from './embedHelper';
 import { parseSuggestions } from './suggestionParser';
 import { buildSuggestionRow, buildSuggestionContent, storeSuggestions } from './suggestionButtons';
+import { getCurrentModel } from './cdpModels';
 import type { ActionRowBuilder, ButtonBuilder, EmbedBuilder } from 'discord.js';
 import { UIWatcher } from './uiWatcher';
 import * as vscode from 'vscode';
@@ -66,6 +67,7 @@ export class Executor {
     private promptRulesContent: string | null = null;
     private userMemory: string | null = null;
     private postSuggestions: PostSuggestionsFunc | null = null;
+    private setModelNameFn: ((name: string | null) => void) | null = null;
 
     constructor(cdp: CdpBridge, fileIpc: FileIpc, planStore: PlanStore, timeoutMs: number, notifyDiscord: NotifyFunc, sendTyping: SendTypingFunc, extensionPath?: string, postSuggestions?: PostSuggestionsFunc) {
         this.cdp = cdp;
@@ -81,6 +83,11 @@ export class Executor {
         this.loadPromptTemplate();
         this.loadPromptRules();
         this.loadUserGlobalRules();
+    }
+
+    /** モデル名更新コールバックを設定 */
+    setSetModelNameFn(fn: (name: string | null) => void): void {
+        this.setModelNameFn = fn;
     }
 
 
@@ -479,6 +486,15 @@ export class Executor {
             const isDuplicate = prefixCore.length > 0 && contentStart.startsWith(prefixCore);
             const resultMsg = isDuplicate ? cleanContent : `${prefix}\n${cleanContent}`;
             logDebug(`Executor: sending success notification to channel ${notifyChannel} (${resultMsg.length} chars, prefixSkipped=${isDuplicate}, markdown=${isMarkdown})`);
+
+            // レスポンス送信前にモデル名を再取得してフッターに反映
+            try {
+                const currentModel = await getCurrentModel(this.cdp.ops);
+                if (currentModel && this.setModelNameFn) {
+                    this.setModelNameFn(currentModel);
+                }
+            } catch { /* ignore */ }
+
             await this.safeNotify(notifyChannel, resultMsg, EmbedColor.Response);
 
             // 提案ボタンを送信（提案があり、コールバックが設定されている場合）

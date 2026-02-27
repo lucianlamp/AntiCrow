@@ -34,6 +34,8 @@ export class ExecutorPool {
     private postSuggestions: PostSuggestionsFunc | null;
     /** 起動中の UIWatcher isProCheck コールバック（新規 Executor 生成時にも自動適用） */
     private uiWatcherIsProCheck: (() => boolean) | null = null;
+    /** モデル名更新コールバック（新規 Executor 生成時にも自動適用） */
+    private setModelNameCallback: ((name: string | null) => void) | null = null;
 
     constructor(
         cdpPool: CdpPool,
@@ -94,6 +96,10 @@ export class ExecutorPool {
         if (this.uiWatcherIsProCheck) {
             executor.startUIWatcher(this.uiWatcherIsProCheck);
             logDebug(`ExecutorPool: auto-started UIWatcher for new executor "${key}"`);
+        }
+        // モデル名更新コールバックが設定済みなら新規 Executor にも自動適用
+        if (this.setModelNameCallback) {
+            executor.setSetModelNameFn(this.setModelNameCallback);
         }
         return executor;
     }
@@ -256,6 +262,21 @@ export class ExecutorPool {
         for (const [key, executor] of this.pool.entries()) {
             executor.stopUIWatcher();
             logDebug(`ExecutorPool: stopped UIWatcher for workspace "${key}"`);
+        }
+    }
+
+    // -------------------------------------------------------------------
+    // モデル名更新コールバック
+    // -------------------------------------------------------------------
+
+    /**
+     * モデル名更新コールバックを設定する。
+     * 既存の全 Executor と今後作成される Executor に適用される。
+     */
+    setSetModelNameFn(fn: (name: string | null) => void): void {
+        this.setModelNameCallback = fn;
+        for (const executor of this.pool.values()) {
+            executor.setSetModelNameFn(fn);
         }
     }
 }

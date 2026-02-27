@@ -376,6 +376,11 @@ async function startBridgeInternal(
         }
     });
 
+    // モデル名更新コールバック（レスポンスフッターに反映）
+    ctx.executor.setSetModelNameFn((name) => {
+        ctx.bot?.setModelName(name);
+    });
+
     // CdpPool 初期化
     ctx.cdpPool = new CdpPool(cdpPorts, storageUri.fsPath);
 
@@ -402,6 +407,11 @@ async function startBridgeInternal(
             }
         },
     );
+
+    // ExecutorPool にもモデル名更新コールバックを設定
+    ctx.executorPool.setSetModelNameFn((name) => {
+        ctx.bot?.setModelName(name);
+    });
 
     // TemplateStore 初期化
     ctx.templateStore = new TemplateStore(storageUri.fsPath);
