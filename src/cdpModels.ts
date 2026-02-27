@@ -947,7 +947,22 @@ export async function selectModel(
                 var targetIdx = ${targetIndex};
                 var targetModel = ${JSON.stringify(targetName)};
             var targetLower = targetModel.toLowerCase();
-            var _selectDebug = { inIframe: false, ddNewCount: 0, rowCount: 0, oldDdCount: 0, oldRowCount: 0 };
+            var _selectDebug = { inIframe: false, ddNewCount: 0, rowCount: 0, oldDdCount: 0, oldRowCount: 0, matchStrategy: 'none' };
+
+            // モデル名キーワード — ドロップダウンがモデル一覧かの判定に使用
+            var MODEL_KEYWORDS = ['claude', 'gemini', 'gpt', 'sonnet', 'haiku', 'opus'];
+            function isModelItem(text) {
+                var lower = text.toLowerCase();
+                for (var ki = 0; ki < MODEL_KEYWORDS.length; ki++) {
+                    if (lower.indexOf(MODEL_KEYWORDS[ki]) >= 0) return true;
+                }
+                return false;
+            }
+
+            // モデル名正規化: 末尾の「New」バッジテキストを除去
+            function normalizeModelName(text) {
+                return text.replace(/\\s*New\\s*$/, '').replace(/New$/, '').trim();
+            }
 
             // getTargetDoc: cascade iframe 内の document を取得
             function getTargetDoc() {
@@ -996,95 +1011,249 @@ export async function selectModel(
                 return null;
             }
 
-            // 新しい UI 構造: z-50 rounded-md border shadow-md
-            var ddNew = findAllInTree(doc, function (el) {
-                if (el.tagName !== 'DIV') return false;
-                var c = typeof el.className === 'string' ? el.className : '';
-                return c.indexOf('z-50') >= 0 && c.indexOf('rounded-md') >= 0 && c.indexOf('border') >= 0 && c.indexOf('shadow-md') >= 0;
-            });
-            _selectDebug.ddNewCount = ddNew.length;
+            // font-medium 内の直接テキストノードを取得（「New」バッジ等の子要素テキストを除外）
+            function getDirectText(el) {
+                var text = '';
+                for (var cn = 0; cn < el.childNodes.length; cn++) {
+                    if (el.childNodes[cn].nodeType === 3) {
+                        text += el.childNodes[cn].textContent;
+                    }
+                }
+                text = text.trim();
+                if (!text) text = (el.textContent || '').trim();
+                return normalizeModelName(text);
+            }
 
-            for (var dn = 0; dn < ddNew.length; dn++) {
-                var modelRows = findAllInTree(ddNew[dn], function (el) {
+            // modelRows からモデルキーワードを含む行があるか検証する
+            function hasModelKeywordInRows(rows) {
+                for (var r = 0; r < rows.length; r++) {
+                    var fm = findFirstInTree(rows[r], function (el) {
+                        if (el.tagName !== 'DIV') return false;
+                        var c = typeof el.className === 'string' ? el.className : '';
+                        return c.indexOf('font-medium') >= 0;
+                    });
+                    if (fm) {
+                        var t = getDirectText(fm);
+                        if (t.length > 0 && isModelItem(t)) return true;
+                    }
+                }
+                return false;
+            }
+
+            // clickByIndex / clickByName: 行からモデルを選択する共通関数
+            function clickByIndex(rows, idx) {
+                if (idx >= 0 && idx < rows.length) {
+                    rows[idx].click();
+                    var fm = findFirstInTree(rows[idx], function (el) {
+                        if (el.tagName !== 'DIV') return false;
+                        var c = typeof el.className === 'string' ? el.className : '';
+                        return c.indexOf('font-medium') >= 0;
+                    });
+                    return { success: true, selected: fm ? getDirectText(fm) : ('row#' + idx) };
+                }
+                return null;
+            }
+
+            function clickByName(rows, nameLower) {
+                for (var i = 0; i < rows.length; i++) {
+                    var fm = findFirstInTree(rows[i], function (el) {
+                        if (el.tagName !== 'DIV') return false;
+                        var c = typeof el.className === 'string' ? el.className : '';
+                        return c.indexOf('font-medium') >= 0;
+                    });
+                    if (!fm) continue;
+                    var mText = getDirectText(fm).toLowerCase();
+                    if (mText === nameLower || mText.indexOf(nameLower) >= 0 || nameLower.indexOf(mText) >= 0) {
+                        rows[i].click();
+                        return { success: true, selected: getDirectText(fm) };
+                    }
+                }
+                return null;
+            }
+
+            // 検索対象の document リストを構築（メインフレーム + cascade iframe の両方）
+            var docsToSearch = [doc];
+            if (doc !== document) {
+                docsToSearch.push(document);
+            } else {
+                var allIframes = document.querySelectorAll('iframe');
+                for (var ifi = 0; ifi < allIframes.length; ifi++) {
+                    try {
+                        if (allIframes[ifi].contentDocument) {
+                            docsToSearch.push(allIframes[ifi].contentDocument);
+                        }
+                    } catch(e) { /* cross-origin */ }
+                }
+            }
+
+            // === 戦略A: 厳密CSSセレクタ (z-50 rounded-md border shadow-md) + モデルキーワード検証 ===
+            for (var docIdx = 0; docIdx < docsToSearch.length; docIdx++) {
+                var searchDoc = docsToSearch[docIdx];
+
+                var ddNew = findAllInTree(searchDoc, function (el) {
                     if (el.tagName !== 'DIV') return false;
                     var c = typeof el.className === 'string' ? el.className : '';
-                    return c.indexOf('cursor-pointer') >= 0 && c.indexOf('px-2') >= 0 && c.indexOf('py-1') >= 0;
+                    return c.indexOf('z-50') >= 0 && c.indexOf('rounded-md') >= 0 && c.indexOf('border') >= 0 && c.indexOf('shadow-md') >= 0;
                 });
-                _selectDebug.rowCount = modelRows.length;
+                _selectDebug.ddNewCount = ddNew.length;
 
-                if (selectByIndex) {
-                    // インデックスベース: 行数でカウントし直接クリック
-                    if (targetIdx >= 0 && targetIdx < modelRows.length) {
-                        modelRows[targetIdx].click();
-                        var selFm = findFirstInTree(modelRows[targetIdx], function (el) {
-                            if (el.tagName !== 'DIV') return false;
-                            var c = typeof el.className === 'string' ? el.className : '';
-                            return c.indexOf('font-medium') >= 0;
-                        });
-                        return { success: true, selected: selFm ? (selFm.textContent || '').trim() : ('row#' + targetIdx) };
+                for (var dn = 0; dn < ddNew.length; dn++) {
+                    var modelRows = findAllInTree(ddNew[dn], function (el) {
+                        if (el.tagName !== 'DIV') return false;
+                        var c = typeof el.className === 'string' ? el.className : '';
+                        return c.indexOf('cursor-pointer') >= 0 && c.indexOf('px-2') >= 0 && c.indexOf('py-1') >= 0;
+                    });
+
+                    // ★ モデルキーワード検証: このドロップダウンがモデル一覧か確認
+                    if (!hasModelKeywordInRows(modelRows)) continue;
+
+                    _selectDebug.rowCount = modelRows.length;
+                    _selectDebug.matchStrategy = 'A-strict';
+
+                    if (selectByIndex) {
+                        var result = clickByIndex(modelRows, targetIdx);
+                        if (result) return result;
+                        return { success: false, error: 'index ' + targetIdx + ' out of range (total: ' + modelRows.length + ')', debug: _selectDebug };
+                    } else {
+                        var result = clickByName(modelRows, targetLower);
+                        if (result) return result;
                     }
-                    return { success: false, error: 'index ' + targetIdx + ' out of range (total: ' + modelRows.length + ')', debug: _selectDebug };
-                } else {
-                    // 名前ベース: selectMode と同じ textContent マッチ
-                    for (var i = 0; i < modelRows.length; i++) {
-                        var fontMedium = findFirstInTree(modelRows[i], function (el) {
-                            if (el.tagName !== 'DIV') return false;
-                            var c = typeof el.className === 'string' ? el.className : '';
-                            return c.indexOf('font-medium') >= 0;
+                }
+
+                // === 戦略B: 緩和CSSセレクタ (z-50 のみ) + モデルキーワード検証 ===
+                var ddRelaxed = findAllInTree(searchDoc, function (el) {
+                    var c = typeof el.className === 'string' ? el.className : '';
+                    return c.indexOf('z-50') >= 0;
+                });
+
+                for (var dr = 0; dr < ddRelaxed.length; dr++) {
+                    var textEls = findAllInTree(ddRelaxed[dr], function (el) {
+                        var tag = el.tagName;
+                        return tag === 'DIV' || tag === 'SPAN' || tag === 'P' || tag === 'LI' || tag === 'BUTTON';
+                    });
+                    var hasModel = false;
+                    for (var te = 0; te < textEls.length; te++) {
+                        var directText = '';
+                        for (var cn = 0; cn < textEls[te].childNodes.length; cn++) {
+                            if (textEls[te].childNodes[cn].nodeType === 3) {
+                                directText += textEls[te].childNodes[cn].textContent;
+                            }
+                        }
+                        directText = directText.trim();
+                        if (!directText && textEls[te].children.length <= 2) {
+                            directText = (textEls[te].textContent || '').trim();
+                        }
+                        if (directText.length > 0 && isModelItem(directText)) { hasModel = true; break; }
+                    }
+                    if (!hasModel) continue;
+
+                    // z-50 内の clickable 行を再取得
+                    var relaxedRows = findAllInTree(ddRelaxed[dr], function (el) {
+                        if (el.tagName !== 'DIV') return false;
+                        var c = typeof el.className === 'string' ? el.className : '';
+                        return c.indexOf('cursor-pointer') >= 0;
+                    });
+                    if (relaxedRows.length === 0) continue;
+
+                    _selectDebug.rowCount = relaxedRows.length;
+                    _selectDebug.matchStrategy = 'B-relaxed';
+
+                    if (selectByIndex) {
+                        var result = clickByIndex(relaxedRows, targetIdx);
+                        if (result) return result;
+                        return { success: false, error: 'index ' + targetIdx + ' out of range (total: ' + relaxedRows.length + ')', debug: _selectDebug };
+                    } else {
+                        var result = clickByName(relaxedRows, targetLower);
+                        if (result) return result;
+                    }
+                }
+
+                // === 戦略C: ARIA ロールベース検索 ===
+                var ariaRoles = ['listbox', 'menu'];
+                for (var ri = 0; ri < ariaRoles.length; ri++) {
+                    var containers = findAllInTree(searchDoc, function (el) {
+                        return el.getAttribute && el.getAttribute('role') === ariaRoles[ri];
+                    });
+
+                    for (var ac = 0; ac < containers.length; ac++) {
+                        var optionEls = findAllInTree(containers[ac], function (el) {
+                            var r = el.getAttribute && el.getAttribute('role');
+                            return r === 'option' || r === 'menuitem' || r === 'menuitemradio';
                         });
-                        if (!fontMedium) continue;
-                        var mText = (fontMedium.textContent || '').trim().toLowerCase();
-                        if (mText === targetLower || mText.includes(targetLower) || targetLower.includes(mText)) {
-                            modelRows[i].click();
-                            return { success: true, selected: (fontMedium.textContent || '').trim() };
+                        var ariaHasModel = false;
+                        for (var oe = 0; oe < optionEls.length; oe++) {
+                            var oText = (optionEls[oe].textContent || '').trim();
+                            if (oText.length > 0 && isModelItem(oText)) { ariaHasModel = true; break; }
+                        }
+                        if (!ariaHasModel) continue;
+
+                        _selectDebug.rowCount = optionEls.length;
+                        _selectDebug.matchStrategy = 'C-aria';
+
+                        if (selectByIndex) {
+                            if (targetIdx >= 0 && targetIdx < optionEls.length) {
+                                optionEls[targetIdx].click();
+                                return { success: true, selected: normalizeModelName((optionEls[targetIdx].textContent || '').trim()) };
+                            }
+                            return { success: false, error: 'index ' + targetIdx + ' out of range (total: ' + optionEls.length + ')', debug: _selectDebug };
+                        } else {
+                            for (var oi = 0; oi < optionEls.length; oi++) {
+                                var oiText = normalizeModelName((optionEls[oi].textContent || '').trim()).toLowerCase();
+                                if (oiText === targetLower || oiText.indexOf(targetLower) >= 0 || targetLower.indexOf(oiText) >= 0) {
+                                    optionEls[oi].click();
+                                    return { success: true, selected: normalizeModelName((optionEls[oi].textContent || '').trim()) };
+                                }
+                            }
                         }
                     }
                 }
-            }
 
-            // フォールバック: 旧 UI 構造
-            var dropdowns = findAllInTree(doc, function (el) {
-                if (el.tagName !== 'DIV') return false;
-                var c = typeof el.className === 'string' ? el.className : '';
-                return c.indexOf('absolute') >= 0 && c.indexOf('overflow-y-auto') >= 0 && c.indexOf('rounded-lg') >= 0 && c.indexOf('border') >= 0;
-            });
-            _selectDebug.oldDdCount = dropdowns.length;
-            var ddRoot = null;
-            for (var d = 0; d < dropdowns.length; d++) {
-                var headerCheck = findFirstInTree(dropdowns[d], function (el) {
+                // === 戦略D: 旧 UI 構造 (absolute + overflow-y-auto + "Model" ヘッダー) ===
+                var dropdowns = findAllInTree(searchDoc, function (el) {
                     if (el.tagName !== 'DIV') return false;
                     var c = typeof el.className === 'string' ? el.className : '';
-                    return c.indexOf('opacity-80') >= 0;
+                    return c.indexOf('absolute') >= 0 && c.indexOf('overflow-y-auto') >= 0 && c.indexOf('rounded-lg') >= 0 && c.indexOf('border') >= 0;
                 });
-                if (headerCheck && (headerCheck.textContent || '').trim() === 'Model') {
-                    ddRoot = dropdowns[d];
-                    break;
-                }
-            }
-            if (ddRoot) {
-                var oldRows = findAllInTree(ddRoot, function (el) {
-                    if (el.tagName !== 'DIV') return false;
-                    var c = typeof el.className === 'string' ? el.className : '';
-                    return c.indexOf('cursor-pointer') >= 0 && c.indexOf('px-2') >= 0 && c.indexOf('py-1') >= 0;
-                });
-                _selectDebug.oldRowCount = oldRows.length;
-                if (selectByIndex) {
-                    if (targetIdx >= 0 && targetIdx < oldRows.length) {
-                        oldRows[targetIdx].click();
-                        return { success: true, selected: 'row#' + targetIdx };
+                _selectDebug.oldDdCount = dropdowns.length;
+                var ddRoot = null;
+                for (var d = 0; d < dropdowns.length; d++) {
+                    var headerCheck = findFirstInTree(dropdowns[d], function (el) {
+                        if (el.tagName !== 'DIV') return false;
+                        var c = typeof el.className === 'string' ? el.className : '';
+                        return c.indexOf('opacity-80') >= 0;
+                    });
+                    if (headerCheck && (headerCheck.textContent || '').trim() === 'Model') {
+                        ddRoot = dropdowns[d];
+                        break;
                     }
-                } else {
-                    for (var j = 0; j < oldRows.length; j++) {
-                        var p = findFirstInTree(oldRows[j], function (el) {
-                            if (el.tagName !== 'P') return false;
-                            var c = typeof el.className === 'string' ? el.className : '';
-                            return c.indexOf('text-ellipsis') >= 0;
-                        });
-                        if (!p) continue;
-                        var pText = (p.textContent || '').trim().toLowerCase();
-                        if (pText === targetLower || pText.includes(targetLower) || targetLower.includes(pText)) {
-                            oldRows[j].click();
-                            return { success: true, selected: (p.textContent || '').trim() };
+                }
+                if (ddRoot) {
+                    var oldRows = findAllInTree(ddRoot, function (el) {
+                        if (el.tagName !== 'DIV') return false;
+                        var c = typeof el.className === 'string' ? el.className : '';
+                        return c.indexOf('cursor-pointer') >= 0 && c.indexOf('px-2') >= 0 && c.indexOf('py-1') >= 0;
+                    });
+                    _selectDebug.oldRowCount = oldRows.length;
+                    _selectDebug.matchStrategy = 'D-legacy';
+
+                    if (selectByIndex) {
+                        if (targetIdx >= 0 && targetIdx < oldRows.length) {
+                            oldRows[targetIdx].click();
+                            return { success: true, selected: 'row#' + targetIdx };
+                        }
+                    } else {
+                        for (var j = 0; j < oldRows.length; j++) {
+                            var p = findFirstInTree(oldRows[j], function (el) {
+                                if (el.tagName !== 'P') return false;
+                                var c = typeof el.className === 'string' ? el.className : '';
+                                return c.indexOf('text-ellipsis') >= 0;
+                            });
+                            if (!p) continue;
+                            var pText = (p.textContent || '').trim().toLowerCase();
+                            if (pText === targetLower || pText.indexOf(targetLower) >= 0 || targetLower.indexOf(pText) >= 0) {
+                                oldRows[j].click();
+                                return { success: true, selected: (p.textContent || '').trim() };
+                            }
                         }
                     }
                 }
