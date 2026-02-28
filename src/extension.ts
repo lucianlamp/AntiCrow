@@ -48,6 +48,7 @@ const ctx: BridgeContext = {
     staleRecoveryTimer: null,
     setLicenseKeyFn: null,
     getTrialDaysRemaining: null,
+    agentRunning: false,
 };
 
 // ライセンスモジュールのインスタンス
@@ -67,14 +68,25 @@ export function getLicenseChecker(): LicenseChecker | null {
 import * as fs from 'fs';
 import * as path from 'path';
 
-/** Auto Accept ステータスバーの表示を更新 */
-function updateAutoAcceptStatusBar(item: vscode.StatusBarItem): void {
+/**
+ * Auto Accept ステータスバーの表示を更新（3状態）
+ * - ⛔ Auto Accept — 設定OFF
+ * - ⏸ Auto Accept — 設定ON、エージェント待機中
+ * - ▶️ Auto Accept — 設定ON、エージェント実行中
+ */
+export function updateAutoAcceptStatusBar(item: vscode.StatusBarItem, agentRunning = false): void {
     const enabled = vscode.workspace.getConfiguration('antiCrow')
         .get<boolean>('autoAccept') ?? false;
-    item.text = enabled ? '✅ Auto Accept' : '⛔ Auto Accept';
-    item.tooltip = enabled
-        ? 'Auto Accept: 有効（クリックで無効化）'
-        : 'Auto Accept: 無効（クリックで有効化）';
+    if (!enabled) {
+        item.text = '⛔ Auto Accept';
+        item.tooltip = 'Auto Accept: 無効（クリックで有効化）';
+    } else if (agentRunning) {
+        item.text = '▶️ Auto Accept';
+        item.tooltip = 'Auto Accept: 自動承認中（クリックで無効化）';
+    } else {
+        item.text = '⏸ Auto Accept';
+        item.tooltip = 'Auto Accept: 待機中（クリックで無効化）';
+    }
 }
 
 // =====================================================================
@@ -331,10 +343,10 @@ export async function activate(context: vscode.ExtensionContext) {
             const current = cfg.get<boolean>('autoAccept') ?? false;
             await cfg.update('autoAccept', !current, vscode.ConfigurationTarget.Global);
             if (ctx.autoAcceptStatusBarItem) {
-                updateAutoAcceptStatusBar(ctx.autoAcceptStatusBarItem);
+                updateAutoAcceptStatusBar(ctx.autoAcceptStatusBarItem, ctx.agentRunning);
             }
             vscode.window.showInformationMessage(
-                `Auto Accept: ${!current ? '✅ 有効' : '⛔ 無効'}`
+                `Auto Accept: ${!current ? '⏸ 有効（待機中）' : '⛔ 無効'}`
             );
         })
     );
@@ -343,7 +355,7 @@ export async function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
         vscode.workspace.onDidChangeConfiguration(e => {
             if (e.affectsConfiguration('antiCrow.autoAccept') && ctx.autoAcceptStatusBarItem) {
-                updateAutoAcceptStatusBar(ctx.autoAcceptStatusBarItem);
+                updateAutoAcceptStatusBar(ctx.autoAcceptStatusBarItem, ctx.agentRunning);
             }
         })
     );

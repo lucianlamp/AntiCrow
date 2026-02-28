@@ -11,7 +11,7 @@ import { Plan } from './types';
 import { CdpBridge } from './cdpBridge';
 import { FileIpc } from './fileIpc';
 import { PlanStore } from './planStore';
-import { Executor, NotifyFunc, SendTypingFunc, PostSuggestionsFunc } from './executor';
+import { Executor, NotifyFunc, SendTypingFunc, PostSuggestionsFunc, SendFileFunc } from './executor';
 import { CdpPool, DEFAULT_WORKSPACE } from './cdpPool';
 import { logDebug, logWarn } from './logger';
 
@@ -32,8 +32,11 @@ export class ExecutorPool {
     private sendTyping: SendTypingFunc;
     private extensionPath: string;
     private postSuggestions: PostSuggestionsFunc | null;
+    private sendFile: SendFileFunc | null;
     /** 起動中の UIWatcher isProCheck コールバック（新規 Executor 生成時にも自動適用） */
     private uiWatcherIsProCheck: (() => boolean) | null = null;
+    /** 起動中の UIWatcher onAgentStateChange コールバック（新規 Executor 生成時にも自動適用） */
+    private uiWatcherOnAgentStateChange: ((running: boolean) => void) | null = null;
     /** モデル名更新コールバック（新規 Executor 生成時にも自動適用） */
     private setModelNameCallback: ((name: string | null) => void) | null = null;
 
@@ -46,6 +49,7 @@ export class ExecutorPool {
         sendTyping: SendTypingFunc,
         extensionPath?: string,
         postSuggestions?: PostSuggestionsFunc,
+        sendFile?: SendFileFunc,
     ) {
         this.cdpPool = cdpPool;
         this.fileIpc = fileIpc;
@@ -55,6 +59,7 @@ export class ExecutorPool {
         this.sendTyping = sendTyping;
         this.extensionPath = extensionPath || '';
         this.postSuggestions = postSuggestions ?? null;
+        this.sendFile = sendFile ?? null;
     }
 
     // -------------------------------------------------------------------
@@ -88,13 +93,14 @@ export class ExecutorPool {
             this.sendTyping,
             this.extensionPath,
             this.postSuggestions ?? undefined,
+            this.sendFile ?? undefined,
         );
 
         this.pool.set(key, executor);
         logDebug(`ExecutorPool: created executor for workspace "${key}" (pool size=${this.pool.size})`);
         // UIWatcher が起動中なら新規 Executor にも自動適用
         if (this.uiWatcherIsProCheck) {
-            executor.startUIWatcher(this.uiWatcherIsProCheck);
+            executor.startUIWatcher(this.uiWatcherIsProCheck, this.uiWatcherOnAgentStateChange ?? undefined);
             logDebug(`ExecutorPool: auto-started UIWatcher for new executor "${key}"`);
         }
         // モデル名更新コールバックが設定済みなら新規 Executor にも自動適用
@@ -246,10 +252,11 @@ export class ExecutorPool {
      * 全 Executor の UIWatcher を起動する。
      * isProCheck コールバックを保持し、以後 getOrCreate された Executor にも自動適用する。
      */
-    startUIWatcherAll(isProCheck?: () => boolean): void {
+    startUIWatcherAll(isProCheck?: () => boolean, onAgentStateChange?: (running: boolean) => void): void {
         this.uiWatcherIsProCheck = isProCheck ?? null;
+        this.uiWatcherOnAgentStateChange = onAgentStateChange ?? null;
         for (const [key, executor] of this.pool.entries()) {
-            executor.startUIWatcher(isProCheck);
+            executor.startUIWatcher(isProCheck, onAgentStateChange);
             logDebug(`ExecutorPool: started UIWatcher for workspace "${key}"`);
         }
     }

@@ -41,6 +41,8 @@ const RECENT_EXECUTION_TTL_MS = 5 * 60 * 1000;
 export type NotifyFunc = (channelId: string, message: string, color?: number) => Promise<void>;
 export type SendTypingFunc = (channelId: string) => Promise<void>;
 export type PostSuggestionsFunc = (channelId: string, components: ActionRowBuilder<ButtonBuilder>[], embed?: EmbedBuilder) => Promise<void>;
+export type SendFileResult = { sent: boolean; reason?: 'not_found' | 'too_large' | 'channel_error'; sizeMB?: string; fileName?: string };
+export type SendFileFunc = (channelId: string, filePath: string, comment?: string) => Promise<SendFileResult>;
 
 export class Executor {
     private cdp: CdpBridge;
@@ -67,9 +69,10 @@ export class Executor {
     private promptRulesContent: string | null = null;
     private userMemory: string | null = null;
     private postSuggestions: PostSuggestionsFunc | null = null;
+    private sendFile: SendFileFunc | null = null;
     private setModelNameFn: ((name: string | null) => void) | null = null;
 
-    constructor(cdp: CdpBridge, fileIpc: FileIpc, planStore: PlanStore, timeoutMs: number, notifyDiscord: NotifyFunc, sendTyping: SendTypingFunc, extensionPath?: string, postSuggestions?: PostSuggestionsFunc) {
+    constructor(cdp: CdpBridge, fileIpc: FileIpc, planStore: PlanStore, timeoutMs: number, notifyDiscord: NotifyFunc, sendTyping: SendTypingFunc, extensionPath?: string, postSuggestions?: PostSuggestionsFunc, sendFile?: SendFileFunc) {
         this.cdp = cdp;
         this.fileIpc = fileIpc;
         this.planStore = planStore;
@@ -78,6 +81,7 @@ export class Executor {
         this.sendTypingToChannel = sendTyping;
         this.extensionPath = extensionPath || '';
         this.postSuggestions = postSuggestions ?? null;
+        this.sendFile = sendFile ?? null;
 
         // テンプレート・ルールを起動時に読み込み
         this.loadPromptTemplate();
@@ -495,7 +499,48 @@ export class Executor {
                 }
             } catch { /* ignore */ }
 
-            await this.safeNotify(notifyChannel, resultMsg, EmbedColor.Response);
+            // レスポンス内のファイル参照を抽出して送信
+            let finalResultMsg = resultMsg;
+            if (this.sendFile) {
+                try {
+                    const { extractFileReferences, stripFileReferences } = await import('./fileExtractor');
+                    const fileRefs = extractFileReferences(resultMsg);
+                    if (fileRefs.length > 0) {
+                        const sentPaths = new Set<string>();
+                        for (const ref of fileRefs) {
+                            try {
+                                const result = await this.sendFile(notifyChannel, ref.path, ref.label ? `📎 ${ref.label}` : undefined);
+                                if (result.sent) {
+                                    sentPaths.add(ref.path);
+                                    logDebug(`Executor: sent file ${ref.path} to channel ${notifyChannel}`);
+                                } else {
+                                    // スキップ理由に応じた通知をDiscordに送信
+                                    let skipMsg: string;
+                                    if (result.reason === 'too_large') {
+                                        skipMsg = `⚠️ ファイルが大きすぎるため送信をスキップしました（${result.sizeMB}MB / 上限25MB）: \`${result.fileName || ref.path}\``;
+                                    } else if (result.reason === 'not_found') {
+                                        skipMsg = `⚠️ ファイルが見つからないため送信をスキップしました: \`${ref.path}\``;
+                                    } else {
+                                        skipMsg = `⚠️ ファイルの送信に失敗しました: \`${result.fileName || ref.path}\``;
+                                    }
+                                    await this.safeNotify(notifyChannel, skipMsg, EmbedColor.Warning);
+                                    logDebug(`Executor: file send skipped (${result.reason}): ${ref.path}`);
+                                }
+                            } catch (e) {
+                                logDebug(`Executor: file send error for ${ref.path}: ${e instanceof Error ? e.message : e}`);
+                            }
+                        }
+                        if (sentPaths.size > 0) {
+                            finalResultMsg = stripFileReferences(resultMsg, sentPaths);
+                            logDebug(`Executor: stripped ${sentPaths.size} file references from response text`);
+                        }
+                    }
+                } catch (e) {
+                    logDebug(`Executor: file extraction failed: ${e instanceof Error ? e.message : e}`);
+                }
+            }
+
+            await this.safeNotify(notifyChannel, finalResultMsg, EmbedColor.Response);
 
             // 提案ボタンを送信（提案があり、コールバックが設定されている場合）
             if (suggestions.length > 0 && this.postSuggestions) {
@@ -660,9 +705,12 @@ export class Executor {
     // -----------------------------------------------------------------------
 
     /** UIウォッチャーを開始する（bridgeLifecycle から呼ばれる） */
-    startUIWatcher(isProCheck?: () => boolean): void {
+    startUIWatcher(isProCheck?: () => boolean, onAgentStateChange?: (running: boolean) => void): void {
         this.stopUIWatcher();
         this.uiWatcher = new UIWatcher(this.cdp, () => this.processing, isProCheck);
+        if (onAgentStateChange) {
+            this.uiWatcher.setAgentStateCallback(onAgentStateChange);
+        }
         this.uiWatcher.start();
     }
 

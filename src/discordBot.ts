@@ -19,6 +19,7 @@ import {
     ModalSubmitInteraction,
     ActionRowBuilder,
     ButtonBuilder,
+    AttachmentBuilder,
 } from 'discord.js';
 import { ChannelIntent } from './types';
 import { splitForEmbeds, extractTableFields } from './discordFormatter';
@@ -383,6 +384,65 @@ export class DiscordBot {
         if (channel && channel instanceof TextChannel) {
             await channel.sendTyping();
         }
+    }
+
+    /** ファイル送信結果 */
+    static readonly SendFileResult = {} as {
+        sent: boolean;
+        reason?: 'not_found' | 'too_large' | 'channel_error';
+        sizeMB?: string;
+        fileName?: string;
+    };
+
+    /** 指定チャンネル ID にファイルを添付送信 */
+    async sendFileToChannel(channelId: string, filePath: string, comment?: string): Promise<typeof DiscordBot.SendFileResult> {
+        const fs = await import('fs');
+        const path = await import('path');
+        const fileName = path.basename(filePath);
+
+        // ファイル存在チェック
+        if (!fs.existsSync(filePath)) {
+            logWarn(`Discord: file not found: ${filePath}`);
+            return { sent: false, reason: 'not_found', fileName };
+        }
+
+        // ファイルサイズチェック（25MB上限）
+        const stat = fs.statSync(filePath);
+        const sizeMB = (stat.size / (1024 * 1024)).toFixed(2);
+        if (stat.size > 25 * 1024 * 1024) {
+            logWarn(`Discord: file too large (${sizeMB}MB > 25MB limit): ${filePath}`);
+            return { sent: false, reason: 'too_large', sizeMB, fileName };
+        }
+
+        const channel = await this.client.channels.fetch(channelId);
+        if (!channel || !(channel instanceof TextChannel)) {
+            logWarn(`Discord: channel ${channelId} not found or not text channel`);
+            return { sent: false, reason: 'channel_error', fileName };
+        }
+
+        const attachment = new AttachmentBuilder(filePath, { name: fileName });
+
+        // 画像ファイルの場合は Embed にインライン画像として表示
+        const imageExtensions = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp']);
+        const ext = path.extname(filePath).toLowerCase().replace('.', '');
+
+        if (imageExtensions.has(ext)) {
+            const embed = new EmbedBuilder()
+                .setImage(`attachment://${fileName}`)
+                .setColor(DiscordBot.EMBED_COLOR);
+            if (comment) { embed.setDescription(comment); }
+            if (this.currentModelName) { embed.setFooter({ text: this.currentModelName }); }
+            embed.setTimestamp();
+            await channel.send({ embeds: [embed], files: [attachment] });
+        } else {
+            await channel.send({
+                content: comment || undefined,
+                files: [attachment],
+            });
+        }
+
+        logDebug(`Discord: sent file ${fileName} (${sizeMB}MB, embed=${imageExtensions.has(ext)}) to channel ${channelId}`);
+        return { sent: true, sizeMB, fileName };
     }
 
     /** Embed のブランドカラー (Cherry Pink) */

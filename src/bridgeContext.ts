@@ -41,6 +41,8 @@ export interface BridgeContext {
     setLicenseKeyFn: ((key: string) => Promise<{ valid: boolean; planType: string }>) | null;
     /** トライアル残り日数を取得するコールバック */
     getTrialDaysRemaining: (() => number | undefined) | null;
+    /** エージェントが実行中かどうか（UIWatcher が isAgentRunning で検出） */
+    agentRunning: boolean;
 }
 
 /** startBridge 完了後の状態。主要フィールドが non-null であることを型レベルで保証 */

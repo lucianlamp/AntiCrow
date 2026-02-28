@@ -33,6 +33,7 @@ import { getAvailableModes, selectMode } from './cdpModes';
 import { buildHistoryListEmbed, buildHistorySelectResultEmbed } from './historyButtons';
 import { openHistoryAndGetList, selectConversation, closePopup } from './cdpHistory';
 import { BridgeContext } from './bridgeContext';
+import { resolveWorkspaceFromChannel } from './discordChannels';
 
 import { getTimezone, isUserAllowed } from './configHelper';
 import { handleWorkspaceButton, handleWorkspaceModalSubmit, getRunningWsNames } from './workspaceHandler';
@@ -82,6 +83,33 @@ function debouncedRename(ctx: BridgeContext, channelId: string, newName: string)
 
     pendingRenames.set(channelId, { timer, newName });
     logDebug(`debouncedRename: scheduled rename for ${channelId} → "${newName}" (2s delay)`);
+}
+
+/**
+ * ボタンインタラクションからワークスペースを解決し、
+ * 対応する CdpBridge を取得する共通ヘルパー。
+ * フォールバックとして ctx.cdp（デフォルト）を返す。
+ */
+function resolveHistoryCdp(
+    ctx: BridgeContext,
+    interaction: { channel: unknown },
+): { cdp: BridgeContext['cdp']; wsName: string | null } {
+    const channel = interaction.channel;
+    let wsName: string | null = null;
+    if (channel && typeof channel === 'object' && 'parent' in channel) {
+        wsName = resolveWorkspaceFromChannel(channel as import('discord.js').TextChannel);
+    }
+    let cdp = ctx.cdp;
+    if (wsName && ctx.cdpPool) {
+        const poolCdp = ctx.cdpPool.getActive(wsName);
+        if (poolCdp) {
+            cdp = poolCdp;
+            logDebug(`resolveHistoryCdp: using cdpPool for workspace "${wsName}"`);
+        } else {
+            logDebug(`resolveHistoryCdp: cdp for workspace "${wsName}" not active, fallback to default`);
+        }
+    }
+    return { cdp, wsName };
 }
 
 // ---------------------------------------------------------------------------
@@ -452,9 +480,10 @@ export async function handleButtonInteraction(
                 // 切替後にリストを更新（UI反映を待つため長めに待機）
                 await cdp.ops.sleep(1000);
                 const { modes, current } = await getAvailableModes(cdp.ops);
-                // selectMode 成功時は選択したモード名を current として使用
-                // （getAvailableModes がボタンテキスト読み取り時に UI 未反映の場合があるため）
-                const effectiveCurrent = current || modeName;
+                // selectMode 成功時は常に選択したモード名を current として使用する
+                // （getAvailableModes はUIの反映遅延で旧モード名を返す場合があるため、
+                //   current || modeName では旧値がそのまま使われてしまう）
+                const effectiveCurrent = modeName;
                 const { embeds, components } = buildModeListEmbed(modes, effectiveCurrent);
                 await interaction.editReply({ embeds, components: components as any });
             } else {
@@ -491,7 +520,7 @@ export async function handleButtonInteraction(
             const index = parseInt(indexStr, 10);
             await interaction.deferUpdate();
 
-            const cdp = ctx.cdp;
+            const { cdp } = resolveHistoryCdp(ctx, interaction);
             if (!cdp) {
                 await interaction.followUp({ embeds: [buildEmbed('⚠️ Antigravity との接続が初期化されていません。', EmbedColor.Warning)] });
                 return;
@@ -518,7 +547,7 @@ export async function handleButtonInteraction(
         if (customId === 'hist_refresh' || customId.startsWith('hist_page_')) {
             await interaction.deferUpdate();
 
-            const cdp = ctx.cdp;
+            const { cdp, wsName } = resolveHistoryCdp(ctx, interaction);
             if (!cdp) {
                 await interaction.followUp({ embeds: [buildEmbed('⚠️ Antigravity との接続が初期化されていません。', EmbedColor.Warning)] });
                 return;
@@ -527,11 +556,14 @@ export async function handleButtonInteraction(
             const conversations = await openHistoryAndGetList(cdp.ops);
             await closePopup(cdp.ops);
 
-            // ワークスペース名を CDP タイトルから抽出
-            const activeTitle = cdp.getActiveTargetTitle() || '';
-            const workspaceName = activeTitle.includes(' — ')
-                ? activeTitle.split(' — ')[0].trim()
-                : undefined;
+            // ワークスペース名: チャンネルカテゴリから解決、フォールバックとしてCDPタイトルから抽出
+            let workspaceName = wsName || undefined;
+            if (!workspaceName) {
+                const activeTitle = cdp.getActiveTargetTitle() || '';
+                workspaceName = activeTitle.includes(' — ')
+                    ? activeTitle.split(' — ')[0].trim()
+                    : undefined;
+            }
 
             let page = 0;
             if (customId.startsWith('hist_page_')) {
@@ -591,6 +623,38 @@ export async function handleButtonInteraction(
 
             modal.addComponents(
                 new ActionRowBuilder<TextInputBuilder>().addComponents(keyInput),
+            );
+
+            await interaction.showModal(modal);
+            return;
+        }
+
+        // ----- 待機キュー編集ボタン -----
+        if (customId.startsWith('queue_edit_waiting_')) {
+            const msgId = customId.replace('queue_edit_waiting_', '');
+            const { getWaitingMessageContent } = await import('./messageHandler');
+            const content = getWaitingMessageContent(msgId);
+            if (content === null) {
+                await interaction.reply({
+                    embeds: [buildEmbed('⚠️ 該当のメッセージは既に処理済みか削除されています', EmbedColor.Warning)],
+                });
+                return;
+            }
+
+            const modal = new ModalBuilder()
+                .setCustomId(`queue_edit_modal_${msgId}`)
+                .setTitle('メッセージ編集');
+
+            const contentInput = new TextInputBuilder()
+                .setCustomId('queue_edit_content')
+                .setLabel('メッセージ内容')
+                .setStyle(TextInputStyle.Paragraph)
+                .setRequired(true)
+                .setMaxLength(2000)
+                .setValue(content.substring(0, 2000));
+
+            modal.addComponents(
+                new ActionRowBuilder<TextInputBuilder>().addComponents(contentInput) as any,
             );
 
             await interaction.showModal(modal);
@@ -736,6 +800,31 @@ export async function handleModalSubmit(
     // テンプレート系モーダルに委譲
     if (interaction.customId.startsWith('tpl_')) {
         await handleTemplateModalSubmit(ctx, interaction);
+        return;
+    }
+
+    // ----- キュー編集モーダル -----
+    if (interaction.customId.startsWith('queue_edit_modal_')) {
+        const msgId = interaction.customId.replace('queue_edit_modal_', '');
+        const newContent = interaction.fields.getTextInputValue('queue_edit_content').trim();
+        if (!newContent) {
+            await interaction.reply({
+                embeds: [buildEmbed('⚠️ メッセージ内容が空です。', EmbedColor.Warning)],
+            });
+            return;
+        }
+
+        const { editWaitingMessage } = await import('./messageHandler');
+        const edited = editWaitingMessage(msgId, newContent);
+        if (edited) {
+            await interaction.reply({
+                embeds: [buildEmbed(`✅ 待機メッセージを編集しました`, EmbedColor.Success)],
+            });
+        } else {
+            await interaction.reply({
+                embeds: [buildEmbed(`⚠️ 該当のメッセージは既に処理済みか削除されています`, EmbedColor.Warning)],
+            });
+        }
         return;
     }
 

@@ -11,7 +11,7 @@ import * as fs from 'fs';
 // ---------------------------------------------------------------------------
 
 import * as vscode from 'vscode';
-import { Message, TextChannel, EmbedBuilder } from 'discord.js';
+import { Message, TextChannel, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import { CdpBridge } from './cdpBridge';
 import { WorkspaceConnectionError } from './cdpPool';
 import { CascadePanelError } from './errors';
@@ -46,7 +46,7 @@ const workspaceQueues = new Map<string, Promise<void>>();
 /** ワークスペース毎のキュー待ち件数 */
 const workspaceQueueCount = new Map<string, number>();
 /** ワークスペース毎の待機中メッセージ情報（/queue 表示用） */
-const workspaceWaitingMessages = new Map<string, { id: string; preview: string; enqueuedAt: number }[]>();
+const workspaceWaitingMessages = new Map<string, { id: string; preview: string; content: string; enqueuedAt: number }[]>();
 /** デフォルトキー（ワークスペース未特定時） */
 const DEFAULT_WS_KEY = '__default__';
 
@@ -164,10 +164,10 @@ export function getMessageQueueStatus(): {
     total: number;
     perWorkspace: Map<string, number>;
     processing: ProcessingStatus[];
-    waiting: { id: string; preview: string; enqueuedAt: number }[];
+    waiting: { id: string; preview: string; content: string; enqueuedAt: number }[];
 } {
     const processing: ProcessingStatus[] = Array.from(currentProcessingStatuses.values());
-    const waiting: { id: string; preview: string; enqueuedAt: number }[] = [];
+    const waiting: { id: string; preview: string; content: string; enqueuedAt: number }[] = [];
     for (const msgs of workspaceWaitingMessages.values()) {
         waiting.push(...msgs);
     }
@@ -216,6 +216,31 @@ export function removeWaitingMessage(msgId: string): boolean {
     return false;
 }
 
+/** 待機中メッセージの内容を編集する（キュー編集モーダル用） */
+export function editWaitingMessage(msgId: string, newContent: string): boolean {
+    for (const msgs of workspaceWaitingMessages.values()) {
+        const entry = msgs.find(w => w.id === msgId);
+        if (entry) {
+            entry.content = newContent;
+            entry.preview = newContent.substring(0, 50);
+            logDebug(`messageHandler: edited waiting message ${msgId} (${newContent.length} chars)`);
+            return true;
+        }
+    }
+    return false;
+}
+
+/** 待機中メッセージの内容を取得する（キュー編集モーダルの初期値用） */
+export function getWaitingMessageContent(msgId: string): string | null {
+    for (const msgs of workspaceWaitingMessages.values()) {
+        const entry = msgs.find(w => w.id === msgId);
+        if (entry) {
+            return entry.content;
+        }
+    }
+    return null;
+}
+
 /**
  * メッセージをワークスペース毎のキューに追加して直列処理する。
  * 同一ワークスペースのメッセージは直列処理、異なるワークスペースは並列処理。
@@ -243,10 +268,11 @@ export async function enqueueMessage(
     workspaceQueueCount.set(wsKey, prevCount + 1);
 
     // 待機メッセージ情報を記録（/queue 表示用）
-    const preview = (message.content || '').substring(0, 50);
+    const fullContent = message.content || '';
+    const preview = fullContent.substring(0, 50);
     if (prevCount > 0) {
         const waitingList = workspaceWaitingMessages.get(wsKey) ?? [];
-        waitingList.push({ id: msgId, preview, enqueuedAt: Date.now() });
+        waitingList.push({ id: msgId, preview, content: fullContent, enqueuedAt: Date.now() });
         workspaceWaitingMessages.set(wsKey, waitingList);
     }
 
@@ -266,14 +292,24 @@ export async function enqueueMessage(
                 }
             } else {
                 try {
-                    await channel.send({ embeds: [buildEmbed(`📥 キューに追加しました（待ち: ${prevCount}件）。前のタスク完了後に処理します。`, EmbedColor.Info)] });
+                    const editBtn = new ButtonBuilder()
+                        .setCustomId(`queue_edit_waiting_${msgId}`)
+                        .setLabel('✏️ 編集する')
+                        .setStyle(ButtonStyle.Primary);
+                    const editRow = new ActionRowBuilder<ButtonBuilder>().addComponents(editBtn);
+                    await channel.send({ embeds: [buildEmbed(`📥 キューに追加しました（待ち: ${prevCount}件）。前のタスク完了後に処理します。`, EmbedColor.Info)], components: [editRow] });
                 } catch (e) {
                     logDebug(`messageHandler: failed to send queue notification: ${e}`);
                 }
             }
         } else {
             try {
-                await channel.send({ embeds: [buildEmbed(`📥 キューに追加しました（待ち: ${prevCount}件）。前のタスク完了後に処理します。`, EmbedColor.Info)] });
+                const editBtn = new ButtonBuilder()
+                    .setCustomId(`queue_edit_waiting_${msgId}`)
+                    .setLabel('✏️ 編集する')
+                    .setStyle(ButtonStyle.Primary);
+                const editRow = new ActionRowBuilder<ButtonBuilder>().addComponents(editBtn);
+                await channel.send({ embeds: [buildEmbed(`📥 キューに追加しました（待ち: ${prevCount}件）。前のタスク完了後に処理します。`, EmbedColor.Info)], components: [editRow] });
             } catch (e) {
                 logDebug(`messageHandler: failed to send queue notification: ${e}`);
             }
@@ -282,11 +318,18 @@ export async function enqueueMessage(
 
     const currentQueue = workspaceQueues.get(wsKey) ?? Promise.resolve();
     const task = currentQueue.then(async () => {
-        // 処理開始時に待機メッセージリストから該当エントリを削除
+        // 処理開始時に待機メッセージリストから該当エントリを取得し、編集済み内容を反映
         const waitingList = workspaceWaitingMessages.get(wsKey);
         if (waitingList) {
             const idx = waitingList.findIndex(w => w.id === msgId);
-            if (idx >= 0) { waitingList.splice(idx, 1); }
+            if (idx >= 0) {
+                const editedContent = waitingList[idx].content;
+                if (editedContent && editedContent !== (message.content || '')) {
+                    (message as any).content = editedContent;
+                    logDebug(`messageHandler: applied edited content for message ${msgId} (${editedContent.length} chars)`);
+                }
+                waitingList.splice(idx, 1);
+            }
         }
         try {
             await handleDiscordMessage(ctx, message, intent, channelName);

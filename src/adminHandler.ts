@@ -374,24 +374,27 @@ async function handleQueue(ctx: BridgeContext, interaction: ChatInputCommandInte
     // 待機中メッセージがある場合はボタンを追加
     const components: ActionRowBuilder<ButtonBuilder>[] = [];
     if (msgQueue.waiting.length > 0) {
-        // 個別削除ボタン（最大5つ = Discord ActionRow の制約）
-        const maxIndividualButtons = Math.min(msgQueue.waiting.length, 5);
-        const individualRow = new ActionRowBuilder<ButtonBuilder>();
-        for (let i = 0; i < maxIndividualButtons; i++) {
+        // 個別ボタン: 1件につき編集+削除の ActionRow（全削除ボタン行を含め最大5行）
+        const maxRows = Math.min(msgQueue.waiting.length, 4); // 全削除ボタンの行を残す
+        for (let i = 0; i < maxRows; i++) {
             const w = msgQueue.waiting[i];
             // customId は100文字制限、ラベルは80文字制限
             const idSuffix = w.id.length > 70 ? w.id.substring(0, 70) : w.id;
             const label = w.preview
                 ? (w.preview.length > 15 ? w.preview.substring(0, 15) + '…' : w.preview)
                 : `#${i + 1}`;
-            individualRow.addComponents(
+            const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+                new ButtonBuilder()
+                    .setCustomId(`queue_edit_waiting_${idSuffix}`)
+                    .setLabel(`✏️ ${label}`)
+                    .setStyle(ButtonStyle.Primary),
                 new ButtonBuilder()
                     .setCustomId(`queue_remove_waiting_${idSuffix}`)
-                    .setLabel(`❌ ${label}`)
+                    .setLabel(`❌ 削除`)
                     .setStyle(ButtonStyle.Secondary),
             );
+            components.push(row);
         }
-        components.push(individualRow);
 
         // 全削除ボタン
         const clearRow = new ActionRowBuilder<ButtonBuilder>().addComponents(

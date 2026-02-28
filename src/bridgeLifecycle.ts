@@ -28,6 +28,7 @@ import { registerGuildCommands } from './slashCommands';
 import { cleanupOldAttachments } from './attachmentDownloader';
 import { acquireLock, releaseLock } from './botLock';
 import { BridgeContext } from './bridgeContext';
+import { updateAutoAcceptStatusBar } from './extension';
 import { enqueueMessage } from './messageHandler';
 import { handleSlashCommand, handleButtonInteraction, handleAutocomplete, handleModalSubmit } from './slashHandler';
 import { getConfig, getResponseTimeout, getTimezone, getArchiveDays, getWorkspacePaths, getClientId, getCdpPorts } from './configHelper';
@@ -374,6 +375,11 @@ async function startBridgeInternal(
         if (ctx.bot) {
             await ctx.bot.sendComponentsToChannel(channelId, components, embed);
         }
+    }, async (channelId, filePath, comment) => {
+        if (ctx.bot) {
+            return ctx.bot.sendFileToChannel(channelId, filePath, comment);
+        }
+        return { sent: false, reason: 'channel_error' as const };
     });
 
     // モデル名更新コールバック（レスポンスフッターに反映）
@@ -405,6 +411,12 @@ async function startBridgeInternal(
             if (ctx.bot) {
                 await ctx.bot.sendComponentsToChannel(channelId, components, embed);
             }
+        },
+        async (channelId, filePath, comment) => {
+            if (ctx.bot) {
+                return ctx.bot.sendFileToChannel(channelId, filePath, comment);
+            }
+            return { sent: false, reason: 'channel_error' as const };
         },
     );
 
@@ -513,7 +525,13 @@ async function startBridgeInternal(
                     }
                     logDebug('Bridge: autoAccept enabled — starting UI watcher');
                     const isProCheck = () => getLicenseGate()?.isFeatureAllowed('autoAccept') ?? true;
-                    ctx.executorPool?.startUIWatcherAll(isProCheck);
+                    const onAgentStateChange = (running: boolean) => {
+                        ctx.agentRunning = running;
+                        if (ctx.autoAcceptStatusBarItem) {
+                            updateAutoAcceptStatusBar(ctx.autoAcceptStatusBarItem, running);
+                        }
+                    };
+                    ctx.executorPool?.startUIWatcherAll(isProCheck, onAgentStateChange);
                 } else {
                     logDebug('Bridge: autoAccept disabled — stopping UI watcher');
                     ctx.executorPool?.stopUIWatcherAll();
@@ -531,7 +549,13 @@ async function startBridgeInternal(
             logDebug('Bridge: autoAccept enabled but blocked at startup (Free plan)');
         } else {
             const isProCheck = () => getLicenseGate()?.isFeatureAllowed('autoAccept') ?? true;
-            ctx.executorPool?.startUIWatcherAll(isProCheck);
+            const onAgentStateChange = (running: boolean) => {
+                ctx.agentRunning = running;
+                if (ctx.autoAcceptStatusBarItem) {
+                    updateAutoAcceptStatusBar(ctx.autoAcceptStatusBarItem, running);
+                }
+            };
+            ctx.executorPool?.startUIWatcherAll(isProCheck, onAgentStateChange);
             logDebug('Bridge: UI watcher started (autoAccept enabled)');
         }
     }

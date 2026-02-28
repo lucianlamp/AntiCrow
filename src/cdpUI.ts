@@ -520,6 +520,13 @@ const APPROVE_BUTTON_TEXTS = [
     'always run', 'allow once', 'allow this conversation',
 ];
 
+/** クリック済みボタンの cooldown 管理（テキスト → 最終クリック時刻） */
+const clickCooldownMap = new Map<string, number>();
+/** 同一ボタンへの連続クリックを防止する cooldown（ミリ秒） */
+const CLICK_COOLDOWN_MS = 5_000;
+/** cooldown エントリの自動クリーンアップ閾値（ミリ秒） */
+const COOLDOWN_CLEANUP_MS = 30_000;
+
 export async function autoApprove(
     ops: CdpBridgeOps
 ): Promise<{ clicked: number }> {
@@ -633,6 +640,7 @@ export async function autoApprove(
 (function() {
     var TEXTS = ${JSON.stringify(APPROVE_BUTTON_TEXTS)};
     var clicked = 0;
+    var clickedTexts = [];
 
     // getTargetDoc: メインフレームから実行されても cascade iframe 内の document を取得
     // (CANCEL_BUTTON_JS と同じパターン)
@@ -763,20 +771,41 @@ export async function autoApprove(
             if (isApproveBtn) {
                 clickEl(el);
                 clicked++;
+                clickedTexts.push(rawText || ariaLabel);
             }
         }
     }
 
-    return { clicked: clicked };
+    return { clicked: clicked, clickedTexts: clickedTexts };
 })()
 `.trim();
 
+    // cooldown エントリのクリーンアップ（30秒以上前のエントリを削除）
+    const now = Date.now();
+    for (const [key, ts] of clickCooldownMap) {
+        if (now - ts > COOLDOWN_CLEANUP_MS) {
+            clickCooldownMap.delete(key);
+        }
+    }
+
     try {
         // メインフレームで実行（ダイアログは cascade iframe 外にある）
-        const result = await ops.conn.evaluate(DOM_APPROVE_SCRIPT) as { clicked: number } | null;
-        if (result && result.clicked > 0) {
-            logInfo(`CDP: autoApprove DOM fallback — clicked ${result.clicked} approval button(s)`);
-            totalClicked += result.clicked;
+        const result = await ops.conn.evaluate(DOM_APPROVE_SCRIPT) as { clicked: number; clickedTexts?: string[] } | null;
+        if (result && result.clicked > 0 && result.clickedTexts) {
+            let effectiveClicks = 0;
+            for (const text of result.clickedTexts) {
+                const lastClick = clickCooldownMap.get(text);
+                if (lastClick && now - lastClick < CLICK_COOLDOWN_MS) {
+                    logDebug(`CDP: autoApprove — skipped (cooldown): "${text}"`);
+                    continue;
+                }
+                clickCooldownMap.set(text, now);
+                effectiveClicks++;
+            }
+            if (effectiveClicks > 0) {
+                logInfo(`CDP: autoApprove DOM fallback — clicked ${effectiveClicks} approval button(s)`);
+                totalClicked += effectiveClicks;
+            }
         }
     } catch (e) {
         logInfo(`CDP: autoApprove DOM fallback failed — ${e instanceof Error ? e.message : e}`);
@@ -784,10 +813,23 @@ export async function autoApprove(
 
     // cascade iframe 内でも同じスクリプトを実行（iframe 内のダイアログ対応）
     try {
-        const cascadeResult = await ops.evaluateInCascade(DOM_APPROVE_SCRIPT) as { clicked: number } | null;
-        if (cascadeResult && cascadeResult.clicked > 0) {
-            logInfo(`CDP: autoApprove DOM fallback (cascade) — clicked ${cascadeResult.clicked} approval button(s)`);
-            totalClicked += cascadeResult.clicked;
+        const cascadeResult = await ops.evaluateInCascade(DOM_APPROVE_SCRIPT) as { clicked: number; clickedTexts?: string[] } | null;
+        if (cascadeResult && cascadeResult.clicked > 0 && cascadeResult.clickedTexts) {
+            let effectiveClicks = 0;
+            const nowCascade = Date.now();
+            for (const text of cascadeResult.clickedTexts) {
+                const lastClick = clickCooldownMap.get(text);
+                if (lastClick && nowCascade - lastClick < CLICK_COOLDOWN_MS) {
+                    logDebug(`CDP: autoApprove (cascade) — skipped (cooldown): "${text}"`);
+                    continue;
+                }
+                clickCooldownMap.set(text, nowCascade);
+                effectiveClicks++;
+            }
+            if (effectiveClicks > 0) {
+                logInfo(`CDP: autoApprove DOM fallback (cascade) — clicked ${effectiveClicks} approval button(s)`);
+                totalClicked += effectiveClicks;
+            }
         }
     } catch {
         // cascade iframe がない場合は無視
@@ -830,62 +872,85 @@ export async function isAgentRunning(
 
     // ストップボタンの検出パターン（複数フォールバック）
     // Antigravity のエージェント実行中は Stop/Cancel ボタンが表示される
+    var matchedBy = '';
     var stopBtn = findInTree(document, function(el) {
         var tag = el.tagName.toLowerCase();
-        if (tag !== 'button' && tag !== 'vscode-button' && tag !== 'a' && tag !== 'div' && el.getAttribute('role') !== 'button') {
+        if (tag !== 'button' && tag !== 'vscode-button' && tag !== 'a' && tag !== 'div' && tag !== 'span' && el.getAttribute('role') !== 'button') {
             return false;
         }
 
         // aria-label チェック
         var ariaLabel = (el.getAttribute('aria-label') || '').toLowerCase();
-        if (ariaLabel === 'stop' || ariaLabel === 'cancel' || ariaLabel === 'stop generation' || ariaLabel === 'interrupt') {
+        if (ariaLabel === 'stop' || ariaLabel === 'cancel' || ariaLabel === 'stop generation' || ariaLabel === 'interrupt'
+            || ariaLabel === 'stop request' || ariaLabel === 'cancel request') {
+            matchedBy = 'aria:' + ariaLabel;
             return true;
         }
 
         // title チェック
         var title = (el.getAttribute('title') || '').toLowerCase();
-        if (title === 'stop' || title === 'cancel' || title === 'stop generation' || title === 'interrupt') {
+        if (title === 'stop' || title === 'cancel' || title === 'stop generation' || title === 'interrupt'
+            || title === 'stop request' || title === 'cancel request') {
+            matchedBy = 'title:' + title;
             return true;
         }
 
         // テキストコンテンツチェック（短いテキストのみ — 誤検出防止）
         var text = (el.textContent || '').trim().toLowerCase();
-        if (text.length <= 20 && (text === 'stop' || text === 'cancel')) {
+        if (text.length <= 20 && (text === 'stop' || text === 'cancel' || text === 'stop request')) {
+            matchedBy = 'text:' + text;
             return true;
         }
 
-        // CSS クラスチェック
+        // CSS クラスチェック（stop/cancel + action パターン）
         var className = (el.className || '');
         if (typeof className === 'string' && (className.indexOf('stop') >= 0 || className.indexOf('cancel') >= 0) &&
             className.indexOf('action') >= 0) {
+            matchedBy = 'class:' + className.substring(0, 50);
+            return true;
+        }
+
+        // codicon チェック（VS Code のアイコンフォントでストップアイコンが使われるケース）
+        if (typeof className === 'string' && (
+            className.indexOf('codicon-debug-stop') >= 0 ||
+            className.indexOf('codicon-stop-circle') >= 0 ||
+            className.indexOf('codicon-primitive-square') >= 0
+        )) {
+            // ストップアイコンが含まれるボタンの親要素も検出対象
+            matchedBy = 'codicon:' + className.substring(0, 50);
             return true;
         }
 
         return false;
     });
 
-    return { running: !!stopBtn };
+    return { running: !!stopBtn, matchedBy: matchedBy };
 })()
 `.trim();
 
+    // evaluateInCascade 呼び出し前にコンテキストをリセット（汚染防止）
+    ops.resetCascadeContext();
+
     try {
         // cascade iframe 内で検出（エージェントチャットパネル）
-        const cascadeResult = await ops.evaluateInCascade(STOP_BUTTON_SCRIPT) as { running: boolean } | null;
+        const cascadeResult = await ops.evaluateInCascade(STOP_BUTTON_SCRIPT) as { running: boolean; matchedBy?: string } | null;
         if (cascadeResult?.running) {
+            logDebug(`CDP: isAgentRunning — detected in cascade (${cascadeResult.matchedBy})`);
             return true;
         }
-    } catch {
-        // cascade iframe がない場合は無視
+    } catch (e) {
+        logDebug(`CDP: isAgentRunning — cascade eval failed: ${e instanceof Error ? e.message : e}`);
     }
 
     try {
         // メインフレームでも検出（iframe 外にストップボタンがある場合）
-        const mainResult = await ops.conn.evaluate(STOP_BUTTON_SCRIPT) as { running: boolean } | null;
+        const mainResult = await ops.conn.evaluate(STOP_BUTTON_SCRIPT) as { running: boolean; matchedBy?: string } | null;
         if (mainResult?.running) {
+            logDebug(`CDP: isAgentRunning — detected in main frame (${mainResult.matchedBy})`);
             return true;
         }
-    } catch {
-        // 接続エラーは無視
+    } catch (e) {
+        logDebug(`CDP: isAgentRunning — main frame eval failed: ${e instanceof Error ? e.message : e}`);
     }
 
     return false;
@@ -898,12 +963,9 @@ export async function isAgentRunning(
 export async function autoFollowOutput(
     ops: CdpBridgeOps,
 ): Promise<void> {
-    // 0. エージェント実行中チェック — ストップボタンが表示されていなければスキップ
-    const running = await isAgentRunning(ops);
-    if (!running) {
-        logDebug('CDP: autoFollowOutput skipped — agent not running');
-        return;
-    }
+    // NOTE: isAgentRunning チェックは UIWatcher 側でステータスバー更新専用に使用。
+    // autoFollowOutput 自体はゲーティングしない（ダイアログ表示中にストップボタンが
+    // 非表示になり、承認ボタンがクリックされなくなる問題を防止）。
 
     // 1. チャットエリアを最下部にスクロール（まずスクロールして新しいコンテンツを表示）
     await scrollToBottom(ops);
