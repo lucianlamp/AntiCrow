@@ -853,78 +853,84 @@ export async function autoApprove(
 export async function isAgentRunning(
     ops: CdpBridgeOps,
 ): Promise<boolean> {
-    const STOP_BUTTON_SCRIPT = `
+    // clickCancelButton (cdpBridge.ts) と同じ検出ロジックを使用。
+    // 以前の一般的な aria-label/title/class ベースの TreeWalker は
+    // Antigravity の実際のUI構造（data-tooltip-id, SVG rect）にマッチしなかった。
+    const DETECT_SCRIPT = `
 (function() {
-    function findInTree(root, predicate) {
-        if (!root) return null;
-        if (root.nodeType === 1 && predicate(root)) return root;
-        var walker = document.createTreeWalker(root, 1, null, false);
-        var el;
-        while ((el = walker.nextNode())) {
-            if (predicate(el)) return el;
-            if (el.shadowRoot) {
-                var found = findInTree(el.shadowRoot, predicate);
-                if (found) return found;
-            }
+    // getTargetDoc パターン — iframe 内外を透過的に検索
+    function getTargetDoc() {
+        var iframes = document.querySelectorAll('iframe');
+        for (var fi = 0; fi < iframes.length; fi++) {
+            try {
+                if (iframes[fi].src && iframes[fi].src.includes('cascade-panel') && iframes[fi].contentDocument) {
+                    return iframes[fi].contentDocument;
+                }
+            } catch(e) { /* cross-origin */ }
         }
-        return null;
+        return document;
+    }
+    var doc = getTargetDoc();
+    var inIframe = doc !== document;
+
+    // 検出1: data-tooltip-id でキャンセルボタンを検出（最も信頼性が高い）
+    var cancelByTooltip = doc.querySelector('[data-tooltip-id="input-send-button-cancel-tooltip"]');
+    if (cancelByTooltip) {
+        return { running: true, matchedBy: 'tooltip-id:cancel', inIframe: inIframe };
     }
 
-    // ストップボタンの検出パターン（複数フォールバック）
-    // Antigravity のエージェント実行中は Stop/Cancel ボタンが表示される
-    var matchedBy = '';
-    var stopBtn = findInTree(document, function(el) {
-        var tag = el.tagName.toLowerCase();
-        if (tag !== 'button' && tag !== 'vscode-button' && tag !== 'a' && tag !== 'div' && tag !== 'span' && el.getAttribute('role') !== 'button') {
-            return false;
-        }
+    // 検出2: data-tooltip-id 部分一致（Antigravity アップデート対応）
+    var cancelPartial = doc.querySelector('[data-tooltip-id*="cancel"]');
+    if (cancelPartial) {
+        return { running: true, matchedBy: 'tooltip-id-partial:' + cancelPartial.getAttribute('data-tooltip-id'), inIframe: inIframe };
+    }
 
-        // aria-label チェック
-        var ariaLabel = (el.getAttribute('aria-label') || '').toLowerCase();
-        if (ariaLabel === 'stop' || ariaLabel === 'cancel' || ariaLabel === 'stop generation' || ariaLabel === 'interrupt'
-            || ariaLabel === 'stop request' || ariaLabel === 'cancel request') {
-            matchedBy = 'aria:' + ariaLabel;
-            return true;
+    // 検出3: button innerText が Stop / 停止
+    var buttons = doc.querySelectorAll('button');
+    for (var i = 0; i < buttons.length; i++) {
+        var txt = (buttons[i].innerText || '').trim().toLowerCase();
+        if (txt === 'stop' || txt === '停止') {
+            return { running: true, matchedBy: 'button-text:' + txt, inIframe: inIframe };
         }
+    }
 
-        // title チェック
+    // 検出4: textbox 近辺の SVG rect を持つ要素（ストップアイコン）
+    var textbox = doc.querySelector('div[role="textbox"]');
+    if (textbox) {
+        var container = textbox.closest('form') || textbox.parentElement?.parentElement?.parentElement;
+        if (container) {
+            var CLICKABLE = 'button, div[data-tooltip-id], div[role="button"], div[aria-label], [data-tooltip-id]';
+            var clickables = container.querySelectorAll(CLICKABLE);
+            for (var j = 0; j < clickables.length; j++) {
+                var btn = clickables[j];
+                var tid = btn.getAttribute('data-tooltip-id') || '';
+                if (tid === 'audio-tooltip' || tid === 'input-send-button-send-tooltip') continue;
+                if ((btn.getAttribute('aria-label') || '').toLowerCase().includes('record')) continue;
+                var hasSvgRect = btn.querySelector('svg rect') !== null;
+                var hasSvgStop = btn.querySelector('svg [data-icon="stop"]') !== null;
+                var ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
+                if (hasSvgRect || hasSvgStop || ariaLabel.includes('stop') || ariaLabel.includes('cancel')) {
+                    return { running: true, matchedBy: 'svg-rect:' + (tid || ariaLabel || btn.tagName), inIframe: inIframe };
+                }
+            }
+        }
+    }
+
+    // 検出5: aria-label/title ベースのフォールバック
+    var CLICKABLE_ALL = 'button, div[data-tooltip-id], div[role="button"], [data-tooltip-id], [aria-label]';
+    var allClickable = doc.querySelectorAll(CLICKABLE_ALL);
+    for (var k = 0; k < allClickable.length; k++) {
+        var el = allClickable[k];
+        var label = (el.getAttribute('aria-label') || '').toLowerCase();
         var title = (el.getAttribute('title') || '').toLowerCase();
-        if (title === 'stop' || title === 'cancel' || title === 'stop generation' || title === 'interrupt'
-            || title === 'stop request' || title === 'cancel request') {
-            matchedBy = 'title:' + title;
-            return true;
+        if (label.includes('stop') || label.includes('cancel') || title.includes('stop') || title.includes('cancel')) {
+            var elTid = el.getAttribute('data-tooltip-id') || '';
+            if (elTid === 'audio-tooltip' || elTid === 'input-send-button-send-tooltip') continue;
+            return { running: true, matchedBy: 'aria:' + (label || title), inIframe: inIframe };
         }
+    }
 
-        // テキストコンテンツチェック（短いテキストのみ — 誤検出防止）
-        var text = (el.textContent || '').trim().toLowerCase();
-        if (text.length <= 20 && (text === 'stop' || text === 'cancel' || text === 'stop request')) {
-            matchedBy = 'text:' + text;
-            return true;
-        }
-
-        // CSS クラスチェック（stop/cancel + action パターン）
-        var className = (el.className || '');
-        if (typeof className === 'string' && (className.indexOf('stop') >= 0 || className.indexOf('cancel') >= 0) &&
-            className.indexOf('action') >= 0) {
-            matchedBy = 'class:' + className.substring(0, 50);
-            return true;
-        }
-
-        // codicon チェック（VS Code のアイコンフォントでストップアイコンが使われるケース）
-        if (typeof className === 'string' && (
-            className.indexOf('codicon-debug-stop') >= 0 ||
-            className.indexOf('codicon-stop-circle') >= 0 ||
-            className.indexOf('codicon-primitive-square') >= 0
-        )) {
-            // ストップアイコンが含まれるボタンの親要素も検出対象
-            matchedBy = 'codicon:' + className.substring(0, 50);
-            return true;
-        }
-
-        return false;
-    });
-
-    return { running: !!stopBtn, matchedBy: matchedBy };
+    return { running: false, matchedBy: '', inIframe: inIframe, buttonCount: buttons.length, textboxFound: !!textbox };
 })()
 `.trim();
 
@@ -933,20 +939,26 @@ export async function isAgentRunning(
 
     try {
         // cascade iframe 内で検出（エージェントチャットパネル）
-        const cascadeResult = await ops.evaluateInCascade(STOP_BUTTON_SCRIPT) as { running: boolean; matchedBy?: string } | null;
+        const cascadeResult = await ops.evaluateInCascade(DETECT_SCRIPT) as { running: boolean; matchedBy?: string; inIframe?: boolean } | null;
         if (cascadeResult?.running) {
             logDebug(`CDP: isAgentRunning — detected in cascade (${cascadeResult.matchedBy})`);
             return true;
+        }
+        // cascade でスクリプト実行成功したが running=false の場合、cascade の getTargetDoc が
+        // すでに iframe 内 document を返しているはずなので、メインフレーム検出は不要
+        if (cascadeResult && !cascadeResult.running) {
+            return false;
         }
     } catch (e) {
         logDebug(`CDP: isAgentRunning — cascade eval failed: ${e instanceof Error ? e.message : e}`);
     }
 
     try {
-        // メインフレームでも検出（iframe 外にストップボタンがある場合）
-        const mainResult = await ops.conn.evaluate(STOP_BUTTON_SCRIPT) as { running: boolean; matchedBy?: string } | null;
+        // メインフレームでも検出（cascade iframe がない / エラーの場合のフォールバック）
+        // getTargetDoc() により、メインフレームから iframe 内の document にもアクセスする
+        const mainResult = await ops.conn.evaluate(DETECT_SCRIPT) as { running: boolean; matchedBy?: string; inIframe?: boolean } | null;
         if (mainResult?.running) {
-            logDebug(`CDP: isAgentRunning — detected in main frame (${mainResult.matchedBy})`);
+            logDebug(`CDP: isAgentRunning — detected in main frame (${mainResult.matchedBy}, inIframe=${mainResult.inIframe})`);
             return true;
         }
     } catch (e) {
