@@ -70,21 +70,21 @@ import * as path from 'path';
 
 /**
  * Auto Accept ステータスバーの表示を更新（3状態）
- * - ⛔ Auto Accept — 設定OFF
- * - ⏸ Auto Accept — 設定ON、エージェント待機中
- * - ▶️ Auto Accept — 設定ON、エージェント実行中
+ * - 🔴 Auto Accept — 設定OFF（停止中）
+ * - 🟡 Auto Accept — 設定ON、エージェント待機中
+ * - 🟢 Auto Accept — 設定ON、エージェント実行中（稼働中）
  */
 export function updateAutoAcceptStatusBar(item: vscode.StatusBarItem, agentRunning = false): void {
     const enabled = vscode.workspace.getConfiguration('antiCrow')
         .get<boolean>('autoAccept') ?? false;
     if (!enabled) {
-        item.text = '⛔ Auto Accept';
-        item.tooltip = 'Auto Accept: 無効（クリックで有効化）';
+        item.text = '🔴 Auto Accept';
+        item.tooltip = 'Auto Accept: 停止中（クリックで有効化）';
     } else if (agentRunning) {
-        item.text = '▶️ Auto Accept';
-        item.tooltip = 'Auto Accept: 自動承認中（クリックで無効化）';
+        item.text = '🟢 Auto Accept';
+        item.tooltip = 'Auto Accept: 稼働中（クリックで無効化）';
     } else {
-        item.text = '⏸ Auto Accept';
+        item.text = '🟡 Auto Accept';
         item.tooltip = 'Auto Accept: 待機中（クリックで無効化）';
     }
 }
@@ -346,7 +346,7 @@ export async function activate(context: vscode.ExtensionContext) {
                 updateAutoAcceptStatusBar(ctx.autoAcceptStatusBarItem, ctx.agentRunning);
             }
             vscode.window.showInformationMessage(
-                `Auto Accept: ${!current ? '⏸ 有効（待機中）' : '⛔ 無効'}`
+                `Auto Accept: ${!current ? '🟡 有効（待機中）' : '🔴 無効'}`
             );
         })
     );
