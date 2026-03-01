@@ -30,6 +30,12 @@ export class UIWatcher {
     private idleDebounceCount = 0;
     /** autoFollowOutput の連続失敗カウンター */
     private consecutiveErrors = 0;
+    /** isAgentRunning の連続失敗カウンター（CDP接続問題の検出用） */
+    private agentCheckErrors = 0;
+    /** isAgentRunning 連続失敗の警告ログ出力閾値 */
+    private static readonly AGENT_CHECK_ERROR_WARN_THRESHOLD = 5;
+    /** isAgentRunning 連続失敗の再接続試行閾値 */
+    private static readonly AGENT_CHECK_RECONNECT_THRESHOLD = 10;
     /** running → idle 遷移のデバウンス閾値（N回連続 false で idle 確定） */
     private static readonly IDLE_DEBOUNCE_THRESHOLD = 3;
     /** 連続失敗時の警告ログ出力閾値 */
@@ -90,7 +96,14 @@ export class UIWatcher {
             // エージェント実行中かどうかを検出し、状態変化時にコールバックを発火
             // running → idle 遷移はデバウンスで安定化（DOM瞬間消失によるフラップ防止）
             try {
+                // CDP接続を事前に確保（切断状態での evaluate 失敗を防止）
+                await this.cdp.ops.conn.connect();
                 const running = await isAgentRunning(this.cdp.ops);
+                // 成功時はエラーカウンターをリセット
+                if (this.agentCheckErrors > 0) {
+                    logDebug(`UIWatcher: isAgentRunning recovered after ${this.agentCheckErrors} consecutive errors`);
+                    this.agentCheckErrors = 0;
+                }
                 if (running) {
                     // running 検出 → 即時反映（デバウンスカウンターをリセット）
                     this.idleDebounceCount = 0;
@@ -111,9 +124,26 @@ export class UIWatcher {
                         logDebug(`UIWatcher: idle debounce ${this.idleDebounceCount}/${UIWatcher.IDLE_DEBOUNCE_THRESHOLD}`);
                     }
                 }
-            } catch {
+            } catch (e) {
                 // isAgentRunning の失敗は running 扱い（フラップ防止）
                 this.idleDebounceCount = 0;
+                this.agentCheckErrors++;
+                if (this.agentCheckErrors === UIWatcher.AGENT_CHECK_ERROR_WARN_THRESHOLD) {
+                    logInfo(`UIWatcher: ⚠️ isAgentRunning ${this.agentCheckErrors}回連続失敗 — CDP接続に問題がある可能性があります: ${e instanceof Error ? e.message : e}`);
+                } else if (this.agentCheckErrors >= UIWatcher.AGENT_CHECK_RECONNECT_THRESHOLD
+                    && this.agentCheckErrors % UIWatcher.AGENT_CHECK_RECONNECT_THRESHOLD === 0) {
+                    logInfo(`UIWatcher: 🔄 isAgentRunning ${this.agentCheckErrors}回連続失敗 — CDP再接続を試行します`);
+                    try {
+                        this.cdp.ops.resetCascadeContext();
+                        await this.cdp.ops.conn.connect();
+                        this.agentCheckErrors = 0;
+                        logInfo('UIWatcher: isAgentRunning CDP再接続成功');
+                    } catch (reconnectErr) {
+                        logInfo(`UIWatcher: isAgentRunning CDP再接続失敗 — ${reconnectErr instanceof Error ? reconnectErr.message : reconnectErr}`);
+                    }
+                } else {
+                    logDebug(`UIWatcher: isAgentRunning error (${this.agentCheckErrors}x): ${e instanceof Error ? e.message : e}`);
+                }
             }
 
             // =================================================================
@@ -159,6 +189,7 @@ export class UIWatcher {
             // 停止時に agentRunning とデバウンスカウンター、連続失敗カウンターをリセット
             this.idleDebounceCount = 0;
             this.consecutiveErrors = 0;
+            this.agentCheckErrors = 0;
             if (this.lastAgentRunning) {
                 this.lastAgentRunning = false;
                 this.onAgentStateChange?.(false);
