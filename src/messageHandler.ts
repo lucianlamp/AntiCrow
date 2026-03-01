@@ -552,14 +552,23 @@ async function generatePlan(
     const planOutput = parsePlanJson(planResponse);
     if (!planOutput) {
         // Plan JSON として解析できなかった
-        logWarn('handleDiscordMessage: plan JSON parse failed, forwarding as markdown');
-
-        // フォールバック安全網: 明らかに壊れた計画JSONの場合、Discordに生漏れさせない
         const trimmed = planResponse.trim();
+
+        // 検出1: 壊れた計画JSON（plan_id や prompt を含むが不正形式）
         if (trimmed.startsWith('{') && (trimmed.includes('"plan_id"') || trimmed.includes('"prompt"'))) {
             logWarn('handleDiscordMessage: broken plan JSON detected, aborting to prevent raw JSON leak');
             await channel.send({ embeds: [buildEmbed('❌ 計画の生成に失敗しました（JSONフォーマットエラー）。もう一度指示をお試しください。', EmbedColor.Error)] });
             return null;
+        }
+
+        // 検出2: plan_generation なのに Markdown 形式で返ってきた場合
+        // （Markdown ヘッダー、太字、箇条書き、絵文字で始まるテキストを検出）
+        const looksLikeMarkdown = /^(?:#|\*\*|[-•]|[✅❌🔧📋📸💡⚠️🎉])/.test(trimmed);
+        if (looksLikeMarkdown) {
+            logWarn(`handleDiscordMessage: plan_generation response appears to be Markdown instead of JSON (${trimmed.substring(0, 80)}...)`);
+            logWarn('handleDiscordMessage: this indicates the AI returned Markdown for a plan_generation task — forwarding as-is but this should be corrected');
+        } else {
+            logWarn('handleDiscordMessage: plan JSON parse failed, forwarding as markdown');
         }
 
         const formatted = FileIpc.extractResult(planResponse);

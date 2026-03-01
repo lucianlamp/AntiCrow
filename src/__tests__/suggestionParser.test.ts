@@ -166,6 +166,48 @@ describe('parseSuggestions', () => {
         expect(result.suggestions).toHaveLength(1);
         expect(result.suggestions[0].label).toBe('A');
     });
+
+    // ===================== 複数タグ対応（gフラグ） =====================
+
+    it('SUGGESTIONSタグが2つある場合 → 最初のタグからパースし、全タグを除去', () => {
+        const md = [
+            '本文',
+            '<!-- SUGGESTIONS:[{"label":"A","prompt":"a"}] -->',
+            '追加テキスト',
+            '<!-- SUGGESTIONS:[{"label":"B","prompt":"b"}] -->',
+        ].join('\n');
+        const result = parseSuggestions(md);
+        // 最初のタグの提案を返す
+        expect(result.suggestions).toHaveLength(1);
+        expect(result.suggestions[0].label).toBe('A');
+        // 両方のタグが除去される
+        expect(result.cleanContent).not.toContain('SUGGESTIONS');
+        expect(result.cleanContent).not.toContain('<!--');
+        expect(result.cleanContent).toContain('本文');
+        expect(result.cleanContent).toContain('追加テキスト');
+    });
+
+    it('マルチラインSUGGESTIONSタグ（インデント付き）が正しくパースされる', () => {
+        const md = `本文
+
+<!-- SUGGESTIONS: [
+    {
+        "label": "テスト実行",
+        "description": "テストの説明",
+        "prompt": "npx vitest run"
+    },
+    {
+        "label": "デプロイ",
+        "prompt": "デプロイしてください"
+    }
+] -->`;
+        const result = parseSuggestions(md);
+        expect(result.suggestions).toHaveLength(2);
+        expect(result.suggestions[0].label).toBe('テスト実行');
+        expect(result.suggestions[0].description).toBe('テストの説明');
+        expect(result.suggestions[1].label).toBe('デプロイ');
+        expect(result.cleanContent).toBe('本文');
+    });
 });
 
 // ---------------------------------------------------------------------------
@@ -183,5 +225,14 @@ describe('stripSuggestionTags', () => {
         const md = '本文のみ';
         const result = stripSuggestionTags(md);
         expect(result).toBe('本文のみ');
+    });
+
+    it('複数タグが全て除去される', () => {
+        const md = '前文\n<!-- SUGGESTIONS:[{"label":"A","prompt":"a"}] -->\n中間\n<!-- SUGGESTIONS:[{"label":"B","prompt":"b"}] -->\n後文';
+        const result = stripSuggestionTags(md);
+        expect(result).not.toContain('SUGGESTIONS');
+        expect(result).toContain('前文');
+        expect(result).toContain('中間');
+        expect(result).toContain('後文');
     });
 });

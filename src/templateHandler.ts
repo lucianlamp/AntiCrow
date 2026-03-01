@@ -295,6 +295,10 @@ export async function handleTemplateButton(
 
             const planOutput = parsePlanJson(planResponse);
             if (!planOutput) {
+                const trimmedResp = planResponse.trim();
+                if (/^(?:#|\*\*|[-•]|[✅❌🔧📋📸💡⚠️🎉])/.test(trimmedResp)) {
+                    logWarn(`handleTemplateButton: plan_generation response appears to be Markdown instead of JSON`);
+                }
                 await interaction.editReply({ embeds: [buildEmbed('⚠️ 応答を解析できませんでした。', EmbedColor.Warning)] });
                 return;
             }
@@ -459,6 +463,10 @@ export async function handleModalSubmit(
 
             const planOutput = parsePlanJson(planResponse);
             if (!planOutput) {
+                const trimmedResp = planResponse.trim();
+                if (/^(?:#|\*\*|[-•]|[✅❌🔧📋📸💡⚠️🎉])/.test(trimmedResp)) {
+                    logWarn(`handleModalSubmit: plan_generation response appears to be Markdown instead of JSON`);
+                }
                 await interaction.editReply({ embeds: [buildEmbed('⚠️ 応答を解析できませんでした。', EmbedColor.Warning)] });
                 return;
             }

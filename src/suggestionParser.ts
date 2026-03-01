@@ -35,8 +35,11 @@ export interface SuggestionParseResult {
 // 定数
 // ---------------------------------------------------------------------------
 
-/** 提案タグの正規表現 */
+/** 提案タグの正規表現（最初の1つをキャプチャ用） */
 const SUGGESTION_TAG_RE = /<!--\s*SUGGESTIONS:\s*([\s\S]*?)\s*-->/;
+
+/** 提案タグの正規表現（全マッチ除去用 — グローバルフラグ付き） */
+const SUGGESTION_TAG_RE_G = /<!--\s*SUGGESTIONS:\s*[\s\S]*?\s*-->/g;
 
 /** ボタンラベルの最大長（Discord Button label 上限は 80） */
 const MAX_LABEL_LENGTH = 72;
@@ -59,7 +62,9 @@ export function parseSuggestions(content: string): SuggestionParseResult {
     }
 
     const jsonStr = match[1].trim();
-    const cleanContent = content.replace(SUGGESTION_TAG_RE, '').trim();
+    // グローバルフラグ付き正規表現で全てのSUGGESTIONSタグを除去
+    // （LLMが複数回タグを出力するケースへの対応）
+    const cleanContent = content.replace(SUGGESTION_TAG_RE_G, '').trim();
 
     try {
         const parsed = JSON.parse(jsonStr);
@@ -96,5 +101,5 @@ export function parseSuggestions(content: string): SuggestionParseResult {
  * parseSuggestions の cleanContent と同等。
  */
 export function stripSuggestionTags(content: string): string {
-    return content.replace(SUGGESTION_TAG_RE, '').trim();
+    return content.replace(SUGGESTION_TAG_RE_G, '').trim();
 }
