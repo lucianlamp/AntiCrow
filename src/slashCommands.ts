@@ -93,18 +93,8 @@ export const slashCommandDefinitions = [
     // /team — エージェントチームモード管理
     new SlashCommandBuilder()
         .setName('team')
-        .setDescription('エージェントチームモードの管理')
-        .addStringOption(option =>
-            option.setName('action')
-                .setDescription('アクション')
-                .setRequired(false)
-                .addChoices(
-                    { name: 'on — チームモード有効化', value: 'on' },
-                    { name: 'off — チームモード無効化', value: 'off' },
-                    { name: 'status — ステータス表示', value: 'status' },
-                    { name: 'config — 設定表示', value: 'config' },
-                ),
-        ),
+        .setDescription('エージェントチームモードの管理'),
+
 
 ];
 

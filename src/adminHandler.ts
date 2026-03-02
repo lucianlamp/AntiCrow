@@ -976,7 +976,6 @@ async function handleTeam(
     ctx: BridgeContext,
     interaction: ChatInputCommandInteraction,
 ): Promise<void> {
-    const action = interaction.options.getString('action') ?? 'status';
     const repoRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
 
     if (!repoRoot) {
@@ -988,61 +987,21 @@ async function handleTeam(
         const config = loadTeamConfig(repoRoot);
         const agentCount = ctx.subagentManager?.list().length ?? 0;
 
-        switch (action) {
-            case 'on': {
-                config.enabled = true;
-                saveTeamConfig(repoRoot, config);
-                const panel = buildTeamPanel(config, agentCount);
-                await interaction.reply({
-                    embeds: [buildEmbed('✅ **エージェントチームモードを有効化しました！**\n\nメインエージェントが指揮官モードで動作します。', EmbedColor.Success)],
-                    components: panel.components as any,
-                });
-                break;
-            }
-            case 'off': {
-                config.enabled = false;
-                saveTeamConfig(repoRoot, config);
-                // 全サブエージェント停止
-                if (ctx.subagentManager) {
-                    const agents = ctx.subagentManager.list();
-                    for (const agent of agents) {
-                        try {
-                            await ctx.subagentManager.killAgent(agent.name);
-                        } catch { /* ignore */ }
-                    }
-                }
-                const panel = buildTeamPanel(config, 0);
-                await interaction.reply({
-                    embeds: [buildEmbed('🔴 **エージェントチームモードを無効化しました。**\n\n全サブエージェントを停止しました。', EmbedColor.Info)],
-                    components: panel.components as any,
-                });
-                break;
-            }
-            case 'config': {
-                const configJson = JSON.stringify(config, null, 2);
-                await interaction.reply({
-                    embeds: [buildEmbed(`⚙️ **チーム設定** (\`.anticrow/team.json\`)\n\`\`\`json\n${configJson}\n\`\`\``, EmbedColor.Info)],
-                });
-                break;
-            }
-            case 'status':
-            default: {
-                const panel = buildTeamPanel(config, agentCount);
-                // サブエージェント一覧も表示
-                if (agentCount > 0 && ctx.subagentManager) {
-                    const agents = ctx.subagentManager.list();
-                    const agentList = agents.map(a =>
-                        `  • **${a.name}** — ${a.state}`
-                    ).join('\n');
-                    panel.embeds.push(buildEmbed(`🤖 **サブエージェント一覧**\n${agentList}`, EmbedColor.Info));
-                }
-                await interaction.reply({ embeds: panel.embeds, components: panel.components as any });
-                break;
-            }
+        // 常にステータスパネル＋ボタンを表示
+        const panel = buildTeamPanel(config, agentCount);
+
+        // サブエージェント一覧も表示
+        if (agentCount > 0 && ctx.subagentManager) {
+            const agents = ctx.subagentManager.list();
+            const agentList = agents.map(a =>
+                `  • **${a.name}** — ${a.state}`
+            ).join('\n');
+            panel.embeds.push(buildEmbed(`🤖 **サブエージェント一覧**\n${agentList}`, EmbedColor.Info));
         }
+        await interaction.reply({ embeds: panel.embeds, components: panel.components as any });
     } catch (e) {
         const errMsg = e instanceof Error ? e.message : String(e);
-        logError(`handleTeam: ${action} failed`, e);
+        logError('handleTeam failed', e);
         await interaction.reply({
             embeds: [buildEmbed(`❌ チームモード操作失敗: ${errMsg}`, EmbedColor.Error)],
         });
