@@ -19,6 +19,9 @@ import { checkAndOfferShortcut, createDesktopShortcut } from './shortcutInstalle
 import { LicenseChecker, LicenseGate, registerLicenseCommands } from './licensing';
 import { isDeveloper } from './accessControl';
 import { getAllowedUserIds } from './configHelper';
+import { SubagentManager } from './subagentManager';
+import { SubagentReceiver } from './subagentReceiver';
+import { extractWorkspaceName } from './cdpTargets';
 
 // ---------------------------------------------------------------------------
 // グローバル BridgeContext
@@ -50,6 +53,8 @@ const ctx: BridgeContext = {
     setLicenseKeyFn: null,
     getTrialDaysRemaining: null,
     agentRunning: false,
+    subagentManager: null,
+    subagentReceiver: null,
 };
 
 // ライセンスモジュールのインスタンス
@@ -371,6 +376,35 @@ export async function activate(context: vscode.ExtensionContext) {
         });
     }
 
+    // -----------------------------------------------------------------
+    // サブエージェント統合
+    // -----------------------------------------------------------------
+    const ipcDir = path.join(context.globalStorageUri.fsPath, 'ipc');
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+    const repoRoot = workspaceFolders?.[0]?.uri.fsPath ?? '';
+    const windowTitle = vscode.env.appName ? `${vscode.workspace.name ?? ''} - ${vscode.env.appName}` : '';
+    const workspaceName = vscode.workspace.name ?? extractWorkspaceName(windowTitle);
+
+    if (SubagentReceiver.isSubagent(workspaceName)) {
+        // --- サブウィンドウ: SubagentReceiver を起動 ---
+        logInfo(`[Subagent] サブウィンドウとして検出: "${workspaceName}"`);
+        const receiver = new SubagentReceiver(workspaceName, ipcDir);
+        receiver.setHandler(async (prompt) => {
+            // 仮実装: echo back（実際の Cascade 統合は次ステップ）
+            logDebug(`[Subagent] プロンプト受信 (echo): ${prompt.substring(0, 100)}`);
+            return `[echo] ${prompt}`;
+        });
+        receiver.start();
+        ctx.subagentReceiver = receiver;
+        logInfo('[Subagent] SubagentReceiver 起動完了');
+    } else if (repoRoot) {
+        // --- メインウィンドウ: SubagentManager を作成 ---
+        logDebug(`[Subagent] メインウィンドウ: "${workspaceName}"`);
+        // SubagentManager は Bridge 起動後に cdpBridge が利用可能になってから初期化
+        // ここでは ctx にフラグを立てておき、startBridge 完了後に初期化する
+        // → 簡易実装: CdpBridge が null でも作成可能だが、spawn 時に ensureConnected する
+    }
+
     logInfo('Extension activated');
 }
 
@@ -379,6 +413,16 @@ export async function activate(context: vscode.ExtensionContext) {
 // =====================================================================
 
 export async function deactivate(): Promise<void> {
+    // サブエージェント停止
+    if (ctx.subagentManager) {
+        await ctx.subagentManager.dispose();
+        ctx.subagentManager = null;
+    }
+    if (ctx.subagentReceiver) {
+        ctx.subagentReceiver.stop();
+        ctx.subagentReceiver = null;
+    }
+
     licenseChecker?.dispose();
     licenseChecker = null;
     licenseGate = null;

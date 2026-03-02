@@ -70,6 +70,26 @@ export const slashCommandDefinitions = [
         .setName('soul')
         .setDescription('SOUL.md（カスタマイズ設定）を編集します'),
 
+    new SlashCommandBuilder()
+        .setName('subagent')
+        .setDescription('サブエージェント管理（起動・一覧・停止）')
+        .addStringOption(option =>
+            option.setName('action')
+                .setDescription('操作（spawn / list / kill / killall）')
+                .setRequired(true)
+                .addChoices(
+                    { name: 'spawn — 新しいサブエージェントを起動', value: 'spawn' },
+                    { name: 'list — 一覧を表示', value: 'list' },
+                    { name: 'kill — 指定を停止', value: 'kill' },
+                    { name: 'killall — 全て停止', value: 'killall' },
+                ),
+        )
+        .addStringOption(option =>
+            option.setName('name')
+                .setDescription('サブエージェント名（kill 時に使用）')
+                .setRequired(false),
+        ),
+
 ];
 
 // -----------------------------------------------------------------------

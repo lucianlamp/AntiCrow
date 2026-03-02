@@ -15,6 +15,8 @@ import { Executor } from './executor';
 import { ExecutorPool } from './executorPool';
 import { TemplateStore } from './templateStore';
 import { UIWatcher } from './uiWatcher';
+import { SubagentManager } from './subagentManager';
+import { SubagentReceiver } from './subagentReceiver';
 
 /** 全モジュールが共有する Bridge の実行時状態 */
 export interface BridgeContext {
@@ -46,6 +48,10 @@ export interface BridgeContext {
     getTrialDaysRemaining: (() => number | undefined) | null;
     /** エージェントが実行中かどうか（UIWatcher が isAgentRunning で検出） */
     agentRunning: boolean;
+    /** サブエージェントマネージャー（メインウィンドウ側） */
+    subagentManager: SubagentManager | null;
+    /** サブエージェントレシーバー（サブウィンドウ側） */
+    subagentReceiver: SubagentReceiver | null;
 }
 
 /** startBridge 完了後の状態。主要フィールドが non-null であることを型レベルで保証 */
