@@ -37,6 +37,7 @@ import { getLicenseGate, getLicenseChecker } from './extension';
 import type { LicenseType } from './licensing';
 import { setSummarizeOps, stripMemoryTags } from './memoryStore';
 import { stripSuggestionTags } from './suggestionParser';
+import { UIWatcher } from './uiWatcher';
 import * as fs from 'fs';
 
 /** ワークスペース名としてカテゴリ作成すべきでない名前を判定する */
@@ -541,15 +542,31 @@ async function startBridgeInternal(
                         }
                     };
                     ctx.executorPool?.startUIWatcherAll(isProCheck, onAgentStateChange);
+                    // startup watcher がなければ ctx.cdp で直接起動
+                    if (!ctx.startupUIWatcher && ctx.cdp) {
+                        const watcher = new UIWatcher(ctx.cdp, () => ctx.executorPool?.isAnyRunning() ?? false, isProCheck);
+                        watcher.setAgentStateCallback(onAgentStateChange);
+                        watcher.start();
+                        ctx.startupUIWatcher = watcher;
+                        logDebug('Bridge: startup UIWatcher started via config change');
+                    }
                 } else {
                     logDebug('Bridge: autoAccept disabled — stopping UI watcher');
                     ctx.executorPool?.stopUIWatcherAll();
+                    // startup watcher も停止
+                    if (ctx.startupUIWatcher) {
+                        ctx.startupUIWatcher.stop();
+                        ctx.startupUIWatcher = null;
+                    }
                 }
             }
         })
     );
 
     // autoAccept が有効ならUIウォッチャーを常時起動（Pro 限定）
+    // 注意: ExecutorPool のプールは起動時は空なので startUIWatcherAll だけでは不十分。
+    //       ctx.cdp（起動時に必ず作成されるスタンドアロン CdpBridge）を使って
+    //       直接 UIWatcher を起動し、ステータスバーの agentRunning 検出を即座に開始する。
     const autoOpEnabled = vscode.workspace.getConfiguration('antiCrow')
         .get<boolean>('autoAccept') ?? false;
     if (autoOpEnabled) {
@@ -564,7 +581,16 @@ async function startBridgeInternal(
                     updateAutoAcceptStatusBar(ctx.autoAcceptStatusBarItem, running);
                 }
             };
+            // ExecutorPool 内の既存 Executor にも適用（+ 今後作成される Executor にも自動適用）
             ctx.executorPool?.startUIWatcherAll(isProCheck, onAgentStateChange);
+            // 起動時専用: ctx.cdp を使って直接 UIWatcher を起動（プールが空でも動作する）
+            if (ctx.cdp) {
+                const startupWatcher = new UIWatcher(ctx.cdp, () => ctx.executorPool?.isAnyRunning() ?? false, isProCheck);
+                startupWatcher.setAgentStateCallback(onAgentStateChange);
+                startupWatcher.start();
+                ctx.startupUIWatcher = startupWatcher;
+                logDebug('Bridge: startup UIWatcher started (autoAccept enabled, using ctx.cdp)');
+            }
             logDebug('Bridge: UI watcher started (autoAccept enabled)');
         }
     }
@@ -638,6 +664,11 @@ export async function stopBridge(ctx: BridgeContext): Promise<void> {
     ctx.executorPool?.forceStopAll();
     // UIウォッチャー停止
     ctx.executorPool?.stopUIWatcherAll();
+    // startup UIWatcher 停止
+    if (ctx.startupUIWatcher) {
+        ctx.startupUIWatcher.stop();
+        ctx.startupUIWatcher = null;
+    }
 
     ctx.cdpPool?.disconnectAll();
     ctx.cdp?.fullDisconnect();
