@@ -16,6 +16,7 @@ import {
     DiscoveredInstance,
     discoverInstances,
     findAntigravityTarget,
+    extractWorkspaceName,
 } from './cdpTargets';
 
 /** CDP コマンド個別タイムアウト (30秒) */
@@ -44,6 +45,9 @@ export class CdpConnection {
     private activeTargetTitle: string | null = null;
     private activeTargetPort: number | null = null;
 
+    // マルチウインドウ対応: 自ウィンドウ優先接続
+    private preferredWorkspaceName: string | null = null;
+
     constructor(ports: number[]) {
         this.ports = ports;
     }
@@ -61,6 +65,17 @@ export class CdpConnection {
         this.activeTargetId = id;
         this.activeTargetTitle = title;
         this.activeTargetPort = port;
+    }
+
+    /**
+     * 自ウィンドウのワークスペース名を設定する。
+     * connect() 時にこのワークスペース名を持つターゲットを優先的に選択する。
+     */
+    setPreferredWorkspace(name: string | null): void {
+        this.preferredWorkspaceName = name;
+        if (name) {
+            logDebug(`CDP: preferred workspace set to "${name}"`);
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -135,20 +150,41 @@ export class CdpConnection {
             }
         }
 
-        // activeTargetId が無い（初回接続 or フォールバック）場合は従来の探索
+        // activeTargetId が無い（初回接続 or フォールバック）場合は探索
         if (!wsUrl) {
-            const found = await findAntigravityTarget(this.ports);
-            if (!found) {
-                throw new CdpConnectionError(
-                    `No Antigravity target found. Is Antigravity running?`,
-                    0,
+            // 自ウィンドウ優先接続: preferredWorkspaceName が設定されていれば
+            // そのワークスペース名を持つターゲットを優先的に選択する
+            if (this.preferredWorkspaceName) {
+                const instances = await discoverInstances(this.ports);
+                const preferred = instances.find(
+                    i => extractWorkspaceName(i.title) === this.preferredWorkspaceName,
                 );
+                if (preferred) {
+                    wsUrl = preferred.wsUrl;
+                    this.activeTargetId = preferred.id;
+                    this.activeTargetTitle = preferred.title;
+                    this.activeTargetPort = preferred.port;
+                    logDebug(`CDP: connected to preferred workspace "${this.preferredWorkspaceName}" (id=${preferred.id})`);
+                } else {
+                    logDebug(`CDP: preferred workspace "${this.preferredWorkspaceName}" not found, falling back to auto-discover`);
+                }
             }
-            const { target, port } = found;
-            wsUrl = target.webSocketDebuggerUrl;
-            this.activeTargetId = target.id;
-            this.activeTargetTitle = target.title;
-            this.activeTargetPort = port;
+
+            // 優先ワークスペースが見つからなかった場合は従来の自動探索
+            if (!wsUrl) {
+                const found = await findAntigravityTarget(this.ports);
+                if (!found) {
+                    throw new CdpConnectionError(
+                        `No Antigravity target found. Is Antigravity running?`,
+                        0,
+                    );
+                }
+                const { target, port } = found;
+                wsUrl = target.webSocketDebuggerUrl;
+                this.activeTargetId = target.id;
+                this.activeTargetTitle = target.title;
+                this.activeTargetPort = port;
+            }
         }
 
         await this.connectToUrl(wsUrl);

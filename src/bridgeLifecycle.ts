@@ -362,7 +362,11 @@ async function startBridgeInternal(
     const cdpPorts = getCdpPorts(storageUri.fsPath);
     ctx.cdp = new CdpBridge(responseTimeout, cdpPorts);
 
-    // Executor 初期化
+    // マルチウインドウ対応: 自ウィンドウのワークスペース名を設定して優先接続
+    const currentWorkspaceName = vscode.workspace.name;
+    if (currentWorkspaceName) {
+        ctx.cdp.setPreferredWorkspace(currentWorkspaceName);
+    }
     ctx.executor = new Executor(ctx.cdp, ctx.fileIpc, ctx.planStore, responseTimeout, async (channelId, msg, color) => {
         if (ctx.bot) {
             await ctx.bot.sendToChannel(channelId, msg, color);

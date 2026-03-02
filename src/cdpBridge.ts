@@ -70,6 +70,14 @@ export class CdpBridge {
         this.timeoutMs = timeoutMs;
     }
 
+    /**
+     * 自ウィンドウのワークスペース名を設定する。
+     * CDP接続時にこのワークスペース名を持つターゲットを優先的に選択する。
+     */
+    setPreferredWorkspace(name: string | null): void {
+        this.conn.setPreferredWorkspace(name);
+    }
+
     /** cdpHistory / cdpModels / 外部ヘルパーに渡す操作オブジェクト */
     get ops(): CdpBridgeOps {
         return {
