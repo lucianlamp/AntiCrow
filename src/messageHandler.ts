@@ -28,6 +28,7 @@ import { getResponseTimeout, isUserAllowed, getMaxMessageLength, getWorkspacePat
 import { getCurrentModel } from './cdpModels';
 import { getCurrentMode } from './cdpModes';
 import { AUTO_PROMPT } from './suggestionButtons';
+import { loadTeamConfig } from './teamConfig';
 
 // 委譲先モジュール
 import { buildPlanPrompt, buildConfirmMessage, countChoiceItems, cronToPrefix } from './promptBuilder';
@@ -773,6 +774,53 @@ export async function handleDiscordMessage(
     if (!useCdpPool && (!cdp || !executor)) {
         await channel.send({ embeds: [buildEmbed('⚠️ Antigravity との接続が初期化されていません。', EmbedColor.Warning)] });
         return;
+    }
+
+    // -----------------------------------------------------------------------
+    // チームモード判定: 有効時はサブエージェントに委譲
+    // -----------------------------------------------------------------------
+    const repoRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
+    if (repoRoot) {
+        const teamConfig = loadTeamConfig(repoRoot);
+        if (teamConfig.enabled && ctx.teamOrchestrator) {
+            logDebug(`handleDiscordMessage: Team mode enabled — delegating to TeamOrchestrator`);
+
+            // typing indicator 開始
+            const typingInterval = setInterval(async () => {
+                try { await channel.sendTyping(); } catch { /* ignore */ }
+            }, 8_000);
+            try { await channel.sendTyping(); } catch { /* ignore */ }
+
+            try {
+                await channel.send({ embeds: [buildEmbed('🎯 **チームモード**: タスクをサブエージェントに委譲します...', EmbedColor.Info)] });
+
+                const result = await ctx.teamOrchestrator.orchestrate(text, channel.id);
+
+                if (result.success) {
+                    const durationSec = (result.durationMs / 1000).toFixed(1);
+                    const normalized = normalizeHeadings(result.response);
+                    const embedGroups = splitForEmbeds(normalized);
+                    await channel.send({ embeds: [buildEmbed(`✅ **サブエージェント "${result.agentName}"** が完了しました（${durationSec}秒）`, EmbedColor.Success)] });
+                    for (const group of embedGroups) {
+                        const embeds = group.map((desc) =>
+                            new EmbedBuilder()
+                                .setDescription(desc)
+                                .setColor(EmbedColor.Info)
+                        );
+                        await channel.send({ embeds });
+                    }
+                } else {
+                    await channel.send({ embeds: [buildEmbed(`❌ **サブエージェント "${result.agentName}"** でエラーが発生しました:\n${result.response}`, EmbedColor.Error)] });
+                }
+            } catch (e) {
+                const errMsg = e instanceof Error ? e.message : String(e);
+                logError('handleDiscordMessage: TeamOrchestrator delegation failed', e);
+                await channel.send({ embeds: [buildEmbed(`❌ チームモード実行エラー: ${sanitizeErrorForDiscord(errMsg)}`, EmbedColor.Error)] });
+            } finally {
+                clearInterval(typingInterval);
+            }
+            return; // チームモードで処理完了 — 通常フローはスキップ
+        }
     }
 
     // メッセージプレビュー（ステータス追跡用）

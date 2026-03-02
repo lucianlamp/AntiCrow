@@ -78,19 +78,20 @@ export class TeamOrchestrator {
         const config = loadTeamConfig(this.repoRoot);
         const startTime = Date.now();
 
-        // サブエージェントをスポーン
+        // サブエージェントをスポーン（名前は SubagentManager が自動生成）
         const name = agentName ?? `agent-${Date.now()}`;
         logInfo(`[TeamOrchestrator] Spawning agent: ${name}`);
 
         try {
-            const handle = await this.subagentManager.spawn(name);
+            // spawn() は taskPrompt を受け取るが、ここでは後で sendPrompt するため省略
+            const handle = await this.subagentManager.spawn();
 
             // 進捗監視を開始
-            this.startMonitor(name, channelId, config);
+            this.startMonitor(handle.name, channelId, config);
 
             // Discord に spawn 通知
             await this.sendToDiscord(channelId,
-                `🤖 **サブエージェント "${name}" を起動しました。** タスクを実行中...`);
+                `🤖 **サブエージェント "${handle.name}" を起動しました。** タスクを実行中...`);
 
             // プロンプトを送信してレスポンスを待機
             const resp = await handle.sendPrompt(prompt);
