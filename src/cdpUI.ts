@@ -531,7 +531,7 @@ export async function autoApprove(
     ops: CdpBridgeOps
 ): Promise<{ clicked: number }> {
     let totalClicked = 0;
-    logInfo('CDP: autoApprove — tick');
+    logDebug('CDP: autoApprove — tick');
 
     // ブラックリスト取得
     const blacklist: string[] = vscode.workspace.getConfiguration('antiCrow')
