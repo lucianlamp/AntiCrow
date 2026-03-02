@@ -3,8 +3,9 @@
 // ---------------------------------------------------------------------------
 // 責務:
 //   /status, /schedules, /cancel, /newchat, /workspace, /queue,
-//   /templates, /model, /mode, /suggest, /pro コマンドの処理
+//   /templates, /model, /mode, /suggest, /pro, /team コマンドの処理
 // ---------------------------------------------------------------------------
+import * as vscode from 'vscode';
 import {
     ChatInputCommandInteraction,
     TextChannel,
@@ -28,6 +29,7 @@ import { buildModelListEmbed, buildModelSwitchResultEmbed } from './modelButtons
 import { getCurrentModel, getAvailableModels, selectModel } from './cdpModels';
 import { buildModeListEmbed, buildModeSwitchResultEmbed } from './modeButtons';
 import { getCurrentMode, getAvailableModes, selectMode } from './cdpModes';
+import { loadTeamConfig, saveTeamConfig } from './teamConfig';
 import { BridgeContext } from './bridgeContext';
 import { resetProcessingFlag, getMessageQueueStatus, cancelPlanGeneration, enqueueMessage, clearWaitingMessages } from './messageHandler';
 import type { ProcessingPhase } from './messageHandler';
@@ -926,6 +928,128 @@ async function handleSubagent(
 }
 
 // ---------------------------------------------------------------------------
+// /team — エージェントチームモード管理
+// ---------------------------------------------------------------------------
+
+/**
+ * チームモード操作パネル（ボタン付き）を構築する。
+ */
+function buildTeamPanel(
+    config: import('./teamConfig').TeamConfig,
+    agentCount: number,
+): { embeds: ReturnType<typeof buildEmbed>[]; components: ActionRowBuilder<ButtonBuilder>[] } {
+    const statusEmoji = config.enabled ? '🟢' : '🔴';
+    const statusText = config.enabled ? 'ON' : 'OFF';
+
+    const embed = buildEmbed(
+        `${statusEmoji} **エージェントチームモード: ${statusText}**\n\n`
+        + `📊 **稼働中サブエージェント**: ${agentCount} / ${config.maxAgents}\n`
+        + `⏱️ **タイムアウト**: ${Math.round(config.responseTimeoutMs / 60_000)}分\n`
+        + `🔄 **監視間隔**: ${Math.round(config.monitorIntervalMs / 1_000)}秒\n`
+        + `🤖 **自動スポーン**: ${config.autoSpawn ? 'ON' : 'OFF'}`,
+        config.enabled ? EmbedColor.Success : EmbedColor.Info,
+    );
+
+    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder()
+            .setCustomId('team_on')
+            .setLabel('🟢 チームON')
+            .setStyle(config.enabled ? ButtonStyle.Success : ButtonStyle.Secondary),
+        new ButtonBuilder()
+            .setCustomId('team_off')
+            .setLabel('🔴 チームOFF')
+            .setStyle(!config.enabled ? ButtonStyle.Danger : ButtonStyle.Secondary),
+        new ButtonBuilder()
+            .setCustomId('team_status')
+            .setLabel('📊 ステータス')
+            .setStyle(ButtonStyle.Primary),
+        new ButtonBuilder()
+            .setCustomId('team_config')
+            .setLabel('⚙️ 設定')
+            .setStyle(ButtonStyle.Secondary),
+    );
+
+    return { embeds: [embed], components: [row] };
+}
+
+async function handleTeam(
+    ctx: BridgeContext,
+    interaction: ChatInputCommandInteraction,
+): Promise<void> {
+    const action = interaction.options.getString('action') ?? 'status';
+    const repoRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+
+    if (!repoRoot) {
+        await interaction.reply({ embeds: [buildEmbed('⚠️ ワークスペースが検出されません。', EmbedColor.Warning)] });
+        return;
+    }
+
+    try {
+        const config = loadTeamConfig(repoRoot);
+        const agentCount = ctx.subagentManager?.list().length ?? 0;
+
+        switch (action) {
+            case 'on': {
+                config.enabled = true;
+                saveTeamConfig(repoRoot, config);
+                const panel = buildTeamPanel(config, agentCount);
+                await interaction.reply({
+                    embeds: [buildEmbed('✅ **エージェントチームモードを有効化しました！**\n\nメインエージェントが指揮官モードで動作します。', EmbedColor.Success)],
+                    components: panel.components as any,
+                });
+                break;
+            }
+            case 'off': {
+                config.enabled = false;
+                saveTeamConfig(repoRoot, config);
+                // 全サブエージェント停止
+                if (ctx.subagentManager) {
+                    const agents = ctx.subagentManager.list();
+                    for (const agent of agents) {
+                        try {
+                            await ctx.subagentManager.killAgent(agent.name);
+                        } catch { /* ignore */ }
+                    }
+                }
+                const panel = buildTeamPanel(config, 0);
+                await interaction.reply({
+                    embeds: [buildEmbed('🔴 **エージェントチームモードを無効化しました。**\n\n全サブエージェントを停止しました。', EmbedColor.Info)],
+                    components: panel.components as any,
+                });
+                break;
+            }
+            case 'config': {
+                const configJson = JSON.stringify(config, null, 2);
+                await interaction.reply({
+                    embeds: [buildEmbed(`⚙️ **チーム設定** (\`.anticrow/team.json\`)\n\`\`\`json\n${configJson}\n\`\`\``, EmbedColor.Info)],
+                });
+                break;
+            }
+            case 'status':
+            default: {
+                const panel = buildTeamPanel(config, agentCount);
+                // サブエージェント一覧も表示
+                if (agentCount > 0 && ctx.subagentManager) {
+                    const agents = ctx.subagentManager.list();
+                    const agentList = agents.map(a =>
+                        `  • **${a.name}** — ${a.state}`
+                    ).join('\n');
+                    panel.embeds.push(buildEmbed(`🤖 **サブエージェント一覧**\n${agentList}`, EmbedColor.Info));
+                }
+                await interaction.reply({ embeds: panel.embeds, components: panel.components as any });
+                break;
+            }
+        }
+    } catch (e) {
+        const errMsg = e instanceof Error ? e.message : String(e);
+        logError(`handleTeam: ${action} failed`, e);
+        await interaction.reply({
+            embeds: [buildEmbed(`❌ チームモード操作失敗: ${errMsg}`, EmbedColor.Error)],
+        });
+    }
+}
+
+// ---------------------------------------------------------------------------
 // コマンドディスパッチマップ
 // ---------------------------------------------------------------------------
 
@@ -946,6 +1070,7 @@ const COMMAND_HANDLERS: Record<string, CommandHandler> = {
     screenshot: handleScreenshot,
     soul: handleSoul,
     subagent: handleSubagent,
+    team: handleTeam,
 };
 
 // ---------------------------------------------------------------------------

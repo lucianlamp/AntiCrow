@@ -17,6 +17,7 @@ import { TemplateStore } from './templateStore';
 import { UIWatcher } from './uiWatcher';
 import { SubagentManager } from './subagentManager';
 import { SubagentReceiver } from './subagentReceiver';
+import { TeamOrchestrator } from './teamOrchestrator';
 
 /** 全モジュールが共有する Bridge の実行時状態 */
 export interface BridgeContext {
@@ -52,6 +53,8 @@ export interface BridgeContext {
     subagentManager: SubagentManager | null;
     /** サブエージェントレシーバー（サブウィンドウ側） */
     subagentReceiver: SubagentReceiver | null;
+    /** チームオーケストレーター（指揮官モード） */
+    teamOrchestrator: TeamOrchestrator | null;
 }
 
 /** startBridge 完了後の状態。主要フィールドが non-null であることを型レベルで保証 */

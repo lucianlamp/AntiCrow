@@ -38,6 +38,9 @@ import type { LicenseType } from './licensing';
 import { setSummarizeOps, stripMemoryTags } from './memoryStore';
 import { stripSuggestionTags } from './suggestionParser';
 import { UIWatcher } from './uiWatcher';
+import { SubagentManager } from './subagentManager';
+import { TeamOrchestrator } from './teamOrchestrator';
+import { loadTeamConfig } from './teamConfig';
 import * as fs from 'fs';
 
 /** ワークスペース名としてカテゴリ作成すべきでない名前を判定する */
@@ -474,6 +477,71 @@ async function startBridgeInternal(
         logDebug('Bridge: summarize ops injected into memoryStore');
     }
 
+    // SubagentManager 初期化（CDP 接続後に実行）
+    if (ctx.cdp && !ctx.subagentManager) {
+        const subIpcDir = storageUri.fsPath + '/ipc';
+        const subRepoRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
+        if (subRepoRoot) {
+            try {
+                ctx.subagentManager = new SubagentManager(ctx.cdp, subIpcDir, subRepoRoot);
+                ctx.subagentManager.startHealthCheck();
+                logInfo('Bridge: SubagentManager initialized');
+            } catch (e) {
+                logWarn(`Bridge: SubagentManager initialization failed: ${e instanceof Error ? e.message : e}`);
+            }
+        }
+    }
+
+    // TeamOrchestrator 初期化（SubagentManager が利用可能な場合）
+    if (ctx.subagentManager && ctx.fileIpc && ctx.bot && !ctx.teamOrchestrator) {
+        const subRepoRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
+        if (subRepoRoot) {
+            const bot = ctx.bot;
+            ctx.teamOrchestrator = new TeamOrchestrator(
+                ctx.subagentManager,
+                ctx.fileIpc,
+                async (channelId: string, content: string) => {
+                    try {
+                        await bot.sendToChannel(channelId, content);
+                    } catch (e) {
+                        logWarn(`TeamOrchestrator Discord send failed: ${e instanceof Error ? e.message : e}`);
+                    }
+                },
+                subRepoRoot,
+            );
+            logInfo('Bridge: TeamOrchestrator initialized');
+        }
+    }
+
+    // SubagentReceiver: Cascade 統合ハンドラを設定（startBridge 完了後に CDP/FileIpc が利用可能）
+    if (ctx.subagentReceiver && ctx.cdp && ctx.fileIpc) {
+        const cdp = ctx.cdp;
+        const fileIpc = ctx.fileIpc;
+        ctx.subagentReceiver.setHandler(async (prompt: string) => {
+            logDebug(`[Subagent] Cascade にプロンプト転送: ${prompt.substring(0, 100)}...`);
+            try {
+                // 新しいチャットを開始してプロンプト送信
+                await cdp.startNewChat();
+                await cdp.sendPrompt(prompt);
+
+                // FileIpc 経由でレスポンスを待つ
+                const wsName = vscode.workspace.name ?? 'subagent';
+                const repoRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
+                const teamConfig = repoRoot ? loadTeamConfig(repoRoot) : null;
+                const timeoutMs = teamConfig?.responseTimeoutMs ?? 900_000; // デフォルト15分
+                const { responsePath } = fileIpc.createMarkdownRequestId(wsName);
+                const result = await fileIpc.waitForResponse(responsePath, timeoutMs);
+                logDebug(`[Subagent] Cascade レスポンス取得完了 (${result.length} chars)`);
+                return result;
+            } catch (e) {
+                const errMsg = e instanceof Error ? e.message : String(e);
+                logError('[Subagent] Cascade 転送失敗', e);
+                return `[error] Cascade 実行に失敗しました: ${errMsg}`;
+            }
+        });
+        logInfo('Bridge: SubagentReceiver handler updated to Cascade integration');
+    }
+
     // Bot 起動ロック
     const storagePath = storageUri.fsPath;
     ctx.globalStoragePath = storagePath;
@@ -700,6 +768,16 @@ export async function stopBridge(ctx: BridgeContext): Promise<void> {
 
     // サマライズ Ops をクリア
     setSummarizeOps(null);
+
+    // SubagentManager の破棄
+    if (ctx.subagentManager) {
+        try {
+            await ctx.subagentManager.dispose();
+        } catch (e) {
+            logWarn(`Bridge: SubagentManager dispose failed: ${e instanceof Error ? e.message : e}`);
+        }
+        ctx.subagentManager = null;
+    }
 
     const licenseSuffix = getLicenseSuffix();
     ctx.statusBarItem.text = `$(circle-slash) AntiCrow${licenseSuffix}`;

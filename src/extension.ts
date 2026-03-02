@@ -55,6 +55,7 @@ const ctx: BridgeContext = {
     agentRunning: false,
     subagentManager: null,
     subagentReceiver: null,
+    teamOrchestrator: null,
 };
 
 // ライセンスモジュールのインスタンス
@@ -389,14 +390,10 @@ export async function activate(context: vscode.ExtensionContext) {
         // --- サブウィンドウ: SubagentReceiver を起動 ---
         logInfo(`[Subagent] サブウィンドウとして検出: "${workspaceName}"`);
         const receiver = new SubagentReceiver(workspaceName, ipcDir);
-        receiver.setHandler(async (prompt) => {
-            // 仮実装: echo back（実際の Cascade 統合は次ステップ）
-            logDebug(`[Subagent] プロンプト受信 (echo): ${prompt.substring(0, 100)}`);
-            return `[echo] ${prompt}`;
-        });
+        // ハンドラは startBridge 完了後に bridgeLifecycle.ts で Cascade 統合ハンドラに設定される
         receiver.start();
         ctx.subagentReceiver = receiver;
-        logInfo('[Subagent] SubagentReceiver 起動完了');
+        logInfo('[Subagent] SubagentReceiver 起動完了（ハンドラは startBridge 後に設定）');
     } else if (repoRoot) {
         // --- メインウィンドウ: SubagentManager を作成 ---
         logDebug(`[Subagent] メインウィンドウ: "${workspaceName}"`);

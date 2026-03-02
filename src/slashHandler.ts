@@ -22,6 +22,7 @@ import {
 } from 'discord.js';
 
 import * as vscode from 'vscode';
+import { loadTeamConfig, saveTeamConfig } from './teamConfig';
 import { ChannelIntent } from './types';
 import { logDebug, logError, logWarn } from './logger';
 import { buildEmbed, EmbedColor, sanitizeErrorForDiscord } from './embedHelper';
@@ -141,6 +142,32 @@ export async function handleSlashCommand(
 
     // /schedule コマンドは廃止済み — 未対応コマンドとして応答
     await interaction.reply({ embeds: [buildEmbed(`⚠️ 未対応のコマンド: /${commandName}`, EmbedColor.Warning)] });
+}
+
+// ---------------------------------------------------------------------------
+// チームモードボタンパネル構築ヘルパー
+// ---------------------------------------------------------------------------
+
+function buildTeamButtons(config: import('./teamConfig').TeamConfig): ActionRowBuilder<ButtonBuilder>[] {
+    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder()
+            .setCustomId('team_on')
+            .setLabel('🟢 チームON')
+            .setStyle(config.enabled ? ButtonStyle.Success : ButtonStyle.Secondary),
+        new ButtonBuilder()
+            .setCustomId('team_off')
+            .setLabel('🔴 チームOFF')
+            .setStyle(!config.enabled ? ButtonStyle.Danger : ButtonStyle.Secondary),
+        new ButtonBuilder()
+            .setCustomId('team_status')
+            .setLabel('📊 ステータス')
+            .setStyle(ButtonStyle.Primary),
+        new ButtonBuilder()
+            .setCustomId('team_config')
+            .setLabel('⚙️ 設定')
+            .setStyle(ButtonStyle.Secondary),
+    );
+    return [row];
 }
 
 // ---------------------------------------------------------------------------
@@ -738,6 +765,71 @@ export async function handleButtonInteraction(
                 logError('suggest button: processSuggestionPrompt failed', e);
             });
             return;
+        }
+
+        // ----- チームモード関連ボタン -----
+        if (customId.startsWith('team_')) {
+            const teamAction = customId.replace('team_', '');
+            const repoRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+            if (!repoRoot) {
+                await interaction.reply({ embeds: [buildEmbed('⚠️ ワークスペースが検出されません。', EmbedColor.Warning)] });
+                return;
+            }
+            const config = loadTeamConfig(repoRoot);
+            const agentCount = ctx.subagentManager?.list().length ?? 0;
+
+            switch (teamAction) {
+                case 'on': {
+                    config.enabled = true;
+                    saveTeamConfig(repoRoot, config);
+                    await interaction.update({
+                        embeds: [buildEmbed('🟢 **チームモードを有効化しました！**\n\nメインエージェントが指揮官モードで動作します。', EmbedColor.Success)],
+                        components: buildTeamButtons(config) as any,
+                    });
+                    return;
+                }
+                case 'off': {
+                    config.enabled = false;
+                    saveTeamConfig(repoRoot, config);
+                    if (ctx.subagentManager) {
+                        const agents = ctx.subagentManager.list();
+                        for (const agent of agents) {
+                            try { await ctx.subagentManager.killAgent(agent.name); } catch { /* skip */ }
+                        }
+                    }
+                    await interaction.update({
+                        embeds: [buildEmbed('🔴 **チームモードを無効化しました。**\n\n全サブエージェントを停止しました。', EmbedColor.Info)],
+                        components: buildTeamButtons(config) as any,
+                    });
+                    return;
+                }
+                case 'status': {
+                    const statusEmoji = config.enabled ? '🟢' : '🔴';
+                    const statusText = config.enabled ? 'ON' : 'OFF';
+                    let desc = `${statusEmoji} **エージェントチームモード: ${statusText}**\n\n`
+                        + `📊 **稼働中**: ${agentCount} / ${config.maxAgents}\n`
+                        + `⏱️ **タイムアウト**: ${Math.round(config.responseTimeoutMs / 60_000)}分`;
+                    if (agentCount > 0 && ctx.subagentManager) {
+                        const agents = ctx.subagentManager.list();
+                        desc += '\n\n🤖 **サブエージェント一覧**\n' + agents.map(a => `  • **${a.name}** — ${a.state}`).join('\n');
+                    }
+                    await interaction.update({
+                        embeds: [buildEmbed(desc, config.enabled ? EmbedColor.Success : EmbedColor.Info)],
+                        components: buildTeamButtons(config) as any,
+                    });
+                    return;
+                }
+                case 'config': {
+                    const configJson = JSON.stringify(config, null, 2);
+                    await interaction.update({
+                        embeds: [buildEmbed(`⚙️ **チーム設定**\n\`\`\`json\n${configJson}\n\`\`\``, EmbedColor.Info)],
+                        components: buildTeamButtons(config) as any,
+                    });
+                    return;
+                }
+                default:
+                    break;
+            }
         }
 
         logWarn(`ButtonHandler: unknown customId: ${customId}`);
