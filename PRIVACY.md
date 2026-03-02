@@ -82,4 +82,4 @@ AntiCrow（以下「本拡張機能」）は、ユーザーのプライバシー
 
 プライバシーに関するご質問は、開発者までお気軽にお問い合わせください：
 
-- **X (Twitter):** [@lucianlampdefi](https://x.com/lucianlampdefi)
+- **X (Twitter):** [@lucianlamp](https://x.com/lucianlamp)
