@@ -99,12 +99,11 @@ async function handleStatus(ctx: BridgeContext, interaction: ChatInputCommandInt
 
     if (cdpOk && cdp) {
         try {
-            const [modelResult, modeResult] = await Promise.all([
-                getAvailableModels(cdp.ops).catch(() => ({ models: [] as string[], current: null as string | null, debugLog: [] as unknown[] })),
-                getAvailableModes(cdp.ops).catch(() => ({ modes: [] as string[], current: null as string | null, debugLog: [] as unknown[] })),
-            ]);
-            const modelName = modelResult.current;
-            const modeName = modeResult.current;
+            // cascade コンテキスト汚染防止 + 直列呼び出し（並列だと競合する）
+            cdp.ops.resetCascadeContext();
+            const modelName = await getCurrentModel(cdp.ops).catch(() => null);
+            cdp.ops.resetCascadeContext();
+            const modeName = await getCurrentMode(cdp.ops).catch(() => null);
             // UIボタン名の誤検出を防ぐバリデーション
             const isValidName = (name: string | null): boolean => {
                 if (!name || name.length < 2) return false;

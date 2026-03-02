@@ -946,6 +946,49 @@ export class CdpBridge {
         }
         const contextId = await this.getCascadeContext();
 
+        // --- (A) テキストボックスの readiness チェック ---
+        // パネルの iframe は存在しても、内部の React コンポーネントが初期化完了していない
+        // 場合がある（特に Antigravity 起動直後）。テキストボックスが contentEditable=true
+        // かつ visible になるまで最大 10 秒ポーリング待機する。
+        const TEXTBOX_READINESS_JS = `
+(function() {
+    function isVisible(el) {
+        if (!el) return false;
+        var style = window.getComputedStyle(el);
+        if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0) return false;
+        if (el.offsetParent === null && style.position !== 'fixed') return false;
+        var rect = el.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0;
+    }
+    var editors = Array.from(document.querySelectorAll('div[role="textbox"]:not(.xterm-helper-textarea)')).filter(isVisible);
+    var el = editors[editors.length - 1];
+    if (!el) return { ready: false, reason: 'no textbox' };
+    if (el.contentEditable !== 'true') return { ready: false, reason: 'not editable' };
+    return { ready: true };
+})()
+        `.trim();
+
+        const READINESS_MAX_WAIT_MS = 10_000;
+        const READINESS_POLL_MS = 1_000;
+        const readinessDeadline = Date.now() + READINESS_MAX_WAIT_MS;
+        let textboxReady = false;
+        while (Date.now() < readinessDeadline) {
+            try {
+                const readiness = await this.conn.evaluate(TEXTBOX_READINESS_JS, contextId) as { ready: boolean; reason?: string };
+                if (readiness?.ready) {
+                    textboxReady = true;
+                    break;
+                }
+                logDebug(`CDP: sendPrompt — waiting for textbox readiness: ${readiness?.reason || 'unknown'}`);
+            } catch (e) {
+                logDebug(`CDP: sendPrompt — readiness check failed: ${e instanceof Error ? e.message : e}`);
+            }
+            await this.sleep(READINESS_POLL_MS);
+        }
+        if (!textboxReady) {
+            logWarn('CDP: sendPrompt — textbox readiness timeout, proceeding anyway');
+        }
+
         // NOTE: document.execCommand は W3C で非推奨（deprecated）だが、
         // Electron の Chromium エンジンでは当面動作する。
         // 将来的に InputEvent / beforeinput ベースの入力方式に移行を検討すること。
@@ -1005,6 +1048,33 @@ export class CdpBridge {
             throw new CascadePanelError(`Failed to find chat input: ${inputResult?.error}`);
         }
         logDebug('CDP: input set via div[role="textbox"]');
+
+        // --- (B) テキスト挿入後の検証 ---
+        // insertText が成功しても React の state に反映されていない場合がある。
+        // textContent を確認し、空の場合はリトライする（最大3回）。
+        const VERIFY_JS = `
+(function() {
+    var editors = Array.from(document.querySelectorAll('div[role="textbox"]:not(.xterm-helper-textarea)'));
+    var el = editors[editors.length - 1];
+    return { hasContent: el && (el.textContent || '').trim().length > 0, length: (el && el.textContent || '').length };
+})()
+        `.trim();
+
+        for (let verify = 0; verify < 3; verify++) {
+            await this.sleep(300);
+            try {
+                const verifyResult = await this.conn.evaluate(VERIFY_JS, contextId) as { hasContent: boolean; length: number };
+                if (verifyResult?.hasContent) {
+                    logDebug(`CDP: sendPrompt — text verification OK (length=${verifyResult.length}, attempt=${verify + 1})`);
+                    break;
+                }
+                logWarn(`CDP: sendPrompt — text verification failed (attempt ${verify + 1}/3, length=${verifyResult?.length || 0}), retrying insert`);
+                // リトライ: 再挿入
+                await this.conn.evaluate(setInputJs, contextId);
+            } catch (e) {
+                logDebug(`CDP: sendPrompt — verify failed: ${e instanceof Error ? e.message : e}`);
+            }
+        }
 
         await this.sleep(500);
 

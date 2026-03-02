@@ -493,6 +493,8 @@ export class Executor {
 
             // レスポンス送信前にモデル名を再取得してフッターに反映
             try {
+                // cascade コンテキスト汚染防止（計画実行後の残留コンテキストをリセット）
+                this.cdp.ops.resetCascadeContext();
                 const currentModel = await getCurrentModel(this.cdp.ops);
                 if (currentModel && this.setModelNameFn) {
                     this.setModelNameFn(currentModel);

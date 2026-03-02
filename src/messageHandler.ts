@@ -794,10 +794,12 @@ export async function handleDiscordMessage(
 
         // ACK 送信（モデル/モード情報付き）
         try {
-            const [currentMode, currentModel] = await Promise.all([
-                getCurrentMode(activeCdp.ops).catch(() => null),
-                getCurrentModel(activeCdp.ops).catch(() => null),
-            ]);
+            // cascade コンテキスト汚染防止（接続処理後の残留コンテキストをリセット）
+            activeCdp.ops.resetCascadeContext();
+            // 直列呼び出し（並列だと cascade コンテキストが競合して取得失敗する）
+            const currentMode = await getCurrentMode(activeCdp.ops).catch(() => null);
+            activeCdp.ops.resetCascadeContext();
+            const currentModel = await getCurrentModel(activeCdp.ops).catch(() => null);
             if (currentModel) { ctx.bot?.setModelName(currentModel); }
             const parts = [currentMode, currentModel].filter(Boolean);
             const ackPrefix = parts.length > 0 ? `[${parts.join(' - ')}]` : '';
