@@ -137,13 +137,51 @@ const FIND_MODE_BUTTON = `
                 sibling = sibling.nextElementSibling;
             }
 
-            // 見つかったテキストボタンの最初のものをモードボタンとする
+            // モードボタン検出（フィルタリング付き）
             if (allBtns.length > 0) {
                 _findDebug.buttonsFound = allBtns.length;
                 _findDebug.allBtnTexts = allBtns.map(function(b) { return b.text; });
-                modeBtn = allBtns[0].el;
-                _findDebug.found = true;
-                break;
+
+                // アクションボタン除外キーワード
+                var ACTION_EXCLUDE = ['submit', 'cancel', 'stop', '中止', 'send', 'record', 'voice', 'memo'];
+                // モードキーワード（優先検出）
+                var MODE_KW = ['planning', 'fast', 'normal', 'agent', 'ask', 'edit', 'chat'];
+
+                // 戦略1: モードキーワードを含むボタンを優先
+                for (var mk = 0; mk < allBtns.length; mk++) {
+                    var mkLower = allBtns[mk].text.toLowerCase();
+                    for (var mki = 0; mki < MODE_KW.length; mki++) {
+                        if (mkLower === MODE_KW[mki] || mkLower.indexOf(MODE_KW[mki]) >= 0) {
+                            modeBtn = allBtns[mk].el;
+                            _findDebug.matchMethod = 'mode-keyword';
+                            _findDebug.found = true;
+                            break;
+                        }
+                    }
+                    if (modeBtn) break;
+                }
+
+                // 戦略2: アクションボタンを除外した最初のボタン
+                if (!modeBtn) {
+                    for (var fb = 0; fb < allBtns.length; fb++) {
+                        var fbLower = allBtns[fb].text.toLowerCase();
+                        var isAction = false;
+                        for (var ai = 0; ai < ACTION_EXCLUDE.length; ai++) {
+                            if (fbLower === ACTION_EXCLUDE[ai] || fbLower.indexOf(ACTION_EXCLUDE[ai]) >= 0) {
+                                isAction = true;
+                                break;
+                            }
+                        }
+                        if (!isAction && allBtns[fb].text.length > 1) {
+                            modeBtn = allBtns[fb].el;
+                            _findDebug.matchMethod = 'first-non-action';
+                            _findDebug.found = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (modeBtn) break;
             }
             container = container.parentElement;
         }

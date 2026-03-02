@@ -28,7 +28,7 @@ export interface CdpBridgeOps {
 
 /** セクション別の会話情報 */
 export interface ConversationSection {
-    section: 'current' | 'workspace' | 'other';
+    section: 'current' | 'workspace' | 'other' | 'unknown';
     sectionLabel: string;
     items: { title: string; index: number; globalIndex: number; timeAgo?: string }[];
 }
@@ -969,11 +969,12 @@ export async function openHistoryAndGetSections(ops: CdpBridgeOps): Promise<Conv
         }
     }
 
-    // フォールバック: セクション分けできない場合は全アイテムを workspace セクションとして返す
-    logDebug('CDP: openHistoryAndGetSections — fallback to flat list as workspace section');
+    // フォールバック: セクション分けできない場合は全アイテムを unknown セクションとして返す
+    // （別ワークスペースの会話が混入している可能性があるため workspace にしない）
+    logWarn('CDP: openHistoryAndGetSections — fallback to flat list as unknown section (section parse failed)');
     return [{
-        section: 'workspace',
-        sectionLabel: 'Recent',
+        section: 'unknown',
+        sectionLabel: 'All Conversations (section parse failed)',
         items: allItems.map((item, i) => ({ ...item, globalIndex: item.index, index: i })),
     }];
 }

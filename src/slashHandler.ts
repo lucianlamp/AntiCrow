@@ -564,6 +564,7 @@ export async function handleButtonInteraction(
 
             // workspace セクションの items のみ使用
             const wsSection = sections.find((s: ConversationSection) => s.section === 'workspace');
+            const unknownSection = sections.find((s: ConversationSection) => s.section === 'unknown');
             const conversations = wsSection
                 ? wsSection.items
                 : sections.flatMap((s: ConversationSection) => s.items);
@@ -589,6 +590,12 @@ export async function handleButtonInteraction(
             }
 
             const { embeds, components } = buildHistoryListEmbed(conversations, page, workspaceName);
+
+            // unknown セクション（セクション分類失敗）の場合、警告をフッターに追加
+            if (unknownSection && !wsSection) {
+                embeds[0]?.setFooter({ text: '⚠️ セクション分類に失敗しました。別ワークスペースの会話が含まれている可能性があります。' });
+            }
+
             await interaction.editReply({ embeds, components: components as any });
             return;
         }

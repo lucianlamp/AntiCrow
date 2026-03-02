@@ -202,7 +202,7 @@ const FIND_MODEL_BUTTON = `
                     var UI_KEYWORDS = ['閉じる', 'close', 'その他の操作', '次に進む', '前に戻る', 'エディター', 'editor', 'コミット', 'commit', '破棄', 'discard', '受け入れる', 'accept', 'pencil', '分割', 'split', '検索', 'search', '置換', 'replace', '保存', 'save', '実行', 'run', 'debug', 'undo', 'redo', '元に戻す', 'やり直し', 'toggle', 'view', 'open', 'explorer', 'terminal', 'problems', 'output', 'extension',
                         // 追加: 出力パネル・クリア系ボタンの誤検出防止
                         '出力', 'クリア', 'clear', 'anticrow', 'antigravity', 'crash', 'quota', 'devtools', 'git', 'github', 'json', 'typescript', 'remote', 'renderer', 'pty', 'ホスト', 'タスク', 'メイン', 'トンネル', '拡張機能', '設定', '同期', 'interactive', 'artifacts', 'auth', 'cloudcode', 'perf', 'ウィンドウ', 'ターミナル', '共有',
-                        'record', 'send', 'voice', 'memo'];
+                        'record', 'send', 'voice', 'memo', 'submit', 'cancel', 'stop', '中止'];
                     for (var ni = 0; ni < allBtns.length; ni++) {
                         var btnLower = allBtns[ni].text.toLowerCase();
                         // テキスト長が30文字超はUI操作系と判定し除外（モデル名は通常30文字未満）
