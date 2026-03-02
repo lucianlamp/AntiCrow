@@ -26,6 +26,13 @@ export interface CdpBridgeOps {
     resetCascadeContext(): void;
 }
 
+/** セクション別の会話情報 */
+export interface ConversationSection {
+    section: 'current' | 'workspace' | 'other';
+    sectionLabel: string;
+    items: { title: string; index: number; globalIndex: number; timeAgo?: string }[];
+}
+
 // -----------------------------------------------------------------------
 // openHistoryPopup
 // -----------------------------------------------------------------------
@@ -714,6 +721,261 @@ export async function cleanupHistoryObserver(ops: CdpBridgeOps): Promise<void> {
     } catch (e) {
         logDebug(`CDP: cleanupHistoryObserver — ${e instanceof Error ? e.message : e}`);
     }
+}
+
+// -----------------------------------------------------------------------
+// openHistoryAndGetSections (セクション別取得)
+// -----------------------------------------------------------------------
+
+/**
+ * 履歴パネルを開いて会話一覧をセクション別に取得する。
+ *
+ * パネルには3つのセクションがある:
+ *   - Current: 現在の会話
+ *   - Recent in {workspace}: ワークスペース固有の履歴（★メイン対象）
+ *   - Other Conversations: 他ワークスペースの履歴
+ *
+ * "Show X more..." リンクも自動クリックして全件展開する。
+ */
+export async function openHistoryAndGetSections(ops: CdpBridgeOps): Promise<ConversationSection[]> {
+    // まず履歴パネルを開いて全会話を取得
+    const allItems = await openHistoryAndGetList(ops);
+    if (allItems.length === 0) {
+        return [];
+    }
+
+    // --- "Show X more..." リンクをクリックして展開 ---
+    const CLICK_SHOW_MORE = `
+(function() {
+    function getTargetDoc() {
+        var iframes = document.querySelectorAll('iframe');
+        for (var fi = 0; fi < iframes.length; fi++) {
+            try {
+                if (iframes[fi].src && iframes[fi].src.includes('cascade-panel') && iframes[fi].contentDocument) {
+                    return iframes[fi].contentDocument;
+                }
+            } catch(e) {}
+        }
+        return document;
+    }
+    var doc = getTargetDoc();
+    // "Show X more..." リンクを探す（workspace セクション内のもの）
+    var allLinks = doc.querySelectorAll('button, a, div, span, p');
+    var clicked = 0;
+    for (var i = 0; i < allLinks.length; i++) {
+        var el = allLinks[i];
+        var text = (el.textContent || '').trim();
+        if (/^Show \\d+ more/i.test(text)) {
+            el.click();
+            clicked++;
+        }
+    }
+    return { clicked: clicked };
+})()
+    `.trim();
+
+    try {
+        const clickResult = await ops.evaluateInCascade(CLICK_SHOW_MORE) as { clicked: number };
+        if (clickResult?.clicked > 0) {
+            logDebug(`CDP: openHistoryAndGetSections — clicked ${clickResult.clicked} "Show more" links`);
+            await ops.sleep(800);
+        }
+    } catch (e) {
+        logDebug(`CDP: openHistoryAndGetSections — show more click failed: ${e instanceof Error ? e.message : e}`);
+    }
+
+    // --- セクション別にスクレイピング ---
+    const SCRAPE_SECTIONS = `
+(function() {
+    function getTargetDoc() {
+        var iframes = document.querySelectorAll('iframe');
+        for (var fi = 0; fi < iframes.length; fi++) {
+            try {
+                if (iframes[fi].src && iframes[fi].src.includes('cascade-panel') && iframes[fi].contentDocument) {
+                    return iframes[fi].contentDocument;
+                }
+            } catch(e) {}
+        }
+        return document;
+    }
+    var doc = getTargetDoc();
+
+    // 会話リストのスクロール可能コンテナを特定
+    var scrollContainers = doc.querySelectorAll('[class*="overflow"]');
+    var listContainer = null;
+    for (var sc = 0; sc < scrollContainers.length; sc++) {
+        var container = scrollContainers[sc];
+        var win = container.ownerDocument.defaultView || window;
+        var ov = '';
+        try { ov = win.getComputedStyle(container).overflowY || ''; } catch(e) {}
+        if (ov === 'auto' || ov === 'scroll') {
+            // 会話リストのコンテナは delete-conversation tooltip-id を持つ要素を含む
+            if (container.querySelector('[data-tooltip-id*="delete-conversation"]')) {
+                listContainer = container;
+                break;
+            }
+        }
+    }
+
+    if (!listContainer) {
+        // フォールバック: delete-conversation を含む最も近い祖先のスクロールコンテナ
+        var anyDelete = doc.querySelector('[data-tooltip-id*="delete-conversation"]');
+        if (anyDelete) {
+            var parent = anyDelete.parentElement;
+            for (var sp = 0; sp < 15 && parent; sp++) {
+                var win2 = parent.ownerDocument.defaultView || window;
+                try {
+                    var ov2 = win2.getComputedStyle(parent).overflowY || '';
+                    if (ov2 === 'auto' || ov2 === 'scroll') { listContainer = parent; break; }
+                } catch(e2) {}
+                parent = parent.parentElement;
+            }
+        }
+    }
+
+    if (!listContainer) {
+        return { success: false, error: 'list container not found', sections: [] };
+    }
+
+    // セクションヘッダーとボタンを順番に走査
+    var sections = [];
+    var currentSection = { section: 'unknown', label: '', items: [] };
+    var globalIdx = 0;
+
+    // コンテナ内の全子要素をフラットに走査
+    function walkChildren(node) {
+        var results = [];
+        var children = node.children || [];
+        for (var ci = 0; ci < children.length; ci++) {
+            results.push(children[ci]);
+        }
+        return results;
+    }
+
+    // セクションヘッダーかどうかを判定
+    function classifySectionHeader(text) {
+        var t = text.toLowerCase().trim();
+        if (t === 'current') return 'current';
+        if (t.indexOf('recent in') === 0) return 'workspace';
+        if (t === 'other conversations') return 'other';
+        return null;
+    }
+
+    // 再帰的に全要素を浅い順に走査して、セクションヘッダーとボタンを検出
+    function processContainer(container) {
+        var children = container.children || [];
+        for (var ci = 0; ci < children.length; ci++) {
+            var child = children[ci];
+            var tag = (child.tagName || '').toUpperCase();
+            var text = (child.textContent || '').trim();
+
+            // "Show X more..." リンクはスキップ
+            if (/^Show \\d+ more/i.test(text)) continue;
+
+            // セクションヘッダー判定: 短いテキスト（50文字以下）で delete-conversation を含まない要素
+            if (text.length > 0 && text.length <= 50 && !child.querySelector('[data-tooltip-id*="delete-conversation"]')) {
+                var sectionType = classifySectionHeader(text);
+                if (sectionType) {
+                    // 前のセクションを保存
+                    if (currentSection.items.length > 0 || currentSection.section !== 'unknown') {
+                        sections.push({ section: currentSection.section, sectionLabel: currentSection.label, items: currentSection.items });
+                    }
+                    currentSection = { section: sectionType, label: text, items: [] };
+                    continue;
+                }
+            }
+
+            // 会話ボタン判定: delete-conversation tooltip を含む
+            var deleteIcon = child.querySelector('[data-tooltip-id*="delete-conversation"]');
+            if (!deleteIcon && tag === 'BUTTON') {
+                // ボタン自身が delete tooltip を持つか
+                var tid = child.getAttribute('data-tooltip-id') || '';
+                if (tid.indexOf('delete-conversation') >= 0) deleteIcon = child;
+            }
+
+            if (deleteIcon) {
+                // これは会話アイテム
+                var btn = deleteIcon.closest('button') || child;
+                var titleEl = btn.querySelector('div');
+                var convText = '';
+                var timeAgo = '';
+                if (titleEl) {
+                    var spans = titleEl.querySelectorAll('span, p');
+                    var parts = [];
+                    for (var k = 0; k < spans.length; k++) {
+                        var span = spans[k];
+                        if (span.tagName === 'P' && (span.className || '').indexOf('text-nowrap') >= 0) {
+                            timeAgo = (span.textContent || '').trim();
+                            continue;
+                        }
+                        if (span.tagName === 'P' && (span.className || '').indexOf('hidden') >= 0) continue;
+                        var st = (span.textContent || '').trim();
+                        if (st) parts.push(st);
+                    }
+                    convText = parts.join(' ').trim();
+                }
+                if (!convText) {
+                    var cloned = btn.cloneNode(true);
+                    var pTags = cloned.querySelectorAll('p');
+                    for (var m = 0; m < pTags.length; m++) { pTags[m].remove(); }
+                    convText = (cloned.textContent || '').trim();
+                }
+                if (convText.length > 0) {
+                    var item = { title: convText.substring(0, 100), index: currentSection.items.length, globalIndex: globalIdx, timeAgo: timeAgo || undefined };
+                    currentSection.items.push(item);
+                    globalIdx++;
+                }
+            } else if (child.children && child.children.length > 0) {
+                // 子要素を再帰的に走査（DIV ラッパーの中身を探索）
+                processContainer(child);
+            }
+        }
+    }
+
+    processContainer(listContainer);
+
+    // 最後のセクションを追加
+    if (currentSection.items.length > 0 || currentSection.section !== 'unknown') {
+        sections.push({ section: currentSection.section, sectionLabel: currentSection.label, items: currentSection.items });
+    }
+
+    return { success: true, sections: sections, totalItems: globalIdx };
+})()
+    `.trim();
+
+    for (const [label, evaluator] of [
+        ['cascade', () => ops.evaluateInCascade(SCRAPE_SECTIONS)],
+        ['main', () => ops.conn.evaluate(SCRAPE_SECTIONS)],
+    ] as [string, () => Promise<unknown>][]) {
+        try {
+            const result = await evaluator() as {
+                success: boolean;
+                sections: ConversationSection[];
+                totalItems: number;
+                error?: string;
+            };
+
+            if (result?.success && result.sections.length > 0) {
+                logDebug(`CDP: openHistoryAndGetSections — found ${result.sections.length} sections (${result.totalItems} total items) in ${label} context`);
+                for (const sec of result.sections) {
+                    logDebug(`  section: ${sec.section} (${sec.sectionLabel}) — ${sec.items.length} items`);
+                }
+                return result.sections;
+            }
+
+            logDebug(`CDP: openHistoryAndGetSections (${label}) — no sections, error: ${result?.error || 'unknown'}`);
+        } catch (e) {
+            logDebug(`CDP: openHistoryAndGetSections (${label}) exception — ${e instanceof Error ? e.message : e}`);
+        }
+    }
+
+    // フォールバック: セクション分けできない場合は全アイテムを workspace セクションとして返す
+    logDebug('CDP: openHistoryAndGetSections — fallback to flat list as workspace section');
+    return [{
+        section: 'workspace',
+        sectionLabel: 'Recent',
+        items: allItems.map((item, i) => ({ ...item, globalIndex: item.index, index: i })),
+    }];
 }
 
 // -----------------------------------------------------------------------

@@ -23,7 +23,7 @@ import { isDeveloper } from './accessControl';
 import { buildEmbed, EmbedColor } from './embedHelper';
 import { buildScheduleListEmbed, buildDeleteConfirmEmbed } from './scheduleButtons';
 import { buildHistoryListEmbed } from './historyButtons';
-import { openHistoryAndGetList, closePopup, debugConversationAttributes } from './cdpHistory';
+import { openHistoryAndGetSections, closePopup, debugConversationAttributes, type ConversationSection } from './cdpHistory';
 import { buildModelListEmbed, buildModelSwitchResultEmbed } from './modelButtons';
 import { getCurrentModel, getAvailableModels, selectModel } from './cdpModels';
 import { buildModeListEmbed, buildModeSwitchResultEmbed } from './modeButtons';
@@ -543,27 +543,32 @@ async function handleHistory(ctx: BridgeContext, interaction: ChatInputCommandIn
             return;
         }
 
-        // ワークスペース名を CDP タイトルから抽出（「ワークスペース名 — Antigravity」形式）
-        const activeTitle = cdp.getActiveTargetTitle() || '';
-        const workspaceName = activeTitle.includes(' — ')
-            ? activeTitle.split(' — ')[0].trim()
-            : undefined;
-        logDebug(`handleHistory: workspaceName=${workspaceName || '(unknown)'}`);
-
-        logDebug('handleHistory: starting openHistoryAndGetList');
-        const conversations = await openHistoryAndGetList(cdp.ops);
-        logDebug(`handleHistory: got ${conversations.length} conversations`);
-
-        // Phase B: DOM 属性調査（ワークスペースフィルタリング用）
-        try {
-            const debugResult = await debugConversationAttributes(cdp.ops);
-            logDebug(`handleHistory: DOM debug result: ${JSON.stringify(debugResult)}`);
-        } catch (e) {
-            logDebug(`handleHistory: DOM debug failed: ${e instanceof Error ? e.message : e}`);
-        }
+        logDebug('handleHistory: starting openHistoryAndGetSections');
+        const sections = await openHistoryAndGetSections(cdp.ops);
+        logDebug(`handleHistory: got ${sections.length} sections`);
 
         // 履歴パネルを閉じる（Antigravity UI を元に戻す）
         await closePopup(cdp.ops);
+
+        // workspace セクションの items を取得（フォールバック: 全セクションの items を統合）
+        const wsSection = sections.find((s: ConversationSection) => s.section === 'workspace');
+        const conversations = wsSection
+            ? wsSection.items
+            : sections.flatMap((s: ConversationSection) => s.items);
+
+        // セクションラベルからワークスペース名を抽出（"Recent in anti-crow" → "anti-crow"）
+        let workspaceName: string | undefined;
+        if (wsSection?.sectionLabel) {
+            const match = wsSection.sectionLabel.match(/^Recent in (.+)$/i);
+            workspaceName = match ? match[1].trim() : wsSection.sectionLabel;
+        } else {
+            // フォールバック: CDP タイトルから抽出
+            const activeTitle = cdp.getActiveTargetTitle() || '';
+            workspaceName = activeTitle.includes(' — ')
+                ? activeTitle.split(' — ')[0].trim()
+                : undefined;
+        }
+        logDebug(`handleHistory: workspaceName=${workspaceName || '(unknown)'}, conversations=${conversations.length}`);
 
         const { embeds, components } = buildHistoryListEmbed(conversations, 0, workspaceName);
         await interaction.editReply({ embeds, components: components as any });

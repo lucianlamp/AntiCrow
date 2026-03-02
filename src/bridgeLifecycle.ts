@@ -37,6 +37,7 @@ import { getLicenseGate, getLicenseChecker } from './extension';
 import type { LicenseType } from './licensing';
 import { setSummarizeOps, stripMemoryTags } from './memoryStore';
 import { stripSuggestionTags } from './suggestionParser';
+import { UIWatcher } from './uiWatcher';
 import * as fs from 'fs';
 
 /** ワークスペース名としてカテゴリ作成すべきでない名前を判定する */
@@ -546,18 +547,34 @@ async function startBridgeInternal(
                             updateAutoAcceptStatusBar(ctx.autoAcceptStatusBarItem, running);
                         }
                     };
-                    ctx.executorPool?.startUIWatcherAll(isProCheck, onAgentStateChange);
+                    // ExecutorPool UIWatcher: autoFollowOutput のみ（ステータスバーに影響しない）
+                    ctx.executorPool?.startUIWatcherAll(isProCheck);
+                    // ステータスバー専用: ctx.cdp で独立 UIWatcher を起動
+                    if (!ctx.startupUIWatcher && ctx.cdp) {
+                        const watcher = new UIWatcher(ctx.cdp, () => ctx.executorPool?.isAnyRunning() ?? false, isProCheck);
+                        watcher.setAgentStateCallback(onAgentStateChange);
+                        watcher.start();
+                        ctx.startupUIWatcher = watcher;
+                        logDebug('Bridge: startup UIWatcher started via config change');
+                    }
                 } else {
                     logDebug('Bridge: autoAccept disabled — stopping UI watcher');
                     ctx.executorPool?.stopUIWatcherAll();
+                    if (ctx.startupUIWatcher) {
+                        ctx.startupUIWatcher.stop();
+                        ctx.startupUIWatcher = null;
+                    }
                 }
             }
         })
     );
 
     // autoAccept が有効ならUIウォッチャーを常時起動（Pro 限定）
-    // ownerWorkspace の Executor にのみ onAgentStateChange を適用
-    // → 他 WS の UIWatcher は autoFollowOutput のみ実行（ステータスバーに影響しない）
+    //
+    // アーキテクチャ:
+    //   - ステータスバー: ctx.cdp ベースの独立 UIWatcher が制御（確実に接続済み）
+    //   - autoFollowOutput: ExecutorPool の各 UIWatcher が WS 別に独立制御
+    //   - 競合なし: onAgentStateChange は独立ウォッチャーのみ、ExecutorPool には渡さない
     const autoOpEnabled = vscode.workspace.getConfiguration('antiCrow')
         .get<boolean>('autoAccept') ?? false;
     if (autoOpEnabled) {
@@ -573,18 +590,18 @@ async function startBridgeInternal(
                 }
             };
 
-            // 起動時に現在のワークスペースの Executor を事前作成
-            // → プールが空でも startUIWatcherAll で UIWatcher が起動する
-            if (currentWorkspaceName && ctx.executorPool) {
-                try {
-                    await ctx.executorPool.getOrCreate(currentWorkspaceName);
-                    logDebug(`Bridge: pre-created executor for workspace "${currentWorkspaceName}"`);
-                } catch (e) {
-                    logDebug(`Bridge: pre-create executor failed (will retry on first message): ${e instanceof Error ? e.message : e}`);
-                }
-            }
+            // ExecutorPool UIWatcher: autoFollowOutput のみ（ステータスバーに影響しない）
+            ctx.executorPool?.startUIWatcherAll(isProCheck);
 
-            ctx.executorPool?.startUIWatcherAll(isProCheck, onAgentStateChange);
+            // ステータスバー専用: ctx.cdp で独立 UIWatcher を起動
+            // ctx.cdp は起動時に connect() 済みなので、CdpPool より確実に現在のウィンドウに接続されている
+            if (ctx.cdp) {
+                const startupWatcher = new UIWatcher(ctx.cdp, () => ctx.executorPool?.isAnyRunning() ?? false, isProCheck);
+                startupWatcher.setAgentStateCallback(onAgentStateChange);
+                startupWatcher.start();
+                ctx.startupUIWatcher = startupWatcher;
+                logDebug('Bridge: startup UIWatcher started (status bar only, using ctx.cdp)');
+            }
             logDebug('Bridge: UI watcher started (autoAccept enabled)');
         }
     }
@@ -658,6 +675,10 @@ export async function stopBridge(ctx: BridgeContext): Promise<void> {
     ctx.executorPool?.forceStopAll();
     // UIウォッチャー停止
     ctx.executorPool?.stopUIWatcherAll();
+    if (ctx.startupUIWatcher) {
+        ctx.startupUIWatcher.stop();
+        ctx.startupUIWatcher = null;
+    }
 
     ctx.cdpPool?.disconnectAll();
     ctx.cdp?.fullDisconnect();

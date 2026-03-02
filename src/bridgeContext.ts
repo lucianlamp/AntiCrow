@@ -14,6 +14,7 @@ import { PlanStore } from './planStore';
 import { Executor } from './executor';
 import { ExecutorPool } from './executorPool';
 import { TemplateStore } from './templateStore';
+import { UIWatcher } from './uiWatcher';
 
 /** 全モジュールが共有する Bridge の実行時状態 */
 export interface BridgeContext {
@@ -37,6 +38,8 @@ export interface BridgeContext {
     healthCheckTimer: NodeJS.Timeout | null;
     cleanupTimer: NodeJS.Timeout | null;
     staleRecoveryTimer: NodeJS.Timeout | null;
+    /** ステータスバー専用 UIWatcher（ctx.cdp を使用。ExecutorPool の UIWatcher とは独立） */
+    startupUIWatcher: UIWatcher | null;
     /** Discord からライセンスキーを設定するためのコールバック（SecretStorage + LicenseChecker を橋渡し） */
     setLicenseKeyFn: ((key: string) => Promise<{ valid: boolean; planType: string }>) | null;
     /** トライアル残り日数を取得するコールバック */

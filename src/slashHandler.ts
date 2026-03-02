@@ -31,7 +31,7 @@ import { getAvailableModels, selectModel } from './cdpModels';
 import { buildModeListEmbed, buildModeSwitchResultEmbed } from './modeButtons';
 import { getAvailableModes, selectMode } from './cdpModes';
 import { buildHistoryListEmbed, buildHistorySelectResultEmbed } from './historyButtons';
-import { openHistoryAndGetList, selectConversation, closePopup } from './cdpHistory';
+import { openHistoryAndGetSections, selectConversation, closePopup, type ConversationSection } from './cdpHistory';
 import { BridgeContext } from './bridgeContext';
 import { resolveWorkspaceFromChannel } from './discordChannels';
 
@@ -526,12 +526,18 @@ export async function handleButtonInteraction(
                 return;
             }
 
-            // まず履歴パネルを開いて一覧を取得（会話タイトル取得用）
-            const conversations = await openHistoryAndGetList(cdp.ops);
+            // まず履歴パネルを開いてセクション別に取得
+            const sections = await openHistoryAndGetSections(cdp.ops);
+            const wsSection = sections.find((s: ConversationSection) => s.section === 'workspace');
+            const conversations = wsSection
+                ? wsSection.items
+                : sections.flatMap((s: ConversationSection) => s.items);
             const targetConv = conversations.find(c => c.index === index);
             const title = targetConv?.title || `会話 #${index + 1}`;
 
-            const success = await selectConversation(cdp.ops, index);
+            // globalIndex を使って selectConversation を呼び出す
+            const globalIdx = targetConv?.globalIndex ?? index;
+            const success = await selectConversation(cdp.ops, globalIdx);
             // 選択後（成功・失敗問わず）履歴パネルを閉じる
             await closePopup(cdp.ops);
             const resultEmbed = buildHistorySelectResultEmbed(title, success);
@@ -553,16 +559,28 @@ export async function handleButtonInteraction(
                 return;
             }
 
-            const conversations = await openHistoryAndGetList(cdp.ops);
+            const sections = await openHistoryAndGetSections(cdp.ops);
             await closePopup(cdp.ops);
 
-            // ワークスペース名: チャンネルカテゴリから解決、フォールバックとしてCDPタイトルから抽出
-            let workspaceName = wsName || undefined;
-            if (!workspaceName) {
-                const activeTitle = cdp.getActiveTargetTitle() || '';
-                workspaceName = activeTitle.includes(' — ')
-                    ? activeTitle.split(' — ')[0].trim()
-                    : undefined;
+            // workspace セクションの items のみ使用
+            const wsSection = sections.find((s: ConversationSection) => s.section === 'workspace');
+            const conversations = wsSection
+                ? wsSection.items
+                : sections.flatMap((s: ConversationSection) => s.items);
+
+            // ワークスペース名: セクションラベルから抽出、フォールバックとしてチャンネルカテゴリ/CDPタイトル
+            let workspaceName: string | undefined;
+            if (wsSection?.sectionLabel) {
+                const match = wsSection.sectionLabel.match(/^Recent in (.+)$/i);
+                workspaceName = match ? match[1].trim() : wsSection.sectionLabel;
+            } else {
+                workspaceName = wsName || undefined;
+                if (!workspaceName) {
+                    const activeTitle = cdp.getActiveTargetTitle() || '';
+                    workspaceName = activeTitle.includes(' — ')
+                        ? activeTitle.split(' — ')[0].trim()
+                        : undefined;
+                }
             }
 
             let page = 0;
