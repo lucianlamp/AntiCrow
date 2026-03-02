@@ -51,6 +51,9 @@ export class CdpPool {
     private storagePath: string | undefined;
     private workspaceStore: WorkspaceStore | undefined;
 
+    /** このウィンドウのワークスペース名（マルチウィンドウ優先接続用） */
+    private ownerWorkspaceName: string | null = null;
+
     /** acquire() の競合防止ロック（ワークスペース単位） */
     private acquireLocks = new Map<string, Promise<CdpBridge>>();
 
@@ -59,6 +62,17 @@ export class CdpPool {
         this.storagePath = storagePath;
         if (storagePath) {
             this.workspaceStore = new WorkspaceStore(storagePath);
+        }
+    }
+
+    /**
+     * このウィンドウのワークスペース名を設定する。
+     * DEFAULT_WORKSPACE で CdpBridge を作成する際に、自ウィンドウを優先接続する。
+     */
+    setOwnerWorkspace(name: string | null): void {
+        this.ownerWorkspaceName = name;
+        if (name) {
+            logDebug(`CdpPool: owner workspace set to "${name}"`);
         }
     }
 
@@ -146,7 +160,11 @@ export class CdpPool {
 
         if (workspaceName === DEFAULT_WORKSPACE) {
             // デフォルトワークスペース: 従来と同じ自動探索接続
-            logDebug(`CdpPool: creating default CdpBridge (auto-discover)`);
+            // マルチウィンドウ対応: 自ウィンドウを優先接続
+            if (this.ownerWorkspaceName) {
+                cdp.setPreferredWorkspace(this.ownerWorkspaceName);
+            }
+            logDebug(`CdpPool: creating default CdpBridge (auto-discover, preferred=${this.ownerWorkspaceName || 'none'})`);
             await cdp.connect();
         } else {
             // 特定ワークスペース: ポートファイルを再読取してターゲットを発見

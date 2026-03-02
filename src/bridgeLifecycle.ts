@@ -394,6 +394,11 @@ async function startBridgeInternal(
     // CdpPool 初期化
     ctx.cdpPool = new CdpPool(cdpPorts, storageUri.fsPath);
 
+    // マルチウインドウ対応: CdpPoolにも自ウィンドウのワークスペース名を設定
+    if (currentWorkspaceName) {
+        ctx.cdpPool.setOwnerWorkspace(currentWorkspaceName);
+    }
+
     // ExecutorPool 初期化
     ctx.executorPool = new ExecutorPool(
         ctx.cdpPool,
