@@ -43,7 +43,6 @@ const ctx: BridgeContext = {
     lockWatchTimer: null,
     categoryWatchTimer: null,
     autoAcceptWatcherTimer: null,
-    startupUIWatcher: null,
     healthCheckTimer: null,
     cleanupTimer: null,
     staleRecoveryTimer: null,
