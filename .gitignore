@@ -6,3 +6,4 @@ out/
 convex/_generated/
 .env
 tsconfig.tsbuildinfo
+scripts/vscode_commands_dump.json
