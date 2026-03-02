@@ -8,8 +8,6 @@
 // ---------------------------------------------------------------------------
 
 import * as vscode from 'vscode';
-import * as fs from 'fs';
-import * as path from 'path';
 import { logDebug, logWarn } from './logger';
 import type { WorkspaceStore } from './workspaceStore';
 
@@ -17,101 +15,21 @@ import type { WorkspaceStore } from './workspaceStore';
 // デフォルト値定数
 // ---------------------------------------------------------------------------
 
-
-
-/**
- * CDP ポートとして使用してはいけないポート番号。
- * - 9222: ブラウザエージェント（Playwright 等）が使用する CDP ポート
- */
-export const EXCLUDED_CDP_PORTS: ReadonlySet<number> = new Set([9222]);
-
-/**
- * CDP ポート一覧を取得する。
- * cdp_ports/ ディレクトリのポートファイルから動的に検出する。
- * EXCLUDED_CDP_PORTS に含まれるポートは自動的に除外される。
- * 動的ポートが見つからない場合は settings の cdpPort をフォールバックに使用する。
- * 
- * @param storagePath globalStorage のパス
- */
-export function getCdpPorts(storagePath: string): number[] {
-    const portDir = path.join(storagePath, 'cdp_ports');
-    const dynamicPorts: number[] = [];
-
-    try {
-        if (fs.existsSync(portDir)) {
-            const files = fs.readdirSync(portDir);
-            for (const f of files) {
-                if (!f.startsWith('port_') || !f.endsWith('.txt')) { continue; }
-                try {
-                    const content = fs.readFileSync(path.join(portDir, f), 'utf-8').trim();
-                    const port = parseInt(content, 10);
-                    if (!isNaN(port) && port > 0 && port <= 65535) {
-                        if (EXCLUDED_CDP_PORTS.has(port)) {
-                            logWarn(`getCdpPorts: skipping excluded port ${port} from ${f} (reserved for browser agent)`);
-                            continue;
-                        }
-                        dynamicPorts.push(port);
-                        logDebug(`getCdpPorts: read dynamic port ${port} from ${f}`);
-                    }
-                } catch (e) { logDebug(`getCdpPorts: failed to read port file ${f}: ${e}`); }
-            }
-
-            // 古いポートファイルをクリーンアップ（プロセスが終了済みの場合）
-            cleanupStalePortFiles(portDir);
-        }
-    } catch (e) {
-        logWarn(`getCdpPorts: failed to read cdp_ports directory: ${e instanceof Error ? e.message : e}`);
-    }
-
-    if (dynamicPorts.length > 0) {
-        logDebug(`getCdpPorts: using ${dynamicPorts.length} dynamic port(s)`);
-        return dynamicPorts;
-    }
-
-    // フォールバック: settings の cdpPort（固定ポート）を使用
-    const configuredPort = getCdpPort();
-    logDebug(`getCdpPorts: no dynamic ports found, using configured cdpPort ${configuredPort}`);
-    return [configuredPort];
-
-}
-
 /** CDP 固定ポート番号を取得する（デフォルト: 9333） */
 export function getCdpPort(): number {
     return getConfig().get<number>('cdpPort') ?? 9333;
 }
 
-/** 古いポートファイルを削除（プロセスが終了済みの場合） */
-function cleanupStalePortFiles(portDir: string): void {
-    try {
-        const files = fs.readdirSync(portDir);
-        for (const f of files) {
-            if (!f.startsWith('port_') || !f.endsWith('.txt')) { continue; }
-            const fp = path.join(portDir, f);
-            try {
-                // ファイル名からPIDを抽出（port_12345.txt → 12345）
-                const pidMatch = f.match(/^port_(\d+)\.txt$/);
-                if (!pidMatch) {
-                    // PID形式でないファイルは古い形式として削除
-                    fs.unlinkSync(fp);
-                    logDebug(`cleanupStalePortFiles: removed non-PID port file ${f}`);
-                    continue;
-                }
-                const pid = parseInt(pidMatch[1], 10);
-                // プロセスが存在するか確認（process.kill(pid, 0) はシグナルを送らず存在確認のみ）
-                let alive = false;
-                try {
-                    process.kill(pid, 0);
-                    alive = true;
-                } catch {
-                    alive = false;
-                }
-                if (!alive) {
-                    fs.unlinkSync(fp);
-                    logDebug(`cleanupStalePortFiles: removed stale port file ${f} (PID ${pid} not running)`);
-                }
-            } catch (e) { logDebug(`cleanupStalePortFiles: failed to process ${f}: ${e}`); }
-        }
-    } catch (e) { logDebug(`cleanupStalePortFiles: readdir failed: ${e}`); }
+/**
+ * CDP ポート一覧を取得する。
+ * 設定画面の固定ポート（デフォルト 9333）を返す。
+ *
+ * @param _storagePath 未使用（後方互換のため引数を残す）
+ */
+export function getCdpPorts(_storagePath?: string): number[] {
+    const port = getCdpPort();
+    logDebug(`getCdpPorts: using configured cdpPort ${port}`);
+    return [port];
 }
 
 /** CDP レスポンスタイムアウト（ms）のデフォルト値 */

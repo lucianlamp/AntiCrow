@@ -30,7 +30,6 @@ import {
     DEFAULT_RESPONSE_TIMEOUT_MS,
     DEFAULT_TIMEZONE,
     DEFAULT_ARCHIVE_DAYS,
-    EXCLUDED_CDP_PORTS,
 } from '../configHelper';
 
 describe('configHelper', () => {
@@ -167,16 +166,4 @@ describe('configHelper', () => {
         });
     });
 
-    // ----- EXCLUDED_CDP_PORTS -----
-
-    describe('EXCLUDED_CDP_PORTS', () => {
-        it('should exclude port 9222', () => {
-            expect(EXCLUDED_CDP_PORTS.has(9222)).toBe(true);
-        });
-
-        it('should not exclude common CDP ports', () => {
-            expect(EXCLUDED_CDP_PORTS.has(9229)).toBe(false);
-            expect(EXCLUDED_CDP_PORTS.has(9515)).toBe(false);
-        });
-    });
 });

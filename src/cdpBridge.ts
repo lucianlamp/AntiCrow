@@ -46,7 +46,7 @@ import {
     fetchTargetsFromPort,
     extractWorkspaceName,
 } from './cdpTargets';
-import { getCdpPorts } from './configHelper';
+
 
 // Re-export for backward compatibility
 export { DiscoveredInstance } from './cdpTargets';
@@ -1156,5 +1156,97 @@ export class CdpBridge {
             });
             socket.connect(port, '127.0.0.1');
         });
+    }
+
+    // -----------------------------------------------------------------------
+    // サブエージェント ウィンドウ制御
+    // -----------------------------------------------------------------------
+
+    /**
+     * 指定ワークスペース名の Antigravity ウィンドウを閉じる。
+     * VSCode API の workbench.action.closeWindow を CDP 経由で実行する。
+     *
+     * メインウィンドウ（現在接続中のターゲット）は閉じないようガードする。
+     * 一時的な CdpConnection を作成して実行するため、現在の接続には影響しない。
+     *
+     * @param workspaceName 閉じたいウィンドウのワークスペース名（例: "anti-crow-subagent-1"）
+     * @returns true: ウィンドウを閉じた, false: ターゲットが見つからない or 失敗
+     */
+    async closeWindow(workspaceName: string): Promise<boolean> {
+        logDebug(`[closeWindow] ワークスペース "${workspaceName}" のウィンドウを閉じます`);
+
+        try {
+            // 1. 全ターゲットを取得
+            const instances = await discoverInstances(this.ports);
+            if (instances.length === 0) {
+                logWarn('[closeWindow] ターゲットが見つかりませんでした');
+                return false;
+            }
+
+            // 2. ワークスペース名でマッチング
+            let targetInstance: DiscoveredInstance | undefined;
+            for (const inst of instances) {
+                const wsName = extractWorkspaceName(inst.title);
+                if (wsName === workspaceName) {
+                    targetInstance = inst;
+                    break;
+                }
+            }
+
+            if (!targetInstance) {
+                logWarn(`[closeWindow] ワークスペース "${workspaceName}" のターゲットが見つかりませんでした`);
+                logDebug(`[closeWindow] 利用可能なターゲット: ${instances.map(i => `"${extractWorkspaceName(i.title) || i.title}"`).join(', ')}`);
+                return false;
+            }
+
+            // 3. メインウィンドウ（現在接続中）を閉じないようガード
+            const currentWsName = this.conn ? extractWorkspaceName(this.conn.getActiveTargetTitle() ?? '') : null;
+            if (currentWsName === workspaceName) {
+                logWarn(`[closeWindow] ワークスペース "${workspaceName}" はメインウィンドウです。閉じません`);
+                return false;
+            }
+
+            logDebug(`[closeWindow] ターゲット発見: "${targetInstance.title}" (${targetInstance.wsUrl})`);
+
+            // 4. 一時的な CdpConnection を作成して接続
+            const tempConn = new CdpConnection(this.ports);
+            try {
+                await tempConn.connectToUrl(targetInstance.wsUrl);
+                logDebug('[closeWindow] 一時接続に成功');
+
+                // 5. window.close() でウィンドウを閉じる
+                // 注: vscode.commands は CDP ページコンテキストでは利用不可。
+                //     Electron の window.close() が最もシンプルかつ確実。
+                const evalJs = `
+                    (async () => {
+                        try {
+                            window.close();
+                            return { success: true, method: 'window.close' };
+                        } catch (e) {
+                            return { success: false, error: String(e) };
+                        }
+                    })()
+                `;
+
+                const result = await tempConn.evaluate(evalJs);
+                logDebug(`[closeWindow] 実行結果: ${JSON.stringify(result)}`);
+
+                // 6. ウィンドウが閉じてファイルロックが解放されるのを待つ
+                await new Promise(resolve => setTimeout(resolve, 3000));
+
+                logDebug(`[closeWindow] ワークスペース "${workspaceName}" のウィンドウを閉じました`);
+                return true;
+            } finally {
+                // 一時接続を確実にクリーンアップ
+                try {
+                    tempConn.fullDisconnect();
+                } catch {
+                    // disconnect エラーは無視
+                }
+            }
+        } catch (err) {
+            logError(`[closeWindow] エラー: ${err}`);
+            return false;
+        }
     }
 }
