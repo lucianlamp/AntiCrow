@@ -150,32 +150,35 @@ export class UIWatcher {
             // 統合処理: autoFollowOutput
             // scroll → autoApprove → expand → permission を一括実行。
             // 「下にスクロールしながら出てきたボタンを押す」自然なフローで動作。
+            // エージェント待機中（🟡）はスクロール不要 → 実行中（🟢）のみ実行。
             // =================================================================
-            try {
-                await this.cdp.autoFollowOutput();
-                // 成功時は連続失敗カウンターをリセット
-                if (this.consecutiveErrors > 0) {
-                    logDebug(`UIWatcher: autoFollowOutput recovered after ${this.consecutiveErrors} consecutive errors`);
-                    this.consecutiveErrors = 0;
-                }
-            } catch (e) {
-                this.consecutiveErrors++;
-                this.cdp.ops.resetCascadeContext();
-
-                if (this.consecutiveErrors === UIWatcher.CONSECUTIVE_ERROR_WARN_THRESHOLD) {
-                    logInfo(`UIWatcher: ⚠️ autoFollowOutput ${this.consecutiveErrors}回連続失敗 — CDP接続に問題がある可能性があります`);
-                } else if (this.consecutiveErrors >= UIWatcher.CONSECUTIVE_ERROR_RECONNECT_THRESHOLD
-                    && this.consecutiveErrors % UIWatcher.CONSECUTIVE_ERROR_RECONNECT_THRESHOLD === 0) {
-                    logInfo(`UIWatcher: 🔄 autoFollowOutput ${this.consecutiveErrors}回連続失敗 — CDP再接続を試行します`);
-                    try {
-                        await this.cdp.ops.conn.connect();
+            if (this.lastAgentRunning) {
+                try {
+                    await this.cdp.autoFollowOutput();
+                    // 成功時は連続失敗カウンターをリセット
+                    if (this.consecutiveErrors > 0) {
+                        logDebug(`UIWatcher: autoFollowOutput recovered after ${this.consecutiveErrors} consecutive errors`);
                         this.consecutiveErrors = 0;
-                        logInfo('UIWatcher: CDP再接続成功');
-                    } catch (reconnectErr) {
-                        logInfo(`UIWatcher: CDP再接続失敗 — ${reconnectErr instanceof Error ? reconnectErr.message : reconnectErr}`);
                     }
-                } else {
-                    logDebug(`UIWatcher: autoFollowOutput error (${this.consecutiveErrors}x, context reset): ${e instanceof Error ? e.message : e}`);
+                } catch (e) {
+                    this.consecutiveErrors++;
+                    this.cdp.ops.resetCascadeContext();
+
+                    if (this.consecutiveErrors === UIWatcher.CONSECUTIVE_ERROR_WARN_THRESHOLD) {
+                        logInfo(`UIWatcher: ⚠️ autoFollowOutput ${this.consecutiveErrors}回連続失敗 — CDP接続に問題がある可能性があります`);
+                    } else if (this.consecutiveErrors >= UIWatcher.CONSECUTIVE_ERROR_RECONNECT_THRESHOLD
+                        && this.consecutiveErrors % UIWatcher.CONSECUTIVE_ERROR_RECONNECT_THRESHOLD === 0) {
+                        logInfo(`UIWatcher: 🔄 autoFollowOutput ${this.consecutiveErrors}回連続失敗 — CDP再接続を試行します`);
+                        try {
+                            await this.cdp.ops.conn.connect();
+                            this.consecutiveErrors = 0;
+                            logInfo('UIWatcher: CDP再接続成功');
+                        } catch (reconnectErr) {
+                            logInfo(`UIWatcher: CDP再接続失敗 — ${reconnectErr instanceof Error ? reconnectErr.message : reconnectErr}`);
+                        }
+                    } else {
+                        logDebug(`UIWatcher: autoFollowOutput error (${this.consecutiveErrors}x, context reset): ${e instanceof Error ? e.message : e}`);
+                    }
                 }
             }
         }, UI_WATCHER_INTERVAL_MS);
