@@ -38,6 +38,14 @@ export interface OrchestrationResult {
 /** Discord に送信するためのコールバック */
 export type DiscordSender = (channelId: string, content: string) => Promise<void>;
 
+/** 並列オーケストレーション結果 */
+export interface ParallelOrchestrationResult {
+    results: OrchestrationResult[];
+    totalDurationMs: number;
+    successCount: number;
+    failCount: number;
+}
+
 // ---------------------------------------------------------------------------
 // TeamOrchestrator
 // ---------------------------------------------------------------------------
@@ -243,5 +251,175 @@ export class TeamOrchestrator {
             this.stopMonitor(name);
         }
         logDebug('[TeamOrchestrator] disposed');
+    }
+
+    // -----------------------------------------------------------------------
+    // タスク分割
+    // -----------------------------------------------------------------------
+
+    /**
+     * プロンプトを独立したサブタスクに分割する。
+     * 検出パターン:
+     *   1. 番号付きリスト（1. / 1) / ① 等）
+     *   2. 「タスクN:」「Task N:」パターン
+     *   3. `---` セパレーター
+     * 分割できない場合は元のプロンプト1件を返す。
+     */
+    splitTasks(prompt: string): string[] {
+        const lines = prompt.split('\n');
+
+        // コンテキスト行（タスクの前の背景情報）を抽出
+        let contextLines: string[] = [];
+        let taskStartIdx = -1;
+
+        // パターン1: 番号付きリスト（1. / 1) / ① 等）
+        const numberedPattern = /^\s*(?:\d+[\.\)\]）]|[①②③④⑤⑥⑦⑧⑨⑩])\s+/;
+        const numberedIndices = lines
+            .map((line, i) => numberedPattern.test(line) ? i : -1)
+            .filter(i => i >= 0);
+
+        if (numberedIndices.length >= 2) {
+            taskStartIdx = numberedIndices[0];
+            contextLines = lines.slice(0, taskStartIdx).filter(l => l.trim());
+            const tasks: string[] = [];
+            for (let i = 0; i < numberedIndices.length; i++) {
+                const start = numberedIndices[i];
+                const end = i + 1 < numberedIndices.length ? numberedIndices[i + 1] : lines.length;
+                const taskContent = lines.slice(start, end).join('\n').trim();
+                if (taskContent) { tasks.push(taskContent); }
+            }
+            if (tasks.length >= 2) {
+                return this.prependContext(tasks, contextLines);
+            }
+        }
+
+        // パターン2: 「タスクN:」「Task N:」パターン
+        const taskLabelPattern = /^\s*(?:タスク|Task|TASK)\s*\d+\s*[:：]/i;
+        const taskLabelIndices = lines
+            .map((line, i) => taskLabelPattern.test(line) ? i : -1)
+            .filter(i => i >= 0);
+
+        if (taskLabelIndices.length >= 2) {
+            taskStartIdx = taskLabelIndices[0];
+            contextLines = lines.slice(0, taskStartIdx).filter(l => l.trim());
+            const tasks: string[] = [];
+            for (let i = 0; i < taskLabelIndices.length; i++) {
+                const start = taskLabelIndices[i];
+                const end = i + 1 < taskLabelIndices.length ? taskLabelIndices[i + 1] : lines.length;
+                const taskContent = lines.slice(start, end).join('\n').trim();
+                if (taskContent) { tasks.push(taskContent); }
+            }
+            if (tasks.length >= 2) {
+                return this.prependContext(tasks, contextLines);
+            }
+        }
+
+        // パターン3: `---` セパレーター
+        const separatorPattern = /^\s*-{3,}\s*$/;
+        const separatorIndices = lines
+            .map((line, i) => separatorPattern.test(line) ? i : -1)
+            .filter(i => i >= 0);
+
+        if (separatorIndices.length >= 1) {
+            const sections: string[] = [];
+            let prevEnd = 0;
+            for (const sepIdx of separatorIndices) {
+                const section = lines.slice(prevEnd, sepIdx).join('\n').trim();
+                if (section) { sections.push(section); }
+                prevEnd = sepIdx + 1;
+            }
+            const lastSection = lines.slice(prevEnd).join('\n').trim();
+            if (lastSection) { sections.push(lastSection); }
+
+            if (sections.length >= 2) {
+                return sections;
+            }
+        }
+
+        // 分割できない場合は元のプロンプトを返す
+        return [prompt];
+    }
+
+    /**
+     * 各サブタスクにコンテキスト（背景情報）を付加する。
+     */
+    private prependContext(tasks: string[], contextLines: string[]): string[] {
+        if (contextLines.length === 0) { return tasks; }
+        const context = contextLines.join('\n');
+        return tasks.map(task => `## 背景\n${context}\n\n## タスク\n${task}`);
+    }
+
+    // -----------------------------------------------------------------------
+    // 並列オーケストレーション
+    // -----------------------------------------------------------------------
+
+    /**
+     * 複数のサブタスクを並行してサブエージェントに委譲する。
+     * maxAgents を超えるタスクは順次実行（バッチ分割）。
+     */
+    async orchestrateParallel(
+        tasks: string[],
+        channelId: string,
+    ): Promise<ParallelOrchestrationResult> {
+        const config = loadTeamConfig(this.repoRoot);
+        const startTime = Date.now();
+        const maxConcurrent = Math.min(tasks.length, config.maxAgents);
+
+        logInfo(`[TeamOrchestrator] Parallel orchestration: ${tasks.length} tasks, max concurrent: ${maxConcurrent}`);
+
+        await this.sendToDiscord(channelId,
+            `🚀 **${tasks.length}個のタスクを並行実行します**（最大同時: ${maxConcurrent}）`);
+
+        const allResults: OrchestrationResult[] = [];
+
+        // バッチ分割: maxConcurrent ずつ並行実行
+        for (let batchStart = 0; batchStart < tasks.length; batchStart += maxConcurrent) {
+            const batch = tasks.slice(batchStart, batchStart + maxConcurrent);
+            const batchNum = Math.floor(batchStart / maxConcurrent) + 1;
+            const totalBatches = Math.ceil(tasks.length / maxConcurrent);
+
+            if (totalBatches > 1) {
+                await this.sendToDiscord(channelId,
+                    `📦 **バッチ ${batchNum}/${totalBatches}** を実行中（${batch.length}タスク）`);
+            }
+
+            // 並行実行: Promise.allSettled で全タスクの完了を待つ
+            const promises = batch.map((task, idx) => {
+                const taskIdx = batchStart + idx + 1;
+                return this.orchestrate(task, channelId)
+                    .then(result => ({
+                        ...result,
+                        agentName: `タスク${taskIdx}: ${result.agentName}`,
+                    }));
+            });
+
+            const settled = await Promise.allSettled(promises);
+
+            for (const result of settled) {
+                if (result.status === 'fulfilled') {
+                    allResults.push(result.value);
+                } else {
+                    allResults.push({
+                        agentName: 'unknown',
+                        success: false,
+                        response: result.reason instanceof Error ? result.reason.message : String(result.reason),
+                        durationMs: Date.now() - startTime,
+                    });
+                }
+            }
+        }
+
+        const totalDurationMs = Date.now() - startTime;
+        const successCount = allResults.filter(r => r.success).length;
+        const failCount = allResults.length - successCount;
+
+        logInfo(`[TeamOrchestrator] Parallel orchestration completed: ${successCount} succeeded, ${failCount} failed, ${totalDurationMs}ms total`);
+
+        return {
+            results: allResults,
+            totalDurationMs,
+            successCount,
+            failCount,
+        };
     }
 }

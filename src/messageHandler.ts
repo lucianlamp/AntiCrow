@@ -792,25 +792,69 @@ export async function handleDiscordMessage(
             try { await channel.sendTyping(); } catch { /* ignore */ }
 
             try {
-                await channel.send({ embeds: [buildEmbed('🎯 **チームモード**: タスクをサブエージェントに委譲します...', EmbedColor.Info)] });
+                // タスク分割判定
+                const tasks = teamConfig.enableParallel
+                    ? ctx.teamOrchestrator.splitTasks(text)
+                    : [text];
 
-                const result = await ctx.teamOrchestrator.orchestrate(text, channel.id);
+                if (tasks.length >= 2) {
+                    // 並列実行モード
+                    await channel.send({ embeds: [buildEmbed(`🎯 **チームモード（並列）**: ${tasks.length}個のサブタスクを検出。並行実行します...`, EmbedColor.Info)] });
 
-                if (result.success) {
-                    const durationSec = (result.durationMs / 1000).toFixed(1);
-                    const normalized = normalizeHeadings(result.response);
-                    const embedGroups = splitForEmbeds(normalized);
-                    await channel.send({ embeds: [buildEmbed(`✅ **サブエージェント "${result.agentName}"** が完了しました（${durationSec}秒）`, EmbedColor.Success)] });
-                    for (const group of embedGroups) {
-                        const embeds = group.map((desc) =>
-                            new EmbedBuilder()
-                                .setDescription(desc)
-                                .setColor(EmbedColor.Info)
-                        );
-                        await channel.send({ embeds });
+                    const parallelResult = await ctx.teamOrchestrator.orchestrateParallel(tasks, channel.id);
+
+                    // 全体の結果サマリー
+                    const totalSec = (parallelResult.totalDurationMs / 1000).toFixed(1);
+                    const summaryEmoji = parallelResult.failCount === 0 ? '✅' : '⚠️';
+                    await channel.send({
+                        embeds: [buildEmbed(
+                            `${summaryEmoji} **並列実行完了**（${totalSec}秒）\n`
+                            + `成功: ${parallelResult.successCount} / 失敗: ${parallelResult.failCount}`,
+                            parallelResult.failCount === 0 ? EmbedColor.Success : EmbedColor.Warning,
+                        )]
+                    });
+
+                    // 各タスクの結果を個別送信
+                    for (const r of parallelResult.results) {
+                        const rSec = (r.durationMs / 1000).toFixed(1);
+                        if (r.success) {
+                            const normalized = normalizeHeadings(r.response);
+                            const embedGroups = splitForEmbeds(normalized);
+                            await channel.send({ embeds: [buildEmbed(`✅ **${r.agentName}** 完了（${rSec}秒）`, EmbedColor.Success)] });
+                            for (const group of embedGroups) {
+                                const embeds = group.map((desc) =>
+                                    new EmbedBuilder()
+                                        .setDescription(desc)
+                                        .setColor(EmbedColor.Info)
+                                );
+                                await channel.send({ embeds });
+                            }
+                        } else {
+                            await channel.send({ embeds: [buildEmbed(`❌ **${r.agentName}** エラー（${rSec}秒）:\n${r.response}`, EmbedColor.Error)] });
+                        }
                     }
                 } else {
-                    await channel.send({ embeds: [buildEmbed(`❌ **サブエージェント "${result.agentName}"** でエラーが発生しました:\n${result.response}`, EmbedColor.Error)] });
+                    // 単体実行モード（従来どおり）
+                    await channel.send({ embeds: [buildEmbed('🎯 **チームモード**: タスクをサブエージェントに委譲します...', EmbedColor.Info)] });
+
+                    const result = await ctx.teamOrchestrator.orchestrate(text, channel.id);
+
+                    if (result.success) {
+                        const durationSec = (result.durationMs / 1000).toFixed(1);
+                        const normalized = normalizeHeadings(result.response);
+                        const embedGroups = splitForEmbeds(normalized);
+                        await channel.send({ embeds: [buildEmbed(`✅ **サブエージェント "${result.agentName}"** が完了しました（${durationSec}秒）`, EmbedColor.Success)] });
+                        for (const group of embedGroups) {
+                            const embeds = group.map((desc) =>
+                                new EmbedBuilder()
+                                    .setDescription(desc)
+                                    .setColor(EmbedColor.Info)
+                            );
+                            await channel.send({ embeds });
+                        }
+                    } else {
+                        await channel.send({ embeds: [buildEmbed(`❌ **サブエージェント "${result.agentName}"** でエラーが発生しました:\n${result.response}`, EmbedColor.Error)] });
+                    }
                 }
             } catch (e) {
                 const errMsg = e instanceof Error ? e.message : String(e);

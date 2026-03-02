@@ -26,6 +26,8 @@ export interface TeamConfig {
     monitorIntervalMs: number;
     /** spawn 時に自動でサブエージェントを起動するか */
     autoSpawn: boolean;
+    /** 並列タスク分配を有効にするか */
+    enableParallel: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -38,6 +40,7 @@ const DEFAULT_CONFIG: TeamConfig = {
     responseTimeoutMs: 900_000,   // 15分
     monitorIntervalMs: 15_000,    // 15秒
     autoSpawn: true,
+    enableParallel: true,
 };
 
 const CONFIG_DIR = '.anticrow';
@@ -63,6 +66,7 @@ export function loadTeamConfig(repoRoot: string): TeamConfig {
                 responseTimeoutMs: typeof parsed.responseTimeoutMs === 'number' ? parsed.responseTimeoutMs : DEFAULT_CONFIG.responseTimeoutMs,
                 monitorIntervalMs: typeof parsed.monitorIntervalMs === 'number' ? parsed.monitorIntervalMs : DEFAULT_CONFIG.monitorIntervalMs,
                 autoSpawn: typeof parsed.autoSpawn === 'boolean' ? parsed.autoSpawn : DEFAULT_CONFIG.autoSpawn,
+                enableParallel: typeof parsed.enableParallel === 'boolean' ? parsed.enableParallel : DEFAULT_CONFIG.enableParallel,
             };
         }
     } catch (e) {
