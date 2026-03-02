@@ -171,6 +171,36 @@ function buildTeamButtons(config: import('./teamConfig').TeamConfig): ActionRowB
 }
 
 // ---------------------------------------------------------------------------
+// サブエージェントボタンパネル構築ヘルパー
+// ---------------------------------------------------------------------------
+
+function buildSubagentButtons(agents: { name: string; state: string }[]): ActionRowBuilder<ButtonBuilder>[] {
+    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder()
+            .setCustomId('subagent_spawn')
+            .setLabel('🚀 起動')
+            .setStyle(ButtonStyle.Success),
+        new ButtonBuilder()
+            .setCustomId('subagent_list')
+            .setLabel('📋 一覧')
+            .setStyle(ButtonStyle.Primary),
+        new ButtonBuilder()
+            .setCustomId('subagent_killall')
+            .setLabel('⏹️ 全停止')
+            .setStyle(agents.length > 0 ? ButtonStyle.Danger : ButtonStyle.Secondary)
+            .setDisabled(agents.length === 0),
+    );
+    return [row];
+}
+
+function buildSubagentListText(agents: { name: string; state: string }[]): string {
+    if (agents.length === 0) {
+        return '📋 **サブエージェント管理**\n\n現在実行中のサブエージェントはありません。';
+    }
+    return `📋 **サブエージェント管理** (${agents.length}件)\n\n`
+        + agents.map(a => `  • \`${a.name}\` — ${a.state}`).join('\n');
+}
+// ---------------------------------------------------------------------------
 // ボタンインタラクションハンドラ
 // ---------------------------------------------------------------------------
 
@@ -829,6 +859,79 @@ export async function handleButtonInteraction(
                 }
                 default:
                     break;
+            }
+        }
+
+        // ----- サブエージェント関連ボタン -----
+        if (customId.startsWith('subagent_')) {
+            const subAction = customId.replace('subagent_', '');
+            const mgr = ctx.subagentManager;
+
+            try {
+                switch (subAction) {
+                    case 'spawn': {
+                        if (!mgr) {
+                            await interaction.update({
+                                embeds: [buildEmbed('⚠️ SubagentManager が初期化されていません。', EmbedColor.Warning)],
+                                components: buildSubagentButtons([]) as any,
+                            });
+                            return;
+                        }
+                        await interaction.deferUpdate();
+                        const handle = await mgr.spawn();
+                        const agents = mgr.list();
+                        await interaction.editReply({
+                            embeds: [buildEmbed(
+                                `🚀 **サブエージェント \`${handle.name}\` を起動しました！**\n\n`
+                                + buildSubagentListText(agents),
+                                EmbedColor.Success,
+                            )],
+                            components: buildSubagentButtons(agents) as any,
+                        });
+                        return;
+                    }
+                    case 'list': {
+                        const agents = mgr?.list() ?? [];
+                        await interaction.update({
+                            embeds: [buildEmbed(buildSubagentListText(agents), EmbedColor.Info)],
+                            components: buildSubagentButtons(agents) as any,
+                        });
+                        return;
+                    }
+                    case 'killall': {
+                        if (!mgr) {
+                            await interaction.update({
+                                embeds: [buildEmbed('⚠️ SubagentManager が初期化されていません。', EmbedColor.Warning)],
+                                components: buildSubagentButtons([]) as any,
+                            });
+                            return;
+                        }
+                        await interaction.deferUpdate();
+                        await mgr.killAll();
+                        await interaction.editReply({
+                            embeds: [buildEmbed('⏹️ **全サブエージェントを停止しました。**\n\n現在実行中のサブエージェントはありません。', EmbedColor.Success)],
+                            components: buildSubagentButtons([]) as any,
+                        });
+                        return;
+                    }
+                    default:
+                        break;
+                }
+            } catch (e) {
+                const errMsg = e instanceof Error ? e.message : String(e);
+                logError(`subagent button: ${subAction} failed`, e);
+                if (interaction.deferred || interaction.replied) {
+                    await interaction.editReply({
+                        embeds: [buildEmbed(`❌ サブエージェント操作失敗: ${errMsg}`, EmbedColor.Error)],
+                        components: buildSubagentButtons(mgr?.list() ?? []) as any,
+                    }).catch(() => { });
+                } else {
+                    await interaction.update({
+                        embeds: [buildEmbed(`❌ サブエージェント操作失敗: ${errMsg}`, EmbedColor.Error)],
+                        components: buildSubagentButtons(mgr?.list() ?? []) as any,
+                    });
+                }
+                return;
             }
         }
 

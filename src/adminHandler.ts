@@ -816,114 +816,48 @@ async function handleSubagent(
     ctx: BridgeContext,
     interaction: ChatInputCommandInteraction,
 ): Promise<void> {
-    const action = interaction.options.getString('action') || 'list';
-    const targetName = interaction.options.getString('name') || '';
-
     const mgr = ctx.subagentManager;
 
     try {
-        switch (action) {
-            case 'spawn': {
-                if (!mgr) {
-                    await interaction.reply({
-                        embeds: [buildEmbed('⚠️ SubagentManager が初期化されていません。Bridge を起動してください。', EmbedColor.Warning)],
-                    });
-                    return;
-                }
-                await interaction.deferReply();
-                const handle = await mgr.spawn();
-                const name = handle.name;
-                const state = handle.state;
-                await interaction.editReply({
-                    embeds: [buildEmbed(
-                        `🚀 サブエージェントを起動しました\n\n` +
-                        `- **名前**: \`${name}\`\n` +
-                        `- **状態**: ${state}`,
-                        EmbedColor.Success,
-                    )],
-                });
-                break;
-            }
+        const agents = mgr?.list() ?? [];
 
-            case 'list': {
-                if (!mgr) {
-                    await interaction.reply({
-                        embeds: [buildEmbed('📋 **サブエージェント一覧**\n\nSubagentManager が未初期化です。', EmbedColor.Info)],
-                    });
-                    return;
-                }
-                const agents = mgr.list();
-                if (agents.length === 0) {
-                    await interaction.reply({
-                        embeds: [buildEmbed('📋 **サブエージェント一覧**\n\n現在実行中のサブエージェントはありません。', EmbedColor.Info)],
-                    });
-                } else {
-                    const lines = agents.map((a: { name: string; state: string }) =>
-                        `- \`${a.name}\` — ${a.state}`,
-                    );
-                    await interaction.reply({
-                        embeds: [buildEmbed(
-                            `📋 **サブエージェント一覧** (${agents.length}件)\n\n${lines.join('\n')}`,
-                            EmbedColor.Info,
-                        )],
-                    });
-                }
-                break;
-            }
-
-            case 'kill': {
-                if (!mgr) {
-                    await interaction.reply({
-                        embeds: [buildEmbed('⚠️ SubagentManager が初期化されていません。', EmbedColor.Warning)],
-                    });
-                    return;
-                }
-                if (!targetName) {
-                    await interaction.reply({
-                        embeds: [buildEmbed('⚠️ `name` オプションでサブエージェント名を指定してください。', EmbedColor.Warning)],
-                    });
-                    return;
-                }
-                await interaction.deferReply();
-                await mgr.killAgent(targetName);
-                await interaction.editReply({
-                    embeds: [buildEmbed(`⏹️ サブエージェント \`${targetName}\` を停止しました。`, EmbedColor.Success)],
-                });
-                break;
-            }
-
-            case 'killall': {
-                if (!mgr) {
-                    await interaction.reply({
-                        embeds: [buildEmbed('⚠️ SubagentManager が初期化されていません。', EmbedColor.Warning)],
-                    });
-                    return;
-                }
-                await interaction.deferReply();
-                await mgr.killAll();
-                await interaction.editReply({
-                    embeds: [buildEmbed('⏹️ 全サブエージェントを停止しました。', EmbedColor.Success)],
-                });
-                break;
-            }
-
-            default:
-                await interaction.reply({
-                    embeds: [buildEmbed(`⚠️ 不明なアクション: \`${action}\`\n使用可能: spawn, list, kill, killall`, EmbedColor.Warning)],
-                });
+        // パネル構築
+        let desc = `📋 **サブエージェント管理**\n\n`;
+        if (agents.length === 0) {
+            desc += '現在実行中のサブエージェントはありません。';
+        } else {
+            desc += `**稼働中**: ${agents.length}件\n\n`;
+            desc += agents.map((a: { name: string; state: string }) =>
+                `  • \`${a.name}\` — ${a.state}`
+            ).join('\n');
         }
+
+        const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder()
+                .setCustomId('subagent_spawn')
+                .setLabel('🚀 起動')
+                .setStyle(ButtonStyle.Success),
+            new ButtonBuilder()
+                .setCustomId('subagent_list')
+                .setLabel('📋 一覧')
+                .setStyle(ButtonStyle.Primary),
+            new ButtonBuilder()
+                .setCustomId('subagent_killall')
+                .setLabel('⏹️ 全停止')
+                .setStyle(agents.length > 0 ? ButtonStyle.Danger : ButtonStyle.Secondary)
+                .setDisabled(agents.length === 0),
+        );
+
+        await interaction.reply({
+            embeds: [buildEmbed(desc, EmbedColor.Info)],
+            components: [row] as any,
+        });
     } catch (e) {
         const errMsg = e instanceof Error ? e.message : String(e);
-        logError(`handleSubagent: ${action} failed`, e);
-        if (interaction.deferred || interaction.replied) {
-            await interaction.editReply({
-                embeds: [buildEmbed(`❌ サブエージェント操作失敗: ${errMsg}`, EmbedColor.Error)],
-            }).catch(() => { });
-        } else {
-            await interaction.reply({
-                embeds: [buildEmbed(`❌ サブエージェント操作失敗: ${errMsg}`, EmbedColor.Error)],
-            });
-        }
+        logError('handleSubagent failed', e);
+        await interaction.reply({
+            embeds: [buildEmbed(`❌ サブエージェント操作失敗: ${errMsg}`, EmbedColor.Error)],
+        });
     }
 }
 
