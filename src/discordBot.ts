@@ -244,6 +244,8 @@ export class DiscordBot {
             case 'pro': return 'admin';
             case 'screenshot': return 'admin';
             case 'soul': return 'admin';
+            case 'subagent': return 'admin';
+            case 'team': return 'admin';
             default: return null;
         }
     }
