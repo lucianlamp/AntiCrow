@@ -1235,38 +1235,40 @@ export class CdpBridge {
                 await tempConn.connectToUrl(targetInstance.wsUrl);
                 logDebug('[closeWindow] 一時接続に成功');
 
-                // 5a. process.exit(0) でウィンドウプロセスを終了（最も確実）
-                // E2Eテストで window.close() は Electron では無効と判明。
-                // process.exit(0) が最も確実なクローズ方法。
+                // 5a. window.close() でウィンドウを閉じる（第一優先）
+                // E2Eテスト結果: window.close() は Renderer に直接命令するため確実に動作。
+                // process.exit(0) は Extension Host のみ終了し、Renderer window は残る。
                 let closed = false;
                 try {
-                    await tempConn.evaluate('process.exit(0)');
-                    logDebug('[closeWindow] process.exit(0) で終了');
+                    const evalJs = `
+                        (async () => {
+                            try {
+                                window.close();
+                                return { success: true, method: 'window.close' };
+                            } catch (e) {
+                                return { success: false, error: String(e) };
+                            }
+                        })()
+                    `;
+                    const result = await tempConn.evaluate(evalJs);
+                    logDebug(`[closeWindow] window.close() 結果: ${JSON.stringify(result)}`);
                     closed = true;
-                } catch {
-                    // process.exit() は接続切断を引き起こすため、エラーは想定内
-                    logDebug('[closeWindow] process.exit(0) 実行（接続切断は想定内）');
-                    closed = true;
+                } catch (err) {
+                    logDebug(`[closeWindow] window.close() 失敗: ${err}`);
                 }
 
-                // 5b. フォールバック: window.close()
+                // 5b. フォールバック: process.exit(0)
+                // Extension Host を終了させる。ウィンドウ自体は残る場合があるが、
+                // 後続の確認ステップで残存を検知する。
                 if (!closed) {
                     try {
-                        const evalJs = `
-                            (async () => {
-                                try {
-                                    window.close();
-                                    return { success: true, method: 'window.close' };
-                                } catch (e) {
-                                    return { success: false, error: String(e) };
-                                }
-                            })()
-                        `;
-                        const result = await tempConn.evaluate(evalJs);
-                        logDebug(`[closeWindow] window.close() 結果: ${JSON.stringify(result)}`);
+                        await tempConn.evaluate('process.exit(0)');
+                        logDebug('[closeWindow] process.exit(0) で終了');
                         closed = true;
-                    } catch (err) {
-                        logDebug(`[closeWindow] window.close() 失敗: ${err}`);
+                    } catch {
+                        // process.exit() は接続切断を引き起こすため、エラーは想定内
+                        logDebug('[closeWindow] process.exit(0) 実行（接続切断は想定内）');
+                        closed = true;
                     }
                 }
 
