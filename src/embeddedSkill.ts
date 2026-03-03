@@ -1,0 +1,162 @@
+// ---------------------------------------------------------------------------
+// embeddedSkill.ts — AntiCrow エージェントスキルテンプレート
+// ---------------------------------------------------------------------------
+// ワークスペースの .agent/skills/anticrow/SKILL.md に配置するスキル内容を定義。
+// bridgeLifecycle.ts の起動時に毎回上書きコピーされる。
+// ---------------------------------------------------------------------------
+
+import * as fs from 'fs';
+import * as path from 'path';
+import { logDebug, logInfo, logWarn } from './logger';
+
+/** スキルの配置先ディレクトリ名 */
+const SKILL_DIR = '.agent/skills/anticrow';
+/** スキルファイル名 */
+const SKILL_FILE = 'SKILL.md';
+
+/**
+ * AntiCrow スキルテンプレート
+ * Antigravity のエージェントが AntiCrow の機能を理解し活用するためのガイド。
+ */
+export const ANTICROW_SKILL_CONTENT = `---
+name: anticrow
+description: Anti-Crow 拡張機能の機能を活用するためのスキル。チームモード、IPC通信、進捗報告、ファイル送信などの使い方を理解する。
+---
+
+# Anti-Crow スキル
+
+Anti-Crow は Discord 経由でタスクを受け取り、Antigravity エージェントに実行を委任する VS Code 拡張機能です。
+このスキルでは、Anti-Crow の機能を最大限に活用する方法を説明します。
+
+## チームモード（並列サブエージェント実行）
+
+チームモードは、複数の独立したタスクをサブエージェントに分散して並列実行する機能です。
+
+### 使い方
+
+計画生成（plan_generation）時に \`tasks\` 配列を出力すると、各タスクが個別のサブエージェントに割り当てられます。
+
+\`\`\`json
+{
+  "tasks": [
+    "src/auth.ts に新しい認証ロジックを実装する",
+    "src/__tests__/auth.test.ts にユニットテストを追加する",
+    "src/docs/auth.md にドキュメントを作成する"
+  ]
+}
+\`\`\`
+
+### タスク分割の判断基準
+
+**tasks を使う（チームモード）:**
+- 3ファイル以上にまたがる変更
+- 新機能の実装＋テスト＋デプロイが必要な作業
+- 独立した複数の問題を同時に修正する作業
+- 調査・実装・検証が別々に並行可能な作業
+
+**tasks を使わない（メインエージェント単独）:**
+- 単一ファイルの修正・設定変更
+- 情報の確認・質問への回答
+- 簡単なバグ修正（1-2ファイル以内）
+- 型チェック・テスト・ビルドのみの実行
+- ドキュメント・コメントの修正
+
+### 重要なルール
+
+- 各タスクは**独立して実行可能な単位**にすること
+- **同じファイルを複数のタスクで修正しない**こと（コンフリクトの原因）
+- タスクが1つしかない場合は \`tasks\` を省略すること
+
+## IPC レスポンス
+
+Anti-Crow はファイルベースの IPC（プロセス間通信）でタスクの完了を検知します。
+
+### 完了条件
+
+**\`response_path\` に指定されたファイルに write_to_file で書き込むこと**が完了条件です。
+書き込まないと、タスクは永遠に「実行中」のままになります。
+
+- \`task: "execution"\` → Markdown 形式で \`response_path\` に書き込む
+- \`task: "plan_generation"\` → JSON 形式で \`response_path\` に書き込む
+
+## 進捗報告
+
+処理中は \`progress_path\` に JSON で進捗を定期的に書き込んでください。
+Discord にリアルタイム通知されます。
+
+\`\`\`json
+{"status": "🔧 実装中", "detail": "auth.ts を修正中", "percent": 50}
+\`\`\`
+
+**頻度:** 30秒〜1分おきに更新する。長時間の無反応はユーザーに不安を与えます。
+
+## Discord へのファイル送信
+
+レスポンスにファイルを添付したい場合、以下のタグを使います:
+
+\`\`\`
+<!-- FILE:C:/path/to/file.png -->
+\`\`\`
+
+対応フォーマット: png, jpg, gif, webp, mp4, webm, pdf, txt, csv, json, md, zip
+
+**制限:** 25MB 以上のファイルは送信されません（Discord の制限）。
+
+## 記憶の記録
+
+重要な学びや教訓があれば、レスポンス末尾に以下のタグを埋め込んでください:
+
+\`\`\`
+<!-- MEMORY:global: 全プロジェクト共通の学び -->
+<!-- MEMORY:workspace: 現プロジェクト固有の学び -->
+\`\`\`
+
+## 提案ボタン
+
+レスポンス末尾に以下のタグを埋め込むと、Discord に次アクションの提案ボタンが表示されます:
+
+\`\`\`
+<!-- SUGGESTIONS:[{"label":"ボタンテキスト","description":"説明","prompt":"実行プロンプト"}] -->
+\`\`\`
+
+## ワークスペース構造
+
+\`\`\`
+{workspace}/
+├── .anticrow/
+│   ├── team.json      # チームモード設定（enabled, maxAgents 等）
+│   ├── MEMORY.md      # ワークスペース固有の記憶
+│   └── worktrees/     # サブエージェント用 git worktree
+└── .agent/
+    └── skills/
+        └── anticrow/
+            └── SKILL.md  # このファイル（自動配置）
+\`\`\`
+`;
+
+/**
+ * ワークスペースに AntiCrow スキルファイルを配置する。
+ * 毎回上書きで最新版を書き出す。
+ *
+ * @param workspacePath ワークスペースのルートパス
+ */
+export function deployAntiCrowSkill(workspacePath: string): void {
+    if (!workspacePath) {
+        logDebug('embeddedSkill: no workspace path provided, skipping skill deployment');
+        return;
+    }
+
+    const skillDir = path.join(workspacePath, SKILL_DIR);
+    const skillPath = path.join(skillDir, SKILL_FILE);
+
+    try {
+        // ディレクトリ作成（再帰的）
+        fs.mkdirSync(skillDir, { recursive: true });
+
+        // スキルファイルを上書き
+        fs.writeFileSync(skillPath, ANTICROW_SKILL_CONTENT, 'utf-8');
+        logInfo(`embeddedSkill: AntiCrow skill deployed to ${skillPath}`);
+    } catch (e) {
+        logWarn(`embeddedSkill: failed to deploy skill: ${e instanceof Error ? e.message : e}`);
+    }
+}
