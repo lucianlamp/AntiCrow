@@ -42,6 +42,7 @@ import { SubagentManager } from './subagentManager';
 import { SubagentReceiver } from './subagentReceiver';
 import { TeamOrchestrator } from './teamOrchestrator';
 import { loadTeamConfig } from './teamConfig';
+import { deployAntiCrowSkill } from './embeddedSkill';
 import * as fs from 'fs';
 
 /** ワークスペース名としてカテゴリ作成すべきでない名前を判定する */
@@ -580,6 +581,12 @@ async function startBridgeInternal(
             });
             logInfo('Bridge: TeamOrchestrator initialized with ThreadOps');
         }
+    }
+
+    // AntiCrow スキルをワークスペースに配置（毎回上書き）
+    const wsRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (wsRoot) {
+        deployAntiCrowSkill(wsRoot);
     }
 
     // SubagentReceiver: Cascade 統合ハンドラを設定（startBridge 完了後に CDP/FileIpc が利用可能）

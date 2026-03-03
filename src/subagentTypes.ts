@@ -82,6 +82,10 @@ export interface SubagentConfig {
     spawnMaxRetries: number;
     /** stagger 起動の間隔（ミリ秒、デフォルト: 2500） */
     staggerDelayMs: number;
+    /** アイドルプールの TTL（ミリ秒、デフォルト: 300_000 = 5分） */
+    idleTtlMs: number;
+    /** ウィンドウ再利用を有効にするか（デフォルト: true */
+    enableWindowReuse: boolean;
 }
 
 /**
@@ -96,6 +100,8 @@ export const DEFAULT_SUBAGENT_CONFIG: SubagentConfig = {
     pollIntervalMs: 2_000,
     spawnMaxRetries: 3,
     staggerDelayMs: 2_500,
+    idleTtlMs: 300_000,         // 5分
+    enableWindowReuse: true,    // デフォルトで有効
 };
 
 /**
@@ -175,3 +181,25 @@ export interface TeamReport {
         result: string;
     }>;
 }
+
+// ---------------------------------------------------------------------------
+// Worktree プール型定義
+// ---------------------------------------------------------------------------
+
+/** プール内の worktree エントリの状態 */
+export type WorktreePoolEntryState = 'available' | 'in-use';
+
+/** プール内の worktree エントリ */
+export interface WorktreePoolEntry {
+    /** プール内のインデックス（0-indexed） */
+    index: number;
+    /** worktree のディレクトリパス */
+    path: string;
+    /** 現在の状態 */
+    state: WorktreePoolEntryState;
+    /** 使用中のサブエージェント名（in-use 時） */
+    usedBy?: string;
+    /** 最終使用時刻 */
+    lastUsedAt?: number;
+}
+

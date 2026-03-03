@@ -720,23 +720,19 @@ async function dispatchPlan(
         let teamModeFallback = false; // チームモード分割失敗時のフォールバックフラグ
         if (isTeamMode && ctx.teamOrchestrator) {
             logDebug(`dispatchPlan: Team mode — IPC-based orchestration (workspace=${wsNameForImmediate || 'default'})`);
-            try {
-                await channel.send({ embeds: [buildEmbed('🤖 **チームモード**: タスクを分割してサブエージェントに指令を作成中...', EmbedColor.Info)] });
 
-                // Phase 2: タスク分割 → グループ化 → 指令ファイル作成
-                const rawTasks = ctx.teamOrchestrator.splitTasks(plan.prompt);
-                logDebug(`dispatchPlan: Team mode — split into ${rawTasks.length} raw tasks`);
+            // AI 委任方式: plan.tasks の有無でチームモード使用を判断
+            // plan_generation フェーズで AI が tasks 配列を出力した場合のみチームモード実行
+            // tasks がない場合はメインエージェント単独実行にフォールバック
+            if (plan.tasks && plan.tasks.length > 1) {
+                try {
+                    await channel.send({ embeds: [buildEmbed(`🤖 **チームモード**: AI が ${plan.tasks.length} 個のタスクに分割済み。サブエージェントに指令を作成中...`, EmbedColor.Info)] });
+                    logDebug(`dispatchPlan: Team mode — AI provided ${plan.tasks.length} tasks`);
 
-                if (rawTasks.length <= 1) {
-                    // 分割できない場合は通常モードにフォールバック
-                    logDebug('dispatchPlan: Team mode — cannot split, falling back to normal mode');
-                    await channel.send({ embeds: [buildEmbed('ℹ️ タスクを分割できませんでした。通常モードで実行します。', EmbedColor.Info)] });
-                    teamModeFallback = true; // フォールバックフラグを立てる
-                } else {
                     // maxAgents に従ってグループ化
                     const teamConfig = loadTeamConfig(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '');
-                    const tasks = ctx.teamOrchestrator.groupTasks(rawTasks, teamConfig.maxAgents);
-                    logDebug(`dispatchPlan: Team mode — grouped ${rawTasks.length} tasks into ${tasks.length} groups (maxAgents=${teamConfig.maxAgents})`);
+                    const tasks = ctx.teamOrchestrator.groupTasks(plan.tasks, teamConfig.maxAgents);
+                    logDebug(`dispatchPlan: Team mode — grouped ${plan.tasks.length} tasks into ${tasks.length} groups (maxAgents=${teamConfig.maxAgents})`);
 
                     const teamRequestId = `team_${Date.now()}`;
                     const instructions = ctx.teamOrchestrator.writeInstructionFiles(
@@ -745,7 +741,7 @@ async function dispatchPlan(
                         plan.prompt, // 元のユーザーリクエストをコンテキストとして渡す
                     );
 
-                    await channel.send({ embeds: [buildEmbed(`📋 ${rawTasks.length}個のタスクを${tasks.length}個のサブエージェントに割り振りました。起動中...`, EmbedColor.Info)] });
+                    await channel.send({ embeds: [buildEmbed(`📋 ${plan.tasks.length}個のタスクを${tasks.length}個のサブエージェントに割り振りました。起動中...`, EmbedColor.Info)] });
 
                     // Phase 3~5: サブエージェント起動 → 実行 → レスポンス収集
                     const abortController = new AbortController();
@@ -770,13 +766,16 @@ async function dispatchPlan(
                             reportResponsePath,
                         );
 
-                        // メインエージェントに報告プロンプトを送信:
-                        // response_path の正確なパスを含めて明示的に指示
+                        // メインエージェントに報告プロンプトを送信（ファイル読み取り方式）:
+                        const reportInstructionPath = ctx.teamOrchestrator.writeReportInstructionFile(
+                            teamRequestId,
+                            reportPath,
+                            reportResponsePath,
+                        );
                         const reportPrompt =
-                            `あなたはメインエージェントです。\n\n` +
-                            `以下のファイルを view_file ツールで読み込み、その指示に従ってください。\n` +
-                            `ファイルパス: ${reportPath}\n\n` +
-                            `重要:\n` +
+                            `あなたはメインエージェントです。以下のファイルを view_file ツールで読み込み、その指示に従ってください。\n` +
+                            `ファイルパス: ${reportInstructionPath}` +
+                            `\n\n重要:\n` +
                             `- 全サブエージェントの報告を確認してください\n` +
                             `- 統合レポートを作成し、response_path に Markdown で書き込んでください（write_to_file）\n` +
                             `- response_path: ${reportResponsePath}\n` +
@@ -786,12 +785,6 @@ async function dispatchPlan(
 
                         logDebug(`dispatchPlan: Team mode — sending report prompt to main Cascade (${reportPrompt.length} chars)`);
 
-                        try {
-                            await activeCdp.startNewChat();
-                            logDebug('dispatchPlan: Team mode — startNewChat succeeded');
-                        } catch (chatErr) {
-                            logWarn(`dispatchPlan: Team mode — startNewChat failed, continuing: ${chatErr instanceof Error ? chatErr.message : chatErr}`);
-                        }
                         await activeCdp.sendPrompt(reportPrompt);
                         logDebug('dispatchPlan: Team mode — report prompt sent, waiting for response...');
 
@@ -866,13 +859,19 @@ async function dispatchPlan(
                         currentTeamAbortController = null;
                     }
                     return;
+                } catch (e) {
+                    const errMsg = e instanceof Error ? e.message : String(e);
+                    logError(`dispatchPlan: Team orchestration failed: ${errMsg}`, e);
+                    await channel.send({ embeds: [buildEmbed(`❌ チームモード実行エラー: ${sanitizeErrorForDiscord(errMsg)}`, EmbedColor.Error)] });
+                    teamModeFallback = true;
                 }
-            } catch (e) {
-                const errMsg = e instanceof Error ? e.message : String(e);
-                logError(`dispatchPlan: Team orchestration failed: ${errMsg}`, e);
-                await channel.send({ embeds: [buildEmbed(`❌ チームモード実行エラー: ${sanitizeErrorForDiscord(errMsg)}`, EmbedColor.Error)] });
+            } else {
+                // plan.tasks がない → AI がチームモード不要と判断
+                logDebug('dispatchPlan: Team mode — no plan.tasks provided by AI, falling back to normal mode');
+                await channel.send({ embeds: [buildEmbed('📋 メインエージェントで実行します（チームモード対象外）', EmbedColor.Info)] });
+                teamModeFallback = true;
             }
-            // フォールバックでない場合のみ return（通常モードにフォールバック時は下に流す）
+
             if (!teamModeFallback) {
                 return;
             }

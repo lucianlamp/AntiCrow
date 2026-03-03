@@ -16,6 +16,7 @@ import {
     SubagentConfig,
     SubagentInfo,
     DEFAULT_SUBAGENT_CONFIG,
+    WorktreePoolEntry,
 } from './subagentTypes';
 import { writePrompt, watchResponse } from './subagentIpc';
 import { CdpBridge } from './cdpBridge';
@@ -31,12 +32,16 @@ export class SubagentHandle {
     public readonly worktreePath: string;
     public readonly createdAt: number;
     public currentTask?: string;
+    /** プールエントリのインデックス（プール使用時のみ） */
+    public poolEntryIndex?: number;
 
     private _state: SubagentState = 'IDLE';
     private config: SubagentConfig;
     private ipcDir: string;
     private cdpBridge: CdpBridge;
     private repoRoot: string;
+    /** プール使用時: worktree 作成・削除をスキップするフラグ */
+    private usePool: boolean;
 
     constructor(
         name: string,
@@ -44,10 +49,20 @@ export class SubagentHandle {
         ipcDir: string,
         cdpBridge: CdpBridge,
         config: Partial<SubagentConfig> = {},
+        poolEntry?: WorktreePoolEntry,
     ) {
         this.name = name;
-        this.branch = `team/subagent/${name}`;
-        this.worktreePath = path.join(repoRoot, '.anticrow', 'worktrees', name);
+        this.usePool = !!poolEntry;
+        if (poolEntry) {
+            // プールから取得した worktree を使用
+            this.worktreePath = poolEntry.path;
+            this.branch = `team/subagent/${name}`;
+            this.poolEntryIndex = poolEntry.index;
+        } else {
+            // 従来通り: 新規 worktree を作成
+            this.worktreePath = path.join(repoRoot, '.anticrow', 'worktrees', name);
+            this.branch = `team/subagent/${name}`;
+        }
         this.createdAt = Date.now();
         this.config = { ...DEFAULT_SUBAGENT_CONFIG, ...config };
         this.ipcDir = ipcDir;
@@ -89,37 +104,62 @@ export class SubagentHandle {
 
         // --- CREATING: worktree + ブランチ作成 ---
         this._state = 'CREATING';
-        logDebug(`[SubagentHandle] ${this.name}: CREATING`);
+        logDebug(`[SubagentHandle] ${this.name}: CREATING (pool=${this.usePool})`);
 
-        try {
-            // .anticrow/worktrees ディレクトリが存在しない場合は作成
-            const worktreeDir = path.dirname(this.worktreePath);
-            if (!fs.existsSync(worktreeDir)) {
-                fs.mkdirSync(worktreeDir, { recursive: true });
-                logDebug(`[SubagentHandle] worktree ディレクトリ作成: ${worktreeDir}`);
-            }
-
-            // ブランチがなければ作成
+        if (this.usePool) {
+            // プール使用時: worktree は既に存在するのでブランチ作成のみ
             try {
-                execSync(`git branch ${this.branch}`, {
+                // プール worktree 内で新しいブランチを作成してチェックアウト
+                try {
+                    execSync(`git checkout -b ${this.branch}`, {
+                        cwd: this.worktreePath,
+                        stdio: 'pipe',
+                    });
+                } catch {
+                    // ブランチが既に存在する場合はチェックアウトのみ
+                    execSync(`git checkout ${this.branch}`, {
+                        cwd: this.worktreePath,
+                        stdio: 'pipe',
+                    });
+                }
+                logDebug(`[SubagentHandle] プール worktree でブランチ切替: ${this.branch}`);
+            } catch (err) {
+                logError(`[SubagentHandle] プール worktree ブランチ切替失敗: ${err}`);
+                this._state = 'FAILED';
+                throw err;
+            }
+        } else {
+            // 従来通り: worktree + ブランチ作成
+            try {
+                // .anticrow/worktrees ディレクトリが存在しない場合は作成
+                const worktreeDir = path.dirname(this.worktreePath);
+                if (!fs.existsSync(worktreeDir)) {
+                    fs.mkdirSync(worktreeDir, { recursive: true });
+                    logDebug(`[SubagentHandle] worktree ディレクトリ作成: ${worktreeDir}`);
+                }
+
+                // ブランチがなければ作成
+                try {
+                    execSync(`git branch ${this.branch}`, {
+                        cwd: this.repoRoot,
+                        stdio: 'pipe',
+                    });
+                } catch {
+                    // ブランチが既に存在する場合は無視
+                    logDebug(`[SubagentHandle] ブランチ ${this.branch} は既に存在します`);
+                }
+
+                // worktree 作成
+                execSync(`git worktree add "${this.worktreePath}" ${this.branch}`, {
                     cwd: this.repoRoot,
                     stdio: 'pipe',
                 });
-            } catch {
-                // ブランチが既に存在する場合は無視
-                logDebug(`[SubagentHandle] ブランチ ${this.branch} は既に存在します`);
+                logDebug(`[SubagentHandle] worktree 作成完了: ${this.worktreePath}`);
+            } catch (err) {
+                logError(`[SubagentHandle] worktree 作成失敗: ${err}`);
+                this._state = 'FAILED';
+                throw err;
             }
-
-            // worktree 作成
-            execSync(`git worktree add "${this.worktreePath}" ${this.branch}`, {
-                cwd: this.repoRoot,
-                stdio: 'pipe',
-            });
-            logDebug(`[SubagentHandle] worktree 作成完了: ${this.worktreePath}`);
-        } catch (err) {
-            logError(`[SubagentHandle] worktree 作成失敗: ${err}`);
-            this._state = 'FAILED';
-            throw err;
         }
 
         // --- LAUNCHING: Antigravity ウィンドウ起動（リトライ付き） ---
@@ -265,10 +305,27 @@ export class SubagentHandle {
             logWarn(`[SubagentHandle] closeWindow 失敗: ${err}`);
         }
 
+        // --- マージ: worktree 削除前にサブエージェントの変更をメインブランチへ ---
+        await this.mergeChanges();
+
         // --- CLEANED ---
-        await this.cleanupWorktree();
+        if (this.usePool) {
+            // プール使用時: worktree は削除せず、ブランチのみ削除
+            // worktree のリセットは WorktreePool.release() で行われる
+            try {
+                execSync(`git branch -D ${this.branch}`, {
+                    cwd: this.repoRoot,
+                    stdio: 'pipe',
+                });
+                logDebug(`[SubagentHandle] プール使用: ブランチ削除のみ: ${this.branch}`);
+            } catch {
+                logDebug(`[SubagentHandle] ブランチ削除スキップ（存在しない可能性）: ${this.branch}`);
+            }
+        } else {
+            await this.cleanupWorktree();
+        }
         this._state = 'CLEANED';
-        logDebug(`[SubagentHandle] ${this.name}: CLEANED`);
+        logDebug(`[SubagentHandle] ${this.name}: CLEANED (pool=${this.usePool})`);
     }
 
     // -----------------------------------------------------------------------
@@ -318,6 +375,51 @@ export class SubagentHandle {
     }
 
     /**
+     * サブエージェントのブランチの変更をメインブランチにマージする。
+     * close() 時に cleanupWorktree() の前に呼び出される。
+     * コンフリクト発生時はマージを中断し、ログに記録する（変更は失われない）。
+     */
+    async mergeChanges(): Promise<{ merged: boolean; conflicted: boolean; error?: string }> {
+        try {
+            // メインブランチ（HEAD）とサブエージェントブランチの差分をチェック
+            const diffOutput = execSync(
+                `git log HEAD..${this.branch} --oneline`,
+                { cwd: this.repoRoot, stdio: 'pipe' },
+            ).toString().trim();
+
+            if (!diffOutput) {
+                logDebug(`[SubagentHandle] ${this.name}: マージ不要（差分なし）`);
+                return { merged: false, conflicted: false };
+            }
+
+            const commitCount = diffOutput.split('\n').filter(l => l.trim()).length;
+            logDebug(`[SubagentHandle] ${this.name}: ${commitCount} 個のコミットをマージします`);
+
+            // マージ実行
+            try {
+                execSync(`git merge ${this.branch} --no-edit`, {
+                    cwd: this.repoRoot,
+                    stdio: 'pipe',
+                });
+                logDebug(`[SubagentHandle] ${this.name}: ✅ マージ成功 (${commitCount} commits)`);
+                return { merged: true, conflicted: false };
+            } catch (mergeErr) {
+                // コンフリクト発生 → マージを中断
+                logWarn(`[SubagentHandle] ${this.name}: ⚠️ マージコンフリクト発生。マージを中断します。`);
+                logWarn(`[SubagentHandle] コンフリクト詳細: ${mergeErr}`);
+                try {
+                    execSync('git merge --abort', { cwd: this.repoRoot, stdio: 'pipe' });
+                } catch { /* ignore: merge --abort 自体は失敗しても問題ない */ }
+                return { merged: false, conflicted: true, error: String(mergeErr) };
+            }
+        } catch (err) {
+            // git log 自体が失敗した場合（ブランチが存在しない等）
+            logDebug(`[SubagentHandle] ${this.name}: マージチェックをスキップ（ブランチが存在しない可能性）: ${err}`);
+            return { merged: false, conflicted: false, error: String(err) };
+        }
+    }
+
+    /**
      * worktree とブランチのクリーンアップ。
      */
     private async cleanupWorktree(): Promise<void> {
@@ -355,6 +457,27 @@ export class SubagentHandle {
         } catch {
             // ブランチが存在しない場合は無視
         }
+    }
+
+    /**
+     * サブエージェントを再利用するために状態をリセットする。
+     * ウィンドウは閉じず、_state を READY に戻して新しいプロンプトを受け付けられるようにする。
+     * 必要に応じて startNewChat() でコンテキストをリセットする。
+     */
+    async resetForReuse(): Promise<void> {
+        const validStates: SubagentState[] = ['COMPLETED', 'BUSY', 'READY'];
+        if (!validStates.includes(this._state)) {
+            throw new Error(`resetForReuse() は COMPLETED/BUSY/READY 状態でのみ呼び出し可能（現在: ${this._state}）`);
+        }
+
+        logDebug(`[SubagentHandle] ${this.name}: resetForReuse (from ${this._state})`);
+
+        // コンテキストリセットはスキップ（ユーザーフィードバック: 不要）
+        // 新しいプロンプトを送ればサブエージェントは新しいタスクとして処理する
+
+        this._state = 'READY';
+        this.currentTask = undefined;
+        logDebug(`[SubagentHandle] ${this.name}: READY (reuse)`);
     }
 
     /**

@@ -37,6 +37,7 @@ export interface Plan {
     timezone: string;               // "Asia/Tokyo"
     cron: string | null;            // null = 即時実行のみ
     prompt: string;
+    tasks?: string[];               // チームモード用タスク配列（AI直接分割）
     requires_confirmation: boolean;
     choice_mode?: ChoiceMode;        // 確認時の選択モード（デフォルト: 'none'）
     target?: PlanTarget;             // 特殊フロー分岐（省略時は通常実行）
@@ -63,6 +64,7 @@ export interface PlanOutput {
     timezone: string;
     cron: string;
     prompt: string;
+    tasks?: string[];               // チームモード用タスク配列（AI直接分割）
     requires_confirmation: boolean;
     choice_mode?: ChoiceMode;        // 確認時の選択モード（デフォルト: 'none'）
     target?: PlanTarget;             // 特殊フロー分岐（省略時は通常実行）

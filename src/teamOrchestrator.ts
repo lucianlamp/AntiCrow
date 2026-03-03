@@ -11,9 +11,11 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { logDebug, logError, logInfo, logWarn } from './logger';
 import type { SubagentManager } from './subagentManager';
+import { WorktreePool } from './subagentManager';
 import type { FileIpc } from './fileIpc';
 import { loadTeamConfig, type TeamConfig } from './teamConfig';
 import type { TeamInstruction, TeamReport } from './subagentTypes';
+import { resolveWorkspacePaths } from './configHelper';
 
 // ---------------------------------------------------------------------------
 // 型定義
@@ -73,10 +75,33 @@ export class TeamOrchestrator {
     private monitorTimers = new Map<string, ReturnType<typeof setInterval>>();
     private disposed = false;
     private threadOps: ThreadOps | null = null;
+    private worktreePool: WorktreePool;
 
     /** 実行時にワークスペースを動的に切り替えるための repoRoot 解決 */
     private getEffectiveRepoRoot(override?: string): string {
         return override || this.repoRoot;
+    }
+
+    /**
+     * ワークスペース名からリポジトリルートパスを解決する。
+     * resolveWorkspacePaths() でワークスペース名→パスの変換を行い、
+     * 対象ワークスペースの正しいリポジトリルートを返す。
+     * 解決できない場合は undefined を返す（デフォルト repoRoot が使用される）。
+     */
+    private resolveRepoRootForWorkspace(workspaceName: string): string | undefined {
+        try {
+            const wsPaths = resolveWorkspacePaths();
+            const wsPath = wsPaths[workspaceName];
+            if (wsPath) {
+                logDebug(`[TeamOrchestrator] resolveRepoRootForWorkspace: "${workspaceName}" → "${wsPath}"`);
+                return wsPath;
+            }
+            logDebug(`[TeamOrchestrator] resolveRepoRootForWorkspace: "${workspaceName}" not found in workspace paths, using default`);
+            return undefined;
+        } catch (err) {
+            logWarn(`[TeamOrchestrator] resolveRepoRootForWorkspace error: ${err}`);
+            return undefined;
+        }
     }
 
     constructor(
@@ -89,6 +114,14 @@ export class TeamOrchestrator {
         this.fileIpc = fileIpc;
         this.sendToDiscord = sendToDiscord;
         this.repoRoot = repoRoot;
+
+        // Worktree プールを初期化して SubagentManager に設定
+        const pool = new WorktreePool(repoRoot);
+        this.worktreePool = pool;
+        if (subagentManager?.setWorktreePool) {
+            subagentManager.setWorktreePool(pool);
+        }
+        logDebug('[TeamOrchestrator] WorktreePool を初期化しました');
     }
 
     /**
@@ -119,6 +152,12 @@ export class TeamOrchestrator {
         const config = loadTeamConfig(effectiveRoot);
         const startTime = Date.now();
 
+        // Worktree プールの自動初期化
+        if (!this.worktreePool.isInitialized) {
+            await this.worktreePool.initialize(config.maxAgents || 3);
+            logDebug(`[TeamOrchestrator] WorktreePool 自動初期化完了 (size=${config.maxAgents || 3})`);
+        }
+
         // サブエージェントをスポーン（名前は SubagentManager が自動生成）
         const name = agentName ?? `agent-${Date.now()}`;
         logInfo(`[TeamOrchestrator] Spawning agent: ${name} (workspace=${workspaceName || 'default'})`);
@@ -141,8 +180,11 @@ export class TeamOrchestrator {
         const progressChannelId = threadId || channelId;
 
         try {
+            // ワークスペース名からリポジトリルートを解決
+            const wsRepoRoot = workspaceName ? this.resolveRepoRootForWorkspace(workspaceName) : undefined;
+
             // spawn() は taskPrompt を受け取るが、ここでは後で sendPrompt するため省略
-            const handle = await this.subagentManager.spawn(undefined, workspaceName);
+            const handle = await this.subagentManager.spawn(undefined, workspaceName, wsRepoRoot);
 
             // 進捗監視を開始（スレッドがあればスレッドに送信）
             this.startMonitor(handle.name, progressChannelId, config, threadId);
@@ -339,6 +381,10 @@ export class TeamOrchestrator {
         for (const [name] of this.monitorTimers) {
             this.stopMonitor(name);
         }
+        // Worktree プールの破棄
+        this.worktreePool.dispose().catch(err => {
+            logWarn(`[TeamOrchestrator] WorktreePool dispose 失敗: ${err}`);
+        });
         logDebug('[TeamOrchestrator] disposed');
     }
 
@@ -462,6 +508,89 @@ export class TeamOrchestrator {
 
         logInfo(`[TeamOrchestrator] groupTasks: ${tasks.length} tasks → ${grouped.length} groups (maxAgents=${maxAgents})`);
         return grouped;
+    }
+
+    /**
+     * タスクリストから重複するタスクを除去する。
+     * splitTasks の結果に対して呼び出し、同じ内容のタスクが複数のサブエージェントに
+     * 割り当てられるのを防ぐ。
+     *
+     * 重複判定:
+     *   1. 番号プレフィックス（「1. 」「## サブタスクA」等）と空白を除去して正規化
+     *   2. 正規化後の文字列が完全一致 → 重複
+     *   3. 正規化後の文字列の類似度が80%以上 → 重複
+     *
+     * 重複時は最も長い記述を保持する。
+     *
+     * @returns 重複除去済みのタスクリストと、除去されたタスク数
+     */
+    deduplicateTasks(tasks: string[]): { tasks: string[]; removedCount: number } {
+        if (tasks.length <= 1) {
+            return { tasks, removedCount: 0 };
+        }
+
+        const normalize = (text: string): string => {
+            return text
+                // 番号プレフィックス（1. / 1) / ① 等）を除去
+                .replace(/^\s*(?:\d+[.\)）\]]|[①②③④⑤⑥⑦⑧⑨⑩])\s*/gm, '')
+                // ## サブタスクA 等のヘッダーを除去
+                .replace(/^##\s*サブタスク[A-Z]\s*/gm, '')
+                // ## 背景, ## タスク ヘッダーを除去
+                .replace(/^##\s*(?:背景|タスク)\s*/gm, '')
+                // 【サブエージェントタスク】等のプレフィックスを除去
+                .replace(/【[^】]*】\s*/g, '')
+                // 連続する空白・改行を単一スペースに
+                .replace(/\s+/g, ' ')
+                .trim();
+        };
+
+        const similarity = (a: string, b: string): number => {
+            if (a === b) return 1.0;
+            if (a.length === 0 || b.length === 0) return 0;
+            const longer = a.length >= b.length ? a : b;
+            const shorter = a.length >= b.length ? b : a;
+            // 短い方が長い方に含まれているかチェック
+            if (longer.includes(shorter)) return shorter.length / longer.length;
+            // 共通文字数ベースの簡易類似度
+            const charSet = new Set(shorter.split(''));
+            let matchCount = 0;
+            for (const c of longer) {
+                if (charSet.has(c)) matchCount++;
+            }
+            return matchCount / longer.length;
+        };
+
+        const unique: { original: string; normalized: string }[] = [];
+        let removedCount = 0;
+
+        for (const task of tasks) {
+            const norm = normalize(task);
+            let isDuplicate = false;
+
+            for (let i = 0; i < unique.length; i++) {
+                const sim = similarity(norm, unique[i].normalized);
+                if (sim >= 0.8) {
+                    isDuplicate = true;
+                    removedCount++;
+                    // より長い記述を保持
+                    if (task.length > unique[i].original.length) {
+                        unique[i] = { original: task, normalized: norm };
+                    }
+                    logDebug(`[TeamOrchestrator] deduplicateTasks: 重複検出 (類似度=${(sim * 100).toFixed(0)}%)`);
+                    break;
+                }
+            }
+
+            if (!isDuplicate) {
+                unique.push({ original: task, normalized: norm });
+            }
+        }
+
+        if (removedCount > 0) {
+            logInfo(`[TeamOrchestrator] deduplicateTasks: ${tasks.length} tasks → ${unique.length} unique (${removedCount} duplicates removed)`);
+        }
+
+        return { tasks: unique.map(u => u.original), removedCount };
     }
 
     /**
@@ -624,13 +753,26 @@ export class TeamOrchestrator {
 
         logInfo(`[TeamOrchestrator] orchestrateTeam: ${instructions.length} agents, workspace=${workspaceName || 'default'}`);
 
-        // 前回のサブエージェントのウィンドウを全て閉じる（ウィンドウが開いたまま残っている場合の対策）
-        await this.subagentManager.killAll();
+        // ウィンドウ再利用が有効な場合: アイドルプールから回収を試みる
+        if (this.subagentManager.enableWindowReuse) {
+            logInfo('[TeamOrchestrator] ウィンドウ再利用モード: アイドルプールから回収を試みます');
+            const reclaimed = await this.subagentManager.reclaimFromIdlePool();
+            logInfo(`[TeamOrchestrator] アイドルプールから ${reclaimed.length} 個のウィンドウを回収`);
+            // killAll はスキップ（再利用可能なウィンドウを殺さない）
+            // ただし stale エージェントはクリーンアップ
+            const staleCount = await this.subagentManager.cleanupStaleAgents();
+            if (staleCount > 0) {
+                logInfo(`[TeamOrchestrator] Cleaned up ${staleCount} stale agents`);
+            }
+        } else {
+            // 従来動作: 前回のサブエージェントのウィンドウを全て閉じる
+            await this.subagentManager.killAll();
 
-        // killAll() で閉じきれなかった stale エージェントをクリーンアップ
-        const staleCount = await this.subagentManager.cleanupStaleAgents();
-        if (staleCount > 0) {
-            logInfo(`[TeamOrchestrator] Cleaned up ${staleCount} stale agents before team orchestration`);
+            // killAll() で閉じきれなかった stale エージェントをクリーンアップ
+            const staleCount = await this.subagentManager.cleanupStaleAgents();
+            if (staleCount > 0) {
+                logInfo(`[TeamOrchestrator] Cleaned up ${staleCount} stale agents before team orchestration`);
+            }
         }
 
         await this.sendToDiscord(channelId,
@@ -647,8 +789,11 @@ export class TeamOrchestrator {
             }
 
             try {
+                // ワークスペース名からリポジトリルートを解決
+                const wsRepoRoot = workspaceName ? this.resolveRepoRootForWorkspace(workspaceName) : undefined;
+
                 // サブエージェントを spawn
-                const handle = await this.subagentManager.spawn(undefined, workspaceName);
+                const handle = await this.subagentManager.spawn(undefined, workspaceName, wsRepoRoot);
                 agentNames.set(instruction.agentIndex, handle.name);
                 logInfo(`[TeamOrchestrator] Spawned agent ${handle.name} for task ${instruction.agentIndex}`);
 
@@ -756,6 +901,42 @@ export class TeamOrchestrator {
         const failCount = results.length - successCount;
 
         logInfo(`[TeamOrchestrator] orchestrateTeam completed: ${successCount}/${results.length} succeeded, ${totalDurationMs}ms`);
+
+        // --- 全サブエージェントの変更をメインブランチにマージ ---
+        logInfo('[TeamOrchestrator] 全サブエージェントの変更をメインブランチにマージします...');
+        let mergedCount = 0;
+        let conflictCount = 0;
+        for (const [, agentName] of agentNames) {
+            const handle = this.subagentManager.getAgent(agentName);
+            if (handle) {
+                const mergeResult = await handle.mergeChanges();
+                if (mergeResult.merged) {
+                    mergedCount++;
+                } else if (mergeResult.conflicted) {
+                    conflictCount++;
+                    logWarn(`[TeamOrchestrator] サブエージェント "${agentName}" のマージにコンフリクトが発生しました`);
+                }
+            }
+        }
+        if (mergedCount > 0 || conflictCount > 0) {
+            logInfo(`[TeamOrchestrator] マージ結果: ${mergedCount} 成功, ${conflictCount} コンフリクト`);
+            await this.sendToDiscord(channelId,
+                `🔀 **マージ結果**: ${mergedCount} サブエージェントの変更をマージ成功` +
+                (conflictCount > 0 ? `, ${conflictCount} コンフリクト` : ''));
+        }
+
+        // ウィンドウ再利用モード: 完了したウィンドウをアイドルプールに移動（即座に閉じない）
+        if (this.subagentManager.enableWindowReuse) {
+            for (const [, agentName] of agentNames) {
+                const handle = this.subagentManager.getAgent(agentName);
+                if (handle) {
+                    await this.subagentManager.moveToIdlePool(handle);
+                }
+            }
+            // アイドルクリーンアップタイマーを起動（TTL 超過後に自動クリーンアップ）
+            this.subagentManager.startIdleCleanup();
+            logInfo(`[TeamOrchestrator] ${agentNames.size} 個のウィンドウをアイドルプールに移動`);
+        }
 
         return {
             results,
@@ -866,6 +1047,42 @@ export class TeamOrchestrator {
      * Phase 5: 全サブエージェントの結果を報告用 IPC ファイルとして書き出す。
      * Discord Bot がこれをメインエージェントにプロンプトとして送信する。
      */
+    /**
+     * メインエージェントへの報告指示をIPCファイルとして書き出す。
+     * サブエージェントへのプロンプトと同じ「ファイル読み取り方式」に統一する。
+     *
+     * @returns 書き出した指示ファイルの絶対パス
+     */
+    writeReportInstructionFile(
+        teamRequestId: string,
+        reportPath: string,
+        reportResponsePath: string,
+    ): string {
+        const ipcDir = this.fileIpc.getIpcDir();
+        const instructionPath = path.join(ipcDir, `team_${teamRequestId}_report_instruction.json`);
+
+        const instruction = {
+            persona: 'あなたはメインエージェントです。サブエージェントたちからの報告を受け取り、統合レポートを作成してください。',
+            task: '全サブエージェントの報告を確認し、統合レポートを作成してください。',
+            report_path: reportPath,
+            response_path: reportResponsePath,
+            instructions: [
+                `report_path のファイルを view_file ツールで読み込んでください`,
+                `全サブエージェントの報告を確認してください`,
+                `統合レポートを作成し、response_path に Markdown で書き込んでください（write_to_file）`,
+                `レポートにはすべてのタスクの結果・成否・注意点をまとめてください`,
+                `ユーザー向けにわかりやすい報告書を作成してください`,
+                `必ず response_path に write_to_file で書き込んでください。書き込まないと完了と見なされません`,
+            ],
+            timestamp: Date.now(),
+            requestId: teamRequestId,
+        };
+
+        fs.writeFileSync(instructionPath, JSON.stringify(instruction, null, 2), 'utf-8');
+        logInfo(`[TeamOrchestrator] Wrote report instruction file: ${instructionPath}`);
+        return instructionPath;
+    }
+
     writeReportFile(
         requestId: string,
         results: OrchestrationResult[],
