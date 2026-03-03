@@ -36,7 +36,7 @@ import { openHistoryAndGetSections, selectConversation, closePopup, type Convers
 import { BridgeContext } from './bridgeContext';
 import { resolveWorkspaceFromChannel } from './discordChannels';
 
-import { getTimezone, isUserAllowed } from './configHelper';
+import { getTimezone, isUserAllowed, getWorkspacePaths } from './configHelper';
 import { handleWorkspaceButton, handleWorkspaceModalSubmit, getRunningWsNames } from './workspaceHandler';
 import { fetchQuota } from './quotaProvider';
 import { handleManageSlash } from './adminHandler';
@@ -84,6 +84,28 @@ function debouncedRename(ctx: BridgeContext, channelId: string, newName: string)
 
     pendingRenames.set(channelId, { timer, newName });
     logDebug(`debouncedRename: scheduled rename for ${channelId} → "${newName}" (2s delay)`);
+}
+
+/**
+ * インタラクションの Discord チャンネルカテゴリからワークスペース名を解決し、
+ * 対応する repoRoot パスを返すヘルパー。
+ * フォールバックとして workspaceFolders[0] を返す。
+ */
+function resolveRepoRootFromInteraction(
+    interaction: { channel: unknown },
+): { repoRoot: string | undefined; wsName: string | null } {
+    const channel = interaction.channel;
+    let wsName: string | null = null;
+    if (channel && typeof channel === 'object' && 'parent' in channel) {
+        wsName = resolveWorkspaceFromChannel(channel as import('discord.js').TextChannel);
+    }
+    if (wsName) {
+        const wsPaths = getWorkspacePaths();
+        if (wsPaths[wsName]) {
+            return { repoRoot: wsPaths[wsName], wsName };
+        }
+    }
+    return { repoRoot: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath, wsName };
 }
 
 /**
@@ -800,7 +822,7 @@ export async function handleButtonInteraction(
         // ----- チームモード関連ボタン -----
         if (customId.startsWith('team_')) {
             const teamAction = customId.replace('team_', '');
-            const repoRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+            const { repoRoot } = resolveRepoRootFromInteraction(interaction);
             if (!repoRoot) {
                 await interaction.reply({ embeds: [buildEmbed('⚠️ ワークスペースが検出されません。', EmbedColor.Warning)] });
                 return;

@@ -729,8 +729,15 @@ async function dispatchPlan(
                     await channel.send({ embeds: [buildEmbed(`🤖 **チームモード**: AI が ${plan.tasks.length} 個のタスクに分割済み。サブエージェントに指令を作成中...`, EmbedColor.Info)] });
                     logDebug(`dispatchPlan: Team mode — AI provided ${plan.tasks.length} tasks`);
 
-                    // maxAgents に従ってグループ化
-                    const teamConfig = loadTeamConfig(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '');
+                    // maxAgents に従ってグループ化（WS別のrepoRootを使用）
+                    const teamRepoRoot = (() => {
+                        if (wsNameFromCategory) {
+                            const wsPaths = getWorkspacePaths();
+                            if (wsPaths[wsNameFromCategory]) { return wsPaths[wsNameFromCategory]; }
+                        }
+                        return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
+                    })();
+                    const teamConfig = loadTeamConfig(teamRepoRoot);
                     const tasks = ctx.teamOrchestrator.groupTasks(plan.tasks, teamConfig.maxAgents);
                     logDebug(`dispatchPlan: Team mode — grouped ${plan.tasks.length} tasks into ${tasks.length} groups (maxAgents=${teamConfig.maxAgents})`);
 

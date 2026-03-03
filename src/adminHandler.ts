@@ -33,7 +33,7 @@ import { loadTeamConfig, saveTeamConfig } from './teamConfig';
 import { BridgeContext } from './bridgeContext';
 import { resetProcessingFlag, getMessageQueueStatus, cancelPlanGeneration, enqueueMessage, clearWaitingMessages } from './messageHandler';
 import type { ProcessingPhase } from './messageHandler';
-import { getTimezone } from './configHelper';
+import { getTimezone, getWorkspacePaths } from './configHelper';
 import { DiscordBot } from './discordBot';
 import { getRunningWsNames, buildWorkspaceListEmbed } from './workspaceHandler';
 import { fetchQuota } from './quotaProvider';
@@ -910,7 +910,19 @@ async function handleTeam(
     ctx: BridgeContext,
     interaction: ChatInputCommandInteraction,
 ): Promise<void> {
-    const repoRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    // Discord チャンネルカテゴリからワークスペースを解決
+    const channel = interaction.channel as TextChannel | null;
+    const wsName = channel ? DiscordBot.resolveWorkspaceFromChannel(channel) : null;
+    let repoRoot: string | undefined;
+    if (wsName) {
+        const wsPaths = getWorkspacePaths();
+        if (wsPaths[wsName]) {
+            repoRoot = wsPaths[wsName];
+        }
+    }
+    if (!repoRoot) {
+        repoRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    }
 
     if (!repoRoot) {
         await interaction.reply({ embeds: [buildEmbed('⚠️ ワークスペースが検出されません。', EmbedColor.Warning)] });
