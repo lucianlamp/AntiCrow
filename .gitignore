@@ -7,3 +7,17 @@ convex/_generated/
 .env
 tsconfig.tsbuildinfo
 scripts/vscode_commands_dump.json
+
+# ログファイル
+*.log
+
+# テストカバレッジ
+coverage/
+
+# 一時デバッグJSON
+tmp_*.json
+
+# テスト出力ファイル
+test-*.txt
+test_*.txt
+

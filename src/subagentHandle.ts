@@ -5,6 +5,7 @@
 // ---------------------------------------------------------------------------
 
 import * as vscode from 'vscode';
+import * as fs from 'fs';
 import * as path from 'path';
 import { execSync } from 'child_process';
 import { logDebug, logWarn, logError } from './logger';
@@ -18,7 +19,7 @@ import {
 } from './subagentTypes';
 import { writePrompt, watchResponse } from './subagentIpc';
 import { CdpBridge } from './cdpBridge';
-import { discoverInstances, extractWorkspaceName } from './cdpTargets';
+import { DiscoveredInstance, discoverInstances, extractWorkspaceName } from './cdpTargets';
 
 /**
  * 単一のサブエージェントを管理するハンドル。
@@ -46,7 +47,7 @@ export class SubagentHandle {
     ) {
         this.name = name;
         this.branch = `team/subagent/${name}`;
-        this.worktreePath = path.join(repoRoot, '.worktrees', name);
+        this.worktreePath = path.join(repoRoot, '.anticrow', 'worktrees', name);
         this.createdAt = Date.now();
         this.config = { ...DEFAULT_SUBAGENT_CONFIG, ...config };
         this.ipcDir = ipcDir;
@@ -91,6 +92,13 @@ export class SubagentHandle {
         logDebug(`[SubagentHandle] ${this.name}: CREATING`);
 
         try {
+            // .anticrow/worktrees ディレクトリが存在しない場合は作成
+            const worktreeDir = path.dirname(this.worktreePath);
+            if (!fs.existsSync(worktreeDir)) {
+                fs.mkdirSync(worktreeDir, { recursive: true });
+                logDebug(`[SubagentHandle] worktree ディレクトリ作成: ${worktreeDir}`);
+            }
+
             // ブランチがなければ作成
             try {
                 execSync(`git branch ${this.branch}`, {
@@ -114,30 +122,64 @@ export class SubagentHandle {
             throw err;
         }
 
-        // --- LAUNCHING: Antigravity ウィンドウ起動 ---
+        // --- LAUNCHING: Antigravity ウィンドウ起動（リトライ付き） ---
         this._state = 'LAUNCHING';
         logDebug(`[SubagentHandle] ${this.name}: LAUNCHING`);
 
-        try {
-            await this.cdpBridge.launchAntigravity(this.worktreePath);
-        } catch (err) {
-            logError(`[SubagentHandle] ウィンドウ起動失敗: ${err}`);
-            this._state = 'FAILED';
-            await this.cleanupWorktree();
-            throw err;
+        const maxRetries = this.config.spawnMaxRetries;
+        let launched = false;
+
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                await this.cdpBridge.launchAntigravity(this.worktreePath, { skipCooldown: true });
+            } catch (err) {
+                logError(`[SubagentHandle] ウィンドウ起動失敗 (attempt ${attempt}/${maxRetries}): ${err}`);
+                if (attempt === maxRetries) {
+                    this._state = 'FAILED';
+                    await this.cleanupWorktree();
+                    throw err;
+                }
+                // リトライ前に少し待つ
+                await new Promise(r => setTimeout(r, 2000));
+                continue;
+            }
+
+            // --- READY 待ち ---
+            const ready = await this.waitForReady();
+            if (ready) {
+                launched = true;
+                break;
+            }
+
+            logWarn(`[SubagentHandle] attempt ${attempt}/${maxRetries} failed (READY timeout), retrying...`);
+
+            if (attempt < maxRetries) {
+                // 次のリトライ前に少し待つ
+                await new Promise(r => setTimeout(r, 2000));
+            }
         }
 
-        // --- READY 待ち ---
-        const ready = await this.waitForReady();
-        if (!ready) {
-            logError(`[SubagentHandle] READY タイムアウト: ${this.name}`);
+        if (!launched) {
+            logError(`[SubagentHandle] READY タイムアウト: ${this.name} (全 ${maxRetries} 回のリトライ失敗)`);
             this._state = 'FAILED';
             await this.cleanupWorktree();
-            throw new Error(`サブエージェント "${this.name}" の起動がタイムアウトしました`);
+            throw new Error(`サブエージェント "${this.name}" の起動が ${maxRetries} 回のリトライ後もタイムアウトしました`);
         }
 
         this._state = 'READY';
         logDebug(`[SubagentHandle] ${this.name}: READY`);
+
+        // ウィンドウを最小化（ベストエフォート）
+        try {
+            const minimized = await this.cdpBridge.minimizeWindow(this.name);
+            if (minimized) {
+                logDebug(`[SubagentHandle] ${this.name}: ウィンドウを最小化しました`);
+            } else {
+                logWarn(`[SubagentHandle] ${this.name}: ウィンドウの最小化に失敗（ベストエフォート）`);
+            }
+        } catch (err) {
+            logWarn(`[SubagentHandle] ${this.name}: ウィンドウ最小化中にエラー: ${err}`);
+        }
     }
 
     /**
@@ -171,7 +213,10 @@ export class SubagentHandle {
             callback_path: callbackPath,
         };
 
-        writePrompt(this.ipcDir, promptData);
+        const promptFile = writePrompt(this.ipcDir, promptData);
+        logDebug(`[SubagentHandle] sendPrompt: IPC ファイル書き込み完了: ${path.basename(promptFile)}, callbackPath=${path.basename(callbackPath)}`);
+        logDebug(`[SubagentHandle] sendPrompt: promptData.to="${promptData.to}", promptData.from="${promptData.from}", prompt(100chars)="${prompt.substring(0, 100)}"`);
+        logDebug(`[SubagentHandle] sendPrompt: watchResponse 開始 (timeout=${this.config.promptTimeoutMs}ms, poll=${this.config.pollIntervalMs}ms)`);
 
         // レスポンス待ち
         const response = await watchResponse(
@@ -232,23 +277,43 @@ export class SubagentHandle {
 
     /**
      * CDP でターゲットの出現を待つ。
+     * worktree フォルダ名 or サブエージェント名でマッチングする。
      */
     private async waitForReady(): Promise<boolean> {
         const start = Date.now();
         const ports = this.cdpBridge.getPorts();
+        const worktreeBase = path.basename(this.worktreePath);
+        let pollCount = 0;
+
+        logDebug(`[SubagentHandle] waitForReady: name=${this.name}, worktreeBase=${worktreeBase}, worktreePath=${this.worktreePath}, ports=[${ports}], timeout=${this.config.launchTimeoutMs}ms`);
 
         while (Date.now() - start < this.config.launchTimeoutMs) {
+            pollCount++;
             try {
                 const instances = await discoverInstances(ports);
+                const elapsed = Date.now() - start;
+                // 毎回ログ出力（デバッグ中）
+                const names = instances.map(i => {
+                    const ws = extractWorkspaceName(i.title);
+                    return `{ws="${ws}", title="${i.title.substring(0, 80)}", port=${i.port}}`;
+                }).join(', ');
+                logDebug(`[SubagentHandle] waitForReady poll#${pollCount} (${elapsed}ms): found ${instances.length} instances: [${names}]`);
+
                 const found = instances.find(
-                    (i) => extractWorkspaceName(i.title) === this.name,
+                    (i) => this.matchesSubagent(i),
                 );
-                if (found) return true;
-            } catch {
-                // ネットワークエラーは無視して再試行
+                if (found) {
+                    logDebug(`[SubagentHandle] waitForReady: ✅ MATCHED target "${found.title}" (port=${found.port}) after ${pollCount} polls (${elapsed}ms)`);
+                    return true;
+                } else {
+                    logDebug(`[SubagentHandle] waitForReady: ❌ no match in poll#${pollCount}`);
+                }
+            } catch (err) {
+                logDebug(`[SubagentHandle] waitForReady poll#${pollCount}: network error: ${err}`);
             }
             await new Promise((r) => setTimeout(r, 1000));
         }
+        logWarn(`[SubagentHandle] waitForReady: timed out after ${this.config.launchTimeoutMs}ms (${pollCount} polls) for "${this.name}"`);
         return false;
     }
 
@@ -268,6 +333,16 @@ export class SubagentHandle {
             try {
                 execSync('git worktree prune', { cwd: this.repoRoot, stdio: 'pipe' });
             } catch { /* ignore */ }
+
+            // 物理ディレクトリが残っている場合は強制削除
+            try {
+                if (fs.existsSync(this.worktreePath)) {
+                    fs.rmSync(this.worktreePath, { recursive: true, force: true });
+                    logDebug(`[SubagentHandle] worktree ディレクトリ強制削除: ${this.worktreePath}`);
+                }
+            } catch (rmErr) {
+                logWarn(`[SubagentHandle] worktree ディレクトリ強制削除失敗: ${rmErr}`);
+            }
         }
 
         // ブランチ削除
@@ -290,10 +365,37 @@ export class SubagentHandle {
             const ports = this.cdpBridge.getPorts();
             const instances = await discoverInstances(ports);
             return instances.some(
-                (i) => extractWorkspaceName(i.title) === this.name,
+                (i) => this.matchesSubagent(i),
             );
         } catch {
             return false;
         }
+    }
+
+    /**
+     * CDP で発見されたインスタンスがこのサブエージェントのものかを判定する。
+     * ウィンドウタイトルから抽出したワークスペース名と、以下の候補を比較:
+     *   1. サブエージェント名（例: "anti-crow-subagent-1"）
+     *   2. worktree フォルダのベース名（例: "anti-crow-subagent-1"）
+     * また、ウィンドウタイトルに worktree パスが直接含まれるケースにも対応。
+     */
+    private matchesSubagent(instance: DiscoveredInstance): boolean {
+        const wsName = extractWorkspaceName(instance.title);
+        const worktreeBase = path.basename(this.worktreePath);
+
+        const checks = [
+            { label: 'wsName===name', result: wsName === this.name },
+            { label: 'wsName===worktreeBase', result: wsName === worktreeBase },
+            { label: 'title.includes(worktreePath)', result: instance.title.includes(this.worktreePath) },
+            { label: 'title.includes(worktreeBase)', result: instance.title.includes(worktreeBase) },
+        ];
+
+        const matched = checks.some(c => c.result);
+        if (matched) {
+            const matchedChecks = checks.filter(c => c.result).map(c => c.label).join(', ');
+            logDebug(`[SubagentHandle] matchesSubagent: ✅ MATCH (${matchedChecks}) | wsName="${wsName}", name="${this.name}", worktreeBase="${worktreeBase}"`);
+        }
+
+        return matched;
     }
 }

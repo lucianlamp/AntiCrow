@@ -78,6 +78,10 @@ export interface SubagentConfig {
     healthCheckIntervalMs: number;
     /** レスポンスポーリング間隔（ミリ秒、デフォルト: 2000）※フォールバック用 */
     pollIntervalMs: number;
+    /** spawn リトライ回数（デフォルト: 3） */
+    spawnMaxRetries: number;
+    /** stagger 起動の間隔（ミリ秒、デフォルト: 2500） */
+    staggerDelayMs: number;
 }
 
 /**
@@ -85,11 +89,13 @@ export interface SubagentConfig {
  */
 export const DEFAULT_SUBAGENT_CONFIG: SubagentConfig = {
     maxConcurrent: 3,
-    promptTimeoutMs: 300_000,
-    launchTimeoutMs: 30_000,
+    promptTimeoutMs: 900_000,   // 15分（teamConfig.responseTimeoutMs と整合）
+    launchTimeoutMs: 60_000,
     closeTimeoutMs: 5_000,
     healthCheckIntervalMs: 30_000,
     pollIntervalMs: 2_000,
+    spawnMaxRetries: 3,
+    staggerDelayMs: 2_500,
 };
 
 /**
@@ -102,4 +108,70 @@ export interface SubagentInfo {
     state: SubagentState;
     createdAt: number;
     currentTask?: string;
+}
+
+// ---------------------------------------------------------------------------
+// チームモード用型定義
+// ---------------------------------------------------------------------------
+
+/**
+ * メインエージェント → サブエージェントへの指令ファイル
+ * ファイル名パターン: team_{requestId}_agent{N}_instruction.json
+ */
+export interface TeamInstruction {
+    /** ペルソナ設定（例: 「あなたはサブエージェント1です」） */
+    persona: string;
+    /** サブエージェント番号（1-indexed） */
+    agentIndex: number;
+    /** 割り当てられたタスクの詳細 */
+    task: string;
+    /** レスポンスを書き込むファイルパス */
+    response_path: string;
+    /** 進捗を書き込むファイルパス */
+    progress_path: string;
+    /** 共有コンテキスト（元のユーザーリクエスト等） */
+    context: string;
+    /** タイムスタンプ */
+    timestamp: number;
+    /** メインエージェントの requestId */
+    requestId: string;
+    /** 総サブエージェント数 */
+    totalAgents: number;
+}
+
+/**
+ * サブエージェント → メインエージェントへの報告プロンプトファイル
+ * Discord Bot が中継して生成する
+ * ファイル名パターン: team_{requestId}_report_agent{N}.json
+ */
+export interface TeamReport {
+    /** ペルソナ設定 */
+    persona: string;
+    /** 報告元のサブエージェント名 */
+    report_from: string;
+    /** サブエージェント番号（1-indexed） */
+    agentIndex: number;
+    /** 元のタスク概要 */
+    task_summary: string;
+    /** サブエージェントのレスポンス内容 */
+    result: string;
+    /** 成功/失敗 */
+    success: boolean;
+    /** 残りのサブエージェント数 */
+    remaining_agents: number;
+    /** メインエージェントの最終レスポンスパス */
+    response_path: string;
+    /** タイムスタンプ */
+    timestamp: number;
+    /** メインエージェントの requestId */
+    requestId: string;
+    /** 全サブエージェントの報告が揃ったかどうか */
+    all_reports_collected: boolean;
+    /** 全サブエージェントの報告まとめ（全部揃った場合のみ） */
+    all_reports?: Array<{
+        agentIndex: number;
+        agentName: string;
+        success: boolean;
+        result: string;
+    }>;
 }

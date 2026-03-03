@@ -158,13 +158,18 @@ export class CdpPool {
 
         const cdp = new CdpBridge(undefined, this.ports);
 
-        if (workspaceName === DEFAULT_WORKSPACE) {
-            // デフォルトワークスペース: 従来と同じ自動探索接続
+        // 自ウィンドウのワークスペース名と一致する場合は DEFAULT_WORKSPACE と同じ自動探索接続を使用。
+        // これにより、既に開いているウィンドウの CDP に優先接続し、
+        // 新しいウィンドウを不必要に起動するのを防ぐ。
+        const isOwnWorkspace = this.ownerWorkspaceName && workspaceName === this.ownerWorkspaceName;
+
+        if (workspaceName === DEFAULT_WORKSPACE || isOwnWorkspace) {
+            // デフォルトワークスペース or 自ウィンドウ: 従来と同じ自動探索接続
             // マルチウィンドウ対応: 自ウィンドウを優先接続
             if (this.ownerWorkspaceName) {
                 cdp.setPreferredWorkspace(this.ownerWorkspaceName);
             }
-            logDebug(`CdpPool: creating default CdpBridge (auto-discover, preferred=${this.ownerWorkspaceName || 'none'})`);
+            logDebug(`CdpPool: creating CdpBridge (auto-discover, preferred=${this.ownerWorkspaceName || 'none'}, isOwn=${!!isOwnWorkspace})`);
             await cdp.connect();
         } else {
             // 特定ワークスペース: ポートファイルを再読取してターゲットを発見

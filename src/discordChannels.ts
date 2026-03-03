@@ -8,6 +8,8 @@ import {
     Client,
     TextChannel,
     ChannelType,
+    ThreadAutoArchiveDuration,
+    EmbedBuilder,
 } from 'discord.js';
 import { logDebug, logError, logWarn } from './logger';
 
@@ -237,6 +239,106 @@ export async function renamePlanChannel(client: Client, channelId: string, newNa
         return true;
     } catch (e) {
         logError(`Discord: failed to rename plan channel ${channelId}`, e);
+        return false;
+    }
+}
+
+// -----------------------------------------------------------------------
+// サブエージェント スレッド管理
+// -----------------------------------------------------------------------
+
+/**
+ * サブエージェント用のスレッドを #agent-chat 内に作成する。
+ * autoArchiveDuration は OneHour（1時間で自動アーカイブ）。
+ */
+export async function createSubagentThread(
+    client: Client,
+    channelId: string,
+    agentName: string,
+    taskSummary?: string,
+): Promise<string | null> {
+    try {
+        const channel = await client.channels.fetch(channelId);
+        if (!channel || !(channel instanceof TextChannel)) {
+            logWarn(`Discord: channel ${channelId} not found or not text channel for thread creation`);
+            return null;
+        }
+
+        const threadName = `🤖 ${agentName}`;
+        const thread = await channel.threads.create({
+            name: threadName,
+            autoArchiveDuration: ThreadAutoArchiveDuration.OneHour,
+            type: ChannelType.PublicThread,
+            reason: `サブエージェント ${agentName} の作業スレッド`,
+        });
+        logDebug(`Discord: created subagent thread "${threadName}" (${thread.id}) in channel ${channelId}`);
+        return thread.id;
+    } catch (e) {
+        logError(`Discord: failed to create subagent thread for "${agentName}" in channel ${channelId}`, e);
+        return null;
+    }
+}
+
+/** サブエージェント用スレッドを手動アーカイブする。 */
+export async function archiveSubagentThread(client: Client, threadId: string): Promise<boolean> {
+    try {
+        const thread = await client.channels.fetch(threadId);
+        if (!thread || !thread.isThread()) {
+            logWarn(`Discord: thread ${threadId} not found or not a thread for archiving`);
+            return false;
+        }
+        await thread.setArchived(true);
+        logDebug(`Discord: archived subagent thread ${threadId}`);
+        return true;
+    } catch (e) {
+        logError(`Discord: failed to archive subagent thread ${threadId}`, e);
+        return false;
+    }
+}
+
+/** サブエージェント用スレッドにメッセージを送信する。 */
+export async function sendToSubagentThread(client: Client, threadId: string, message: string): Promise<boolean> {
+    try {
+        const thread = await client.channels.fetch(threadId);
+        if (!thread || !thread.isThread()) {
+            logWarn(`Discord: thread ${threadId} not found or not a thread for sending message`);
+            return false;
+        }
+        await thread.send(message);
+        logDebug(`Discord: sent message to subagent thread ${threadId}`);
+        return true;
+    } catch (e) {
+        logError(`Discord: failed to send message to subagent thread ${threadId}`, e);
+        return false;
+    }
+}
+
+/** サブエージェント用スレッドに typing indicator を送信する。 */
+export async function sendTypingToThread(client: Client, threadId: string): Promise<void> {
+    try {
+        const thread = await client.channels.fetch(threadId);
+        if (!thread || !thread.isThread()) {
+            return;
+        }
+        await thread.sendTyping();
+    } catch {
+        // typing 送信失敗は無視
+    }
+}
+
+/** サブエージェント用スレッドに Embed を送信する。 */
+export async function sendEmbedToThread(client: Client, threadId: string, embed: EmbedBuilder): Promise<boolean> {
+    try {
+        const thread = await client.channels.fetch(threadId);
+        if (!thread || !thread.isThread()) {
+            logWarn(`Discord: thread ${threadId} not found or not a thread for sending embed`);
+            return false;
+        }
+        await thread.send({ embeds: [embed] });
+        logDebug(`Discord: sent embed to subagent thread ${threadId}`);
+        return true;
+    } catch (e) {
+        logError(`Discord: failed to send embed to subagent thread ${threadId}`, e);
         return false;
     }
 }

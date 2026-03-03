@@ -11,7 +11,7 @@
 import * as vscode from 'vscode';
 import { PlanStore } from './planStore';
 import { Scheduler } from './scheduler';
-import { initLogger, logInfo, logDebug, logError, disposeLogger } from './logger';
+import { initLogger, logInfo, logDebug, logWarn, logError, disposeLogger } from './logger';
 
 import { BridgeContext } from './bridgeContext';
 import { startBridge, stopBridge, updateStatusBar } from './bridgeLifecycle';

@@ -589,4 +589,28 @@ export class DiscordBot {
     async renamePlanChannel(channelId: string, newName: string): Promise<boolean> {
         return channels.renamePlanChannel(this.client, channelId, newName);
     }
+
+    // -----------------------------------------------------------------------
+    // スレッド管理 — discordChannels.ts に委譲
+    // -----------------------------------------------------------------------
+
+    async createSubagentThread(channelId: string, agentName: string, taskSummary?: string): Promise<string | null> {
+        return channels.createSubagentThread(this.client, channelId, agentName, taskSummary);
+    }
+
+    async sendToSubagentThread(threadId: string, message: string): Promise<boolean> {
+        return channels.sendToSubagentThread(this.client, threadId, message);
+    }
+
+    async archiveSubagentThread(threadId: string): Promise<boolean> {
+        return channels.archiveSubagentThread(this.client, threadId);
+    }
+
+    async sendTypingToThread(threadId: string): Promise<void> {
+        return channels.sendTypingToThread(this.client, threadId);
+    }
+
+    async sendEmbedToThread(threadId: string, embed: import('discord.js').EmbedBuilder): Promise<boolean> {
+        return channels.sendEmbedToThread(this.client, threadId, embed);
+    }
 }

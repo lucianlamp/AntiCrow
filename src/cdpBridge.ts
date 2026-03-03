@@ -197,7 +197,16 @@ export class CdpBridge {
         );
     }
 
-    async launchAntigravity(folderPath?: string): Promise<void> {
+    async launchAntigravity(folderPath?: string, options?: { skipCooldown?: boolean }): Promise<void> {
+        const skipCooldown = options?.skipCooldown ?? false;
+
+        if (skipCooldown) {
+            // サブエージェント用: クールダウンとランチガードをバイパスし、独立して起動
+            logDebug('CDP: launchAntigravity — skipCooldown mode, bypassing cooldown and launch guard');
+            await this.doLaunchAntigravity(folderPath);
+            return;
+        }
+
         // ランチガード: 既に起動中なら既存の Promise を共有して待機
         if (CdpBridge.launchInFlight) {
             logDebug('CDP: launchAntigravity — already in flight, waiting for existing launch');
@@ -222,17 +231,24 @@ export class CdpBridge {
     private async doLaunchAntigravity(folderPath?: string): Promise<void> {
         // VS Code Terminal API 経由で起動
         // Extension Host から直接 spawn/exec した子プロセスは GUI ウィンドウを作成できないため、
-        // Terminal (pty) コンテキストで anticrow.ps1 スクリプトを実行する
-        const scriptPath = path.join(__dirname, '..', 'scripts', 'anticrow.ps1');
+        // Terminal (pty) コンテキストで antigravity CLI を実行する
+        // ※ 以前は anticrow.ps1 スクリプトを使っていたが、スクリプトが存在しなかったため
+        //    antigravity CLI の直接呼び出しに変更
 
-        logDebug(`CDP: launchAntigravity called, folderPath="${folderPath || '(none)'}", scriptPath="${scriptPath}"`);
+        logDebug(`CDP: launchAntigravity called, folderPath="${folderPath || '(none)'}"`);
 
-        const folderArg = folderPath ? ` -FolderPath "${folderPath}"` : '';
-        // 固定ポートが設定されていれば anticrow.ps1 に渡す
-        const { getCdpPort } = await import('./configHelper');
-        const cdpPort = getCdpPort();
-        const portArg = cdpPort > 0 ? ` -CdpPort ${cdpPort}` : '';
-        const command = `& "${scriptPath}"${folderArg}${portArg}; exit`;
+        // コマンド組み立て: antigravity "folderPath" --new-window
+        const args: string[] = ['antigravity'];
+        if (folderPath) {
+            args.push(`"${folderPath}"`);
+        }
+        args.push('--new-window');
+
+        // NOTE: --remote-debugging-port は渡さない。
+        // Antigravity は単一 CDP ポートで全ウィンドウを管理するため、
+        // 明示的に指定すると既存ポートと競合する可能性がある。
+
+        const command = `${args.join(' ')}; exit`;
 
         logDebug(`CDP: launching via terminal: ${command}`);
 
@@ -1183,12 +1199,17 @@ export class CdpBridge {
                 return false;
             }
 
-            // 2. ワークスペース名でマッチング
+            // 2. ワークスペース名でマッチング（matchesSubagent と同等の4戦略）
             let targetInstance: DiscoveredInstance | undefined;
             for (const inst of instances) {
                 const wsName = extractWorkspaceName(inst.title);
-                if (wsName === workspaceName) {
+                const matches =
+                    wsName === workspaceName ||
+                    inst.title.includes(workspaceName) ||
+                    inst.title.includes(path.basename(workspaceName));
+                if (matches) {
                     targetInstance = inst;
+                    logDebug(`[closeWindow] マッチ: wsName="${wsName}", title="${inst.title.substring(0, 80)}"`);
                     break;
                 }
             }
@@ -1214,25 +1235,70 @@ export class CdpBridge {
                 await tempConn.connectToUrl(targetInstance.wsUrl);
                 logDebug('[closeWindow] 一時接続に成功');
 
-                // 5. window.close() でウィンドウを閉じる
-                // 注: vscode.commands は CDP ページコンテキストでは利用不可。
-                //     Electron の window.close() が最もシンプルかつ確実。
-                const evalJs = `
-                    (async () => {
-                        try {
-                            window.close();
-                            return { success: true, method: 'window.close' };
-                        } catch (e) {
-                            return { success: false, error: String(e) };
-                        }
-                    })()
-                `;
+                // 5a. process.exit(0) でウィンドウプロセスを終了（最も確実）
+                // E2Eテストで window.close() は Electron では無効と判明。
+                // process.exit(0) が最も確実なクローズ方法。
+                let closed = false;
+                try {
+                    await tempConn.evaluate('process.exit(0)');
+                    logDebug('[closeWindow] process.exit(0) で終了');
+                    closed = true;
+                } catch {
+                    // process.exit() は接続切断を引き起こすため、エラーは想定内
+                    logDebug('[closeWindow] process.exit(0) 実行（接続切断は想定内）');
+                    closed = true;
+                }
 
-                const result = await tempConn.evaluate(evalJs);
-                logDebug(`[closeWindow] 実行結果: ${JSON.stringify(result)}`);
+                // 5b. フォールバック: window.close()
+                if (!closed) {
+                    try {
+                        const evalJs = `
+                            (async () => {
+                                try {
+                                    window.close();
+                                    return { success: true, method: 'window.close' };
+                                } catch (e) {
+                                    return { success: false, error: String(e) };
+                                }
+                            })()
+                        `;
+                        const result = await tempConn.evaluate(evalJs);
+                        logDebug(`[closeWindow] window.close() 結果: ${JSON.stringify(result)}`);
+                        closed = true;
+                    } catch (err) {
+                        logDebug(`[closeWindow] window.close() 失敗: ${err}`);
+                    }
+                }
+
+                // 5c. フォールバック: Browser.close CDP コマンド
+                if (!closed) {
+                    try {
+                        await tempConn.send('Browser.close', {});
+                        logDebug('[closeWindow] Browser.close で終了');
+                        closed = true;
+                    } catch (err) {
+                        logDebug(`[closeWindow] Browser.close 失敗: ${err}`);
+                    }
+                }
 
                 // 6. ウィンドウが閉じてファイルロックが解放されるのを待つ
-                await new Promise(resolve => setTimeout(resolve, 3000));
+                await new Promise(resolve => setTimeout(resolve, 5000));
+
+                // 7. ウィンドウが本当に閉じたか確認
+                try {
+                    const remainingInstances = await discoverInstances(this.ports);
+                    const stillExists = remainingInstances.some(inst => {
+                        const wsName = extractWorkspaceName(inst.title);
+                        return wsName === workspaceName ||
+                            inst.title.includes(workspaceName);
+                    });
+                    if (stillExists) {
+                        logWarn(`[closeWindow] ワークスペース "${workspaceName}" のウィンドウがまだ存在しています`);
+                        return false;
+                    }
+                } catch {
+                    // 確認失敗は無視（ウィンドウは閉じている可能性が高い）
+                }
 
                 logDebug(`[closeWindow] ワークスペース "${workspaceName}" のウィンドウを閉じました`);
                 return true;
@@ -1249,4 +1315,129 @@ export class CdpBridge {
             return false;
         }
     }
+
+    /**
+     * サブエージェントのウィンドウを最小化する。
+     *
+     * CDP の Browser.getWindowForTarget → Browser.setWindowBounds を使用。
+     * 一時的な CdpConnection を作成して実行するため、現在の接続には影響しない。
+     * ベストエフォート：失敗しても例外をスローしない。
+     *
+     * @param workspaceName 最小化したいウィンドウのワークスペース名
+     * @returns true: 最小化成功, false: 失敗
+     */
+    async minimizeWindow(workspaceName: string): Promise<boolean> {
+        logDebug(`[minimizeWindow] ワークスペース "${workspaceName}" のウィンドウを最小化します`);
+
+        try {
+            // 1. 全ターゲットを取得
+            const instances = await discoverInstances(this.ports);
+            if (instances.length === 0) {
+                logWarn('[minimizeWindow] ターゲットが見つかりませんでした');
+                return false;
+            }
+
+            // 2. ワークスペース名でマッチング
+            let targetInstance: DiscoveredInstance | undefined;
+            for (const inst of instances) {
+                const wsName = extractWorkspaceName(inst.title);
+                if (wsName === workspaceName) {
+                    targetInstance = inst;
+                    break;
+                }
+            }
+
+            if (!targetInstance) {
+                logWarn(`[minimizeWindow] ワークスペース "${workspaceName}" のターゲットが見つかりませんでした`);
+                return false;
+            }
+
+            logDebug(`[minimizeWindow] ターゲット発見: "${targetInstance.title}" (${targetInstance.wsUrl})`);
+
+            // 3. 一時的な CdpConnection を作成して接続
+            const tempConn = new CdpConnection(this.ports);
+            try {
+                await tempConn.connectToUrl(targetInstance.wsUrl);
+                logDebug('[minimizeWindow] 一時接続に成功');
+
+                // 4. Browser.getWindowForTarget でウィンドウIDを取得
+                let windowId: number | undefined;
+                try {
+                    const windowResult = await tempConn.send('Browser.getWindowForTarget', {
+                        targetId: targetInstance.id,
+                    }) as { windowId?: number; bounds?: unknown };
+                    windowId = windowResult?.windowId;
+                    logDebug(`[minimizeWindow] windowId=${windowId}`);
+                } catch (err) {
+                    logDebug(`[minimizeWindow] Browser.getWindowForTarget 失敗: ${err}`);
+                }
+
+                if (windowId !== undefined) {
+                    // 5a. Browser.setWindowBounds で最小化
+                    try {
+                        await tempConn.send('Browser.setWindowBounds', {
+                            windowId,
+                            bounds: { windowState: 'minimized' },
+                        });
+                        logDebug(`[minimizeWindow] ワークスペース "${workspaceName}" のウィンドウを最小化しました (CDP)`);
+                        return true;
+                    } catch (err) {
+                        logDebug(`[minimizeWindow] Browser.setWindowBounds 失敗: ${err}`);
+                    }
+                }
+
+                // 5b. フォールバック: Electron の BrowserWindow API を使用
+                const evalJs = `
+                    (function() {
+                        try {
+                            // Electron の BrowserWindow.getFocusedWindow() or getAllWindows()
+                            var electron = require('electron');
+                            if (electron && electron.remote) {
+                                var win = electron.remote.getCurrentWindow();
+                                if (win) {
+                                    win.minimize();
+                                    return { success: true, method: 'electron.remote' };
+                                }
+                            }
+                        } catch(e) {}
+                        try {
+                            // process.mainModule 経由
+                            var mainModule = process.mainModule || require.main;
+                            if (mainModule) {
+                                var BrowserWindow = mainModule.require('electron').BrowserWindow;
+                                var wins = BrowserWindow.getAllWindows();
+                                if (wins && wins.length > 0) {
+                                    wins[0].minimize();
+                                    return { success: true, method: 'BrowserWindow.getAllWindows' };
+                                }
+                            }
+                        } catch(e2) {}
+                        return { success: false, error: 'No minimize method available' };
+                    })()
+                `;
+
+                const result = await tempConn.evaluate(evalJs);
+                const resultObj = result as { success?: boolean; method?: string; error?: string } | null;
+                logDebug(`[minimizeWindow] フォールバック結果: ${JSON.stringify(result)}`);
+
+                if (resultObj?.success) {
+                    logDebug(`[minimizeWindow] ワークスペース "${workspaceName}" のウィンドウを最小化しました (${resultObj.method})`);
+                    return true;
+                }
+
+                logWarn(`[minimizeWindow] ワークスペース "${workspaceName}" のウィンドウを最小化できませんでした`);
+                return false;
+            } finally {
+                try {
+                    tempConn.fullDisconnect();
+                } catch {
+                    // disconnect エラーは無視
+                }
+            }
+        } catch (err) {
+            logWarn(`[minimizeWindow] エラー: ${err}`);
+            return false;
+        }
+    }
 }
+

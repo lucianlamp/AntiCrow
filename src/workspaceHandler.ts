@@ -352,7 +352,7 @@ export async function handleWorkspaceButton(
                 .setStyle(ButtonStyle.Secondary),
         );
         await interaction.reply({
-            embeds: [buildEmbed(`⚠️ ワークスペース「**${wsName}**」のカテゴリーと全チャンネルを削除します。\n\`workspacePaths\` 設定は保持されるため、次回使用時にカテゴリーは自動再作成されます。\n\nよろしいですか？`, EmbedColor.Warning)],
+            embeds: [buildEmbed(`⚠️ ワークスペース「**${wsName}**」のカテゴリーと全チャンネルを削除します。\n\`workspacePaths\` 設定からも削除されます。\n\nよろしいですか？`, EmbedColor.Warning)],
             components: [confirmRow as any],
         });
         return true;
@@ -392,8 +392,26 @@ export async function handleWorkspaceButton(
             }
 
             logInfo(`handleWorkspaceButton: deleted workspace category "${wsName}" (${categoryId})`);
+
+            // workspacePaths 設定から該当ワークスペースのエントリを削除
+            let pathRemoved = false;
+            try {
+                const currentPaths = getConfig().get<Record<string, string>>('workspacePaths') || {};
+                if (wsName in currentPaths) {
+                    delete currentPaths[wsName];
+                    await getConfig().update('workspacePaths', currentPaths, vscode.ConfigurationTarget.Global);
+                    logInfo(`handleWorkspaceButton: removed workspacePaths["${wsName}"]`);
+                    pathRemoved = true;
+                }
+            } catch (pathErr) {
+                logWarn(`handleWorkspaceButton: failed to remove workspacePaths["${wsName}"]: ${pathErr}`);
+            }
+
+            const pathMsg = pathRemoved
+                ? '\n`workspacePaths` 設定からも削除しました。'
+                : '';
             await interaction.editReply({
-                embeds: [buildEmbed(`🗑️ ワークスペース「**${wsName}**」のカテゴリーを削除しました。`, EmbedColor.Success)],
+                embeds: [buildEmbed(`🗑️ ワークスペース「**${wsName}**」のカテゴリーを削除しました。${pathMsg}`, EmbedColor.Success)],
                 components: [],
             });
         } catch (e) {

@@ -18,7 +18,7 @@ import { CascadePanelError } from './errors';
 import { FileIpc } from './fileIpc';
 import { parsePlanJson, buildPlan } from './planParser';
 import { ChannelIntent, Plan } from './types';
-import { logDebug, logError, logWarn } from './logger';
+import { logDebug, logError, logInfo, logWarn } from './logger';
 import { buildEmbed, EmbedColor, sanitizeErrorForDiscord, normalizeHeadings } from './embedHelper';
 import { splitForEmbeds } from './discordFormatter';
 import { DiscordBot } from './discordBot';
@@ -27,7 +27,8 @@ import { BridgeContext } from './bridgeContext';
 import { getResponseTimeout, isUserAllowed, getMaxMessageLength, getWorkspacePaths } from './configHelper';
 import { getCurrentModel } from './cdpModels';
 import { getCurrentMode } from './cdpModes';
-import { AUTO_PROMPT } from './suggestionButtons';
+import { AUTO_PROMPT, buildSuggestionRow, buildSuggestionContent, storeSuggestions } from './suggestionButtons';
+import { parseSuggestions } from './suggestionParser';
 import { loadTeamConfig } from './teamConfig';
 
 // 委譲先モジュール
@@ -74,6 +75,8 @@ const currentProcessingStatuses = new Map<string, ProcessingStatus>();
 
 /** Plan 生成中の AbortController（キャンセル可能にする） */
 let currentPlanAbortController: AbortController | null = null;
+/** チームモード実行中の AbortController（キャンセル可能にする） */
+let currentTeamAbortController: AbortController | null = null;
 /** Plan 生成中の typing interval Set（複数並行時の上書き防止） */
 const activePlanTypingIntervals = new Set<ReturnType<typeof setInterval>>();
 /** Plan 生成中の progress interval Set（複数並行時の上書き防止） */
@@ -132,6 +135,11 @@ export function cancelPlanGeneration(wsKey?: string): void {
         currentPlanAbortController = null;
         logDebug('messageHandler: plan generation AbortController triggered');
     }
+    if (currentTeamAbortController) {
+        currentTeamAbortController.abort();
+        currentTeamAbortController = null;
+        logDebug('messageHandler: team orchestration AbortController triggered');
+    }
     for (const iv of activePlanTypingIntervals) {
         clearInterval(iv);
     }
@@ -151,11 +159,15 @@ export function cancelPlanGeneration(wsKey?: string): void {
         currentProcessingStatuses.delete(wsKey);
         workspaceQueueCount.delete(wsKey);
         workspaceWaitingMessages.delete(wsKey);
+        // Promise チェーンをリセット（キャンセル後に次のメッセージが詰まるのを防止）
+        workspaceQueues.delete(wsKey);
         logDebug(`messageHandler: cancelled plan generation for workspace "${wsKey}"`);
     } else {
         currentProcessingStatuses.clear();
         workspaceQueueCount.clear();
         workspaceWaitingMessages.clear();
+        // 全 Promise チェーンをリセット
+        workspaceQueues.clear();
         logDebug('messageHandler: cancelled plan generation for all workspaces');
     }
 }
@@ -684,6 +696,7 @@ function applyChoiceSelection(plan: Plan, selectedChoices?: number[]): void {
 
 /**
  * Plan を即時実行キューに追加、または定期スケジュールとして登録する。
+ * チームモード有効時は teamOrchestrator 経由でサブエージェントに委譲する。
  */
 async function dispatchPlan(
     ctx: BridgeContext,
@@ -692,13 +705,183 @@ async function dispatchPlan(
     activeCdp: CdpBridge,
     wsNameFromCategory: string | undefined,
     guild: typeof import('discord.js').Guild.prototype | null,
+    isTeamMode = false,
 ): Promise<void> {
-    const { bot, planStore, executor, executorPool, scheduler } = ctx;
+    const { bot, fileIpc, planStore, executor, executorPool, scheduler } = ctx;
 
     if (plan.cron === null) {
         const wsNameForImmediate = wsNameFromCategory || activeCdp.getActiveWorkspaceName() || undefined;
         if (wsNameForImmediate) { plan.workspace_name = wsNameForImmediate; }
         plan.notify_channel_id = channel.id;
+
+        // -------------------------------------------------------------------
+        // チームモード: IPC ファイルベースのオーケストレーション
+        // -------------------------------------------------------------------
+        let teamModeFallback = false; // チームモード分割失敗時のフォールバックフラグ
+        if (isTeamMode && ctx.teamOrchestrator) {
+            logDebug(`dispatchPlan: Team mode — IPC-based orchestration (workspace=${wsNameForImmediate || 'default'})`);
+            try {
+                await channel.send({ embeds: [buildEmbed('🤖 **チームモード**: タスクを分割してサブエージェントに指令を作成中...', EmbedColor.Info)] });
+
+                // Phase 2: タスク分割 → グループ化 → 指令ファイル作成
+                const rawTasks = ctx.teamOrchestrator.splitTasks(plan.prompt);
+                logDebug(`dispatchPlan: Team mode — split into ${rawTasks.length} raw tasks`);
+
+                if (rawTasks.length <= 1) {
+                    // 分割できない場合は通常モードにフォールバック
+                    logDebug('dispatchPlan: Team mode — cannot split, falling back to normal mode');
+                    await channel.send({ embeds: [buildEmbed('ℹ️ タスクを分割できませんでした。通常モードで実行します。', EmbedColor.Info)] });
+                    teamModeFallback = true; // フォールバックフラグを立てる
+                } else {
+                    // maxAgents に従ってグループ化
+                    const teamConfig = loadTeamConfig(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '');
+                    const tasks = ctx.teamOrchestrator.groupTasks(rawTasks, teamConfig.maxAgents);
+                    logDebug(`dispatchPlan: Team mode — grouped ${rawTasks.length} tasks into ${tasks.length} groups (maxAgents=${teamConfig.maxAgents})`);
+
+                    const teamRequestId = `team_${Date.now()}`;
+                    const instructions = ctx.teamOrchestrator.writeInstructionFiles(
+                        tasks,
+                        teamRequestId,
+                        plan.prompt, // 元のユーザーリクエストをコンテキストとして渡す
+                    );
+
+                    await channel.send({ embeds: [buildEmbed(`📋 ${rawTasks.length}個のタスクを${tasks.length}個のサブエージェントに割り振りました。起動中...`, EmbedColor.Info)] });
+
+                    // Phase 3~5: サブエージェント起動 → 実行 → レスポンス収集
+                    const abortController = new AbortController();
+                    currentTeamAbortController = abortController;
+                    let teamResult: Awaited<ReturnType<typeof ctx.teamOrchestrator.orchestrateTeam>> | null = null;
+
+                    try {
+                        teamResult = await ctx.teamOrchestrator.orchestrateTeam(
+                            instructions,
+                            channel.id,
+                            wsNameForImmediate,
+                            abortController.signal,
+                        );
+
+                        // Phase 5: 報告 IPC ファイルを生成 → メインエージェントに報告プロンプト送信
+                        const { requestId: reportReqId, responsePath: reportResponsePath } = fileIpc!.createRequestId();
+                        logDebug(`dispatchPlan: Team mode — reportReqId=${reportReqId}, reportResponsePath=${reportResponsePath}`);
+                        const reportPath = ctx.teamOrchestrator.writeReportFile(
+                            teamRequestId,
+                            teamResult.results,
+                            instructions,
+                            reportResponsePath,
+                        );
+
+                        // メインエージェントに報告プロンプトを送信:
+                        // response_path の正確なパスを含めて明示的に指示
+                        const reportPrompt =
+                            `あなたはメインエージェントです。\n\n` +
+                            `以下のファイルを view_file ツールで読み込み、その指示に従ってください。\n` +
+                            `ファイルパス: ${reportPath}\n\n` +
+                            `重要:\n` +
+                            `- 全サブエージェントの報告を確認してください\n` +
+                            `- 統合レポートを作成し、response_path に Markdown で書き込んでください（write_to_file）\n` +
+                            `- response_path: ${reportResponsePath}\n` +
+                            `- レポートにはすべてのタスクの結果・成否・注意点をまとめてください\n` +
+                            `- ユーザー向けにわかりやすい報告書を作成してください\n` +
+                            `- 必ず response_path に write_to_file で書き込んでください。書き込まないと完了と見なされません`;
+
+                        logDebug(`dispatchPlan: Team mode — sending report prompt to main Cascade (${reportPrompt.length} chars)`);
+
+                        try {
+                            await activeCdp.startNewChat();
+                            logDebug('dispatchPlan: Team mode — startNewChat succeeded');
+                        } catch (chatErr) {
+                            logWarn(`dispatchPlan: Team mode — startNewChat failed, continuing: ${chatErr instanceof Error ? chatErr.message : chatErr}`);
+                        }
+                        await activeCdp.sendPrompt(reportPrompt);
+                        logDebug('dispatchPlan: Team mode — report prompt sent, waiting for response...');
+
+                        // メインエージェントの統合レポートを待機
+                        const cascadeReportTimeoutMs = 300_000;
+                        fileIpc!.registerActiveRequest(reportReqId);
+                        try {
+                            const cascadeResponse = await fileIpc!.waitForResponse(reportResponsePath, cascadeReportTimeoutMs);
+                            logDebug(`dispatchPlan: Team mode — received Cascade integrated report (${cascadeResponse.length} chars)`);
+
+                            // 統合レポートを Discord に送信（suggestion 分離）
+                            const formatted = FileIpc.extractResult(cascadeResponse);
+                            logDebug(`dispatchPlan: Team mode — extractResult returned ${formatted.length} chars (original: ${cascadeResponse.length} chars)`);
+
+                            // 提案タグを抽出してクリーンコンテンツを取得
+                            const { suggestions, cleanContent } = parseSuggestions(formatted);
+
+                            const normalized = normalizeHeadings(cleanContent);
+                            const embedGroups = splitForEmbeds(normalized);
+                            logDebug(`dispatchPlan: Team mode — sending ${embedGroups.length} embed groups to Discord`);
+                            for (const group of embedGroups) {
+                                const embeds = group.map((desc) =>
+                                    new EmbedBuilder()
+                                        .setDescription(desc)
+                                        .setColor(EmbedColor.Success)
+                                );
+                                await channel.send({ embeds });
+                            }
+
+                            // 提案ボタンを送信（通常モードと同じ処理）
+                            if (suggestions.length > 0 && bot) {
+                                try {
+                                    const row = buildSuggestionRow(suggestions);
+                                    if (row) {
+                                        storeSuggestions(channel.id, suggestions);
+                                        const suggestionText = buildSuggestionContent(suggestions);
+                                        const suggestionEmbed = buildEmbed(suggestionText, EmbedColor.Suggest);
+                                        await bot.sendComponentsToChannel(channel.id, [row], suggestionEmbed);
+                                        logDebug(`dispatchPlan: Team mode — sent ${suggestions.length} suggestion buttons`);
+                                    }
+                                } catch (e) {
+                                    logDebug(`dispatchPlan: Team mode — failed to send suggestion buttons: ${e instanceof Error ? e.message : e}`);
+                                }
+                            }
+                            logInfo('dispatchPlan: Team mode — integrated report sent to Discord ✅');
+                        } finally {
+                            fileIpc!.unregisterActiveRequest(reportReqId);
+                        }
+                    } catch (cascadeErr) {
+                        // Cascade 送信/待機に失敗した場合はフォールバック: 個別結果を直接送信
+                        logWarn(`dispatchPlan: Team mode — failed to get integrated report, falling back: ${cascadeErr instanceof Error ? cascadeErr.message : cascadeErr}`);
+                        await channel.send({ embeds: [buildEmbed('⚠️ 統合レポートの生成に失敗しました。個別結果を表示します。', EmbedColor.Warning)] });
+
+                        // フォールバック: 各サブエージェントの結果を個別に送信
+                        if (teamResult) {
+                            for (const result of teamResult.results) {
+                                const statusEmoji = result.success ? '✅' : '❌';
+                                const resultPreview = result.response.substring(0, 500) + (result.response.length > 500 ? '...' : '');
+                                const normalized = normalizeHeadings(`${statusEmoji} **${result.agentName}**\n${resultPreview}`);
+                                const embedGroups = splitForEmbeds(normalized);
+                                for (const group of embedGroups) {
+                                    const embeds = group.map((desc) =>
+                                        new EmbedBuilder()
+                                            .setDescription(desc)
+                                            .setColor(result.success ? EmbedColor.Success : EmbedColor.Error)
+                                    );
+                                    await channel.send({ embeds });
+                                }
+                            }
+                        }
+                    } finally {
+                        currentTeamAbortController = null;
+                    }
+                    return;
+                }
+            } catch (e) {
+                const errMsg = e instanceof Error ? e.message : String(e);
+                logError(`dispatchPlan: Team orchestration failed: ${errMsg}`, e);
+                await channel.send({ embeds: [buildEmbed(`❌ チームモード実行エラー: ${sanitizeErrorForDiscord(errMsg)}`, EmbedColor.Error)] });
+            }
+            // フォールバックでない場合のみ return（通常モードにフォールバック時は下に流す）
+            if (!teamModeFallback) {
+                return;
+            }
+            logDebug('dispatchPlan: Team mode fallback — continuing to normal mode execution');
+        }
+
+        // -------------------------------------------------------------------
+        // 通常モード: executor / executorPool 経由
+        // -------------------------------------------------------------------
         logDebug(`handleDiscordMessage: enqueueing immediate execution for plan ${plan.plan_id} (not persisted, workspace=${wsNameForImmediate || 'default'})`);
         if (executorPool) {
             await executorPool.enqueueImmediate(wsNameForImmediate || '', plan);
@@ -777,93 +960,25 @@ export async function handleDiscordMessage(
     }
 
     // -----------------------------------------------------------------------
-    // チームモード判定: 有効時はサブエージェントに委譲
+    // チームモード判定: 有効時もメインエージェントがオーケストレーターとして実行
+    // （Plan 生成 → 承認 → メインエージェントで実行。サブエージェントはメインが指揮）
     // -----------------------------------------------------------------------
-    const repoRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
-    if (repoRoot) {
-        const teamConfig = loadTeamConfig(repoRoot);
-        if (teamConfig.enabled && ctx.teamOrchestrator) {
-            logDebug(`handleDiscordMessage: Team mode enabled — delegating to TeamOrchestrator`);
-
-            // typing indicator 開始
-            const typingInterval = setInterval(async () => {
-                try { await channel.sendTyping(); } catch { /* ignore */ }
-            }, 8_000);
-            try { await channel.sendTyping(); } catch { /* ignore */ }
-
-            try {
-                // タスク分割判定
-                const tasks = teamConfig.enableParallel
-                    ? ctx.teamOrchestrator.splitTasks(text)
-                    : [text];
-
-                if (tasks.length >= 2) {
-                    // 並列実行モード
-                    await channel.send({ embeds: [buildEmbed(`🎯 **チームモード（並列）**: ${tasks.length}個のサブタスクを検出。並行実行します...`, EmbedColor.Info)] });
-
-                    const parallelResult = await ctx.teamOrchestrator.orchestrateParallel(tasks, channel.id);
-
-                    // 全体の結果サマリー
-                    const totalSec = (parallelResult.totalDurationMs / 1000).toFixed(1);
-                    const summaryEmoji = parallelResult.failCount === 0 ? '✅' : '⚠️';
-                    await channel.send({
-                        embeds: [buildEmbed(
-                            `${summaryEmoji} **並列実行完了**（${totalSec}秒）\n`
-                            + `成功: ${parallelResult.successCount} / 失敗: ${parallelResult.failCount}`,
-                            parallelResult.failCount === 0 ? EmbedColor.Success : EmbedColor.Warning,
-                        )]
-                    });
-
-                    // 各タスクの結果を個別送信
-                    for (const r of parallelResult.results) {
-                        const rSec = (r.durationMs / 1000).toFixed(1);
-                        if (r.success) {
-                            const normalized = normalizeHeadings(r.response);
-                            const embedGroups = splitForEmbeds(normalized);
-                            await channel.send({ embeds: [buildEmbed(`✅ **${r.agentName}** 完了（${rSec}秒）`, EmbedColor.Success)] });
-                            for (const group of embedGroups) {
-                                const embeds = group.map((desc) =>
-                                    new EmbedBuilder()
-                                        .setDescription(desc)
-                                        .setColor(EmbedColor.Info)
-                                );
-                                await channel.send({ embeds });
-                            }
-                        } else {
-                            await channel.send({ embeds: [buildEmbed(`❌ **${r.agentName}** エラー（${rSec}秒）:\n${r.response}`, EmbedColor.Error)] });
-                        }
-                    }
-                } else {
-                    // 単体実行モード（従来どおり）
-                    await channel.send({ embeds: [buildEmbed('🎯 **チームモード**: タスクをサブエージェントに委譲します...', EmbedColor.Info)] });
-
-                    const result = await ctx.teamOrchestrator.orchestrate(text, channel.id);
-
-                    if (result.success) {
-                        const durationSec = (result.durationMs / 1000).toFixed(1);
-                        const normalized = normalizeHeadings(result.response);
-                        const embedGroups = splitForEmbeds(normalized);
-                        await channel.send({ embeds: [buildEmbed(`✅ **サブエージェント "${result.agentName}"** が完了しました（${durationSec}秒）`, EmbedColor.Success)] });
-                        for (const group of embedGroups) {
-                            const embeds = group.map((desc) =>
-                                new EmbedBuilder()
-                                    .setDescription(desc)
-                                    .setColor(EmbedColor.Info)
-                            );
-                            await channel.send({ embeds });
-                        }
-                    } else {
-                        await channel.send({ embeds: [buildEmbed(`❌ **サブエージェント "${result.agentName}"** でエラーが発生しました:\n${result.response}`, EmbedColor.Error)] });
-                    }
-                }
-            } catch (e) {
-                const errMsg = e instanceof Error ? e.message : String(e);
-                logError('handleDiscordMessage: TeamOrchestrator delegation failed', e);
-                await channel.send({ embeds: [buildEmbed(`❌ チームモード実行エラー: ${sanitizeErrorForDiscord(errMsg)}`, EmbedColor.Error)] });
-            } finally {
-                clearInterval(typingInterval);
+    // ワークスペースパスの解決: Discordカテゴリー → ワークスペースパス設定 → フォールバック
+    const resolvedRepoRoot = (() => {
+        if (wsNameFromCategory) {
+            const wsPaths = getWorkspacePaths();
+            if (wsPaths[wsNameFromCategory]) {
+                return wsPaths[wsNameFromCategory];
             }
-            return; // チームモードで処理完了 — 通常フローはスキップ
+        }
+        return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
+    })();
+    let isTeamMode = false;
+    if (resolvedRepoRoot) {
+        const teamConfig = loadTeamConfig(resolvedRepoRoot);
+        if (teamConfig.enabled && ctx.teamOrchestrator) {
+            isTeamMode = true;
+            logDebug(`handleDiscordMessage: Team mode enabled for workspace "${wsNameFromCategory || 'local'}" (repoRoot=${resolvedRepoRoot}) — main agent will orchestrate`);
         }
     }
 
@@ -964,13 +1079,21 @@ export async function handleDiscordMessage(
             applyChoiceSelection(plan, confirmResult.selectedChoices);
         }
 
+        // チームモード: サブエージェント向けのタスク指示を付加
+        if (isTeamMode) {
+            plan.prompt = `【サブエージェントタスク】以下のタスクを実行してください。\n` +
+                `結果は明確かつ詳細に記述してください。\n\n` +
+                plan.prompt;
+            logDebug(`handleDiscordMessage: Team mode — augmented prompt with subagent instructions`);
+        }
+
         // ステータス: ディスパッチ中
         currentProcessingStatuses.set(wsKeyForStatus, {
             wsKey: wsKeyForStatus, phase: 'dispatching', startTime: Date.now(), messagePreview: msgPreview,
         });
 
         // 即時実行 or 定期登録
-        await dispatchPlan(ctx, plan, channel, activeCdp, wsNameFromCategory, guild);
+        await dispatchPlan(ctx, plan, channel, activeCdp, wsNameFromCategory, guild, isTeamMode);
 
     } catch (e) {
         const errMsg = e instanceof Error ? e.message : String(e);

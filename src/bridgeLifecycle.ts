@@ -39,6 +39,7 @@ import { setSummarizeOps, stripMemoryTags } from './memoryStore';
 import { stripSuggestionTags } from './suggestionParser';
 import { UIWatcher } from './uiWatcher';
 import { SubagentManager } from './subagentManager';
+import { SubagentReceiver } from './subagentReceiver';
 import { TeamOrchestrator } from './teamOrchestrator';
 import { loadTeamConfig } from './teamConfig';
 import * as fs from 'fs';
@@ -171,10 +172,11 @@ async function promoteToBotOwner(
                         continue;
                     }
                     const wsName = CdpBridge.extractWorkspaceName(inst.title);
-                    if (wsName && !isInvalidWorkspaceName(wsName)) {
+                    if (wsName && !isInvalidWorkspaceName(wsName) && !SubagentReceiver.isSubagent(wsName)) {
                         await ctx.bot.ensureWorkspaceStructure(guild.id, wsName);
                     } else if (wsName) {
-                        logDebug(`Bridge: skipping category creation for invalid workspace name: "${wsName}" (title: "${inst.title}")`);
+                        const reason = SubagentReceiver.isSubagent(wsName) ? 'subagent workspace' : 'invalid workspace name';
+                        logDebug(`Bridge: skipping category creation for ${reason}: "${wsName}" (title: "${inst.title}")`);
                     }
                 }
                 logDebug(`Bridge: workspace categories ensured for ${instances.length} instance(s)`);
@@ -245,6 +247,56 @@ async function promoteToBotOwner(
         await handleModalSubmit(ctx, interaction);
     });
 
+    // TeamOrchestrator 初期化（Bot 起動後に実行）
+    // NOTE: startBridgeInternal() の SubagentManager 初期化は ctx.cdp が必要だが、
+    //       cdpPool モードでは ctx.cdp が null のため SubagentManager が作られない。
+    //       ここで cdpPool からデフォルト CdpBridge を取得してフォールバックする。
+    if (!ctx.subagentManager && ctx.fileIpc) {
+        const cdpForSubagent = ctx.cdp ?? ctx.cdpPool?.getDefault() ?? null;
+        if (cdpForSubagent) {
+            const subIpcDir = context.globalStorageUri.fsPath + '/ipc';
+            const subRepoRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
+            if (subRepoRoot) {
+                try {
+                    ctx.subagentManager = new SubagentManager(cdpForSubagent, subIpcDir, subRepoRoot);
+                    ctx.subagentManager.startHealthCheck();
+                    logInfo('Bridge: SubagentManager initialized (post-bot-start, via cdpPool fallback)');
+                } catch (e) {
+                    logWarn(`Bridge: SubagentManager initialization failed: ${e instanceof Error ? e.message : e}`);
+                }
+            }
+        }
+    }
+    if (ctx.subagentManager && ctx.fileIpc && ctx.bot && !ctx.teamOrchestrator) {
+        const subRepoRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
+        if (subRepoRoot) {
+            const bot = ctx.bot;
+            ctx.teamOrchestrator = new TeamOrchestrator(
+                ctx.subagentManager,
+                ctx.fileIpc,
+                async (channelId: string, content: string) => {
+                    try {
+                        await bot.sendToChannel(channelId, content);
+                    } catch (e) {
+                        logWarn(`TeamOrchestrator Discord send failed: ${e instanceof Error ? e.message : e}`);
+                    }
+                },
+                subRepoRoot,
+            );
+            // スレッド操作コールバックを設定
+            ctx.teamOrchestrator.setThreadOps({
+                createThread: (chId, agentName, taskSummary) =>
+                    bot.createSubagentThread(chId, agentName, taskSummary),
+                sendToThread: (threadId, msg) =>
+                    bot.sendToSubagentThread(threadId, msg),
+                archiveThread: (threadId) =>
+                    bot.archiveSubagentThread(threadId),
+                sendTyping: (threadId) =>
+                    bot.sendTypingToThread(threadId),
+            });
+        }
+    }
+
     logInfo('Bridge: Bot started (this workspace is the bot owner)');
 
     // -----------------------------------------------------------------
@@ -273,6 +325,12 @@ async function promoteToBotOwner(
                 if (!wsName || knownWorkspaces.has(wsName)) { continue; }
                 if (isInvalidWorkspaceName(wsName)) {
                     logDebug(`Bridge: skipping category creation for invalid workspace name: "${wsName}" (title: "${inst.title}")`);
+                    continue;
+                }
+                // サブエージェントのワークスペースはカテゴリ自動作成しない
+                if (SubagentReceiver.isSubagent(wsName)) {
+                    logDebug(`Bridge: skipping category creation for subagent workspace: "${wsName}"`);
+                    knownWorkspaces.add(wsName);
                     continue;
                 }
 
@@ -509,7 +567,18 @@ async function startBridgeInternal(
                 },
                 subRepoRoot,
             );
-            logInfo('Bridge: TeamOrchestrator initialized');
+            // スレッド操作コールバックを設定
+            ctx.teamOrchestrator.setThreadOps({
+                createThread: (chId, agentName, taskSummary) =>
+                    bot.createSubagentThread(chId, agentName, taskSummary),
+                sendToThread: (threadId, msg) =>
+                    bot.sendToSubagentThread(threadId, msg),
+                archiveThread: (threadId) =>
+                    bot.archiveSubagentThread(threadId),
+                sendTyping: (threadId) =>
+                    bot.sendTypingToThread(threadId),
+            });
+            logInfo('Bridge: TeamOrchestrator initialized with ThreadOps');
         }
     }
 
@@ -518,28 +587,72 @@ async function startBridgeInternal(
         const cdp = ctx.cdp;
         const fileIpc = ctx.fileIpc;
         ctx.subagentReceiver.setHandler(async (prompt: string) => {
-            logDebug(`[Subagent] Cascade にプロンプト転送: ${prompt.substring(0, 100)}...`);
+            const handlerStartTime = Date.now();
+            logInfo(`[SubagentReceiver] ────────── プロンプト受信 ──────────`);
+            logInfo(`[SubagentReceiver] プロンプト長: ${prompt.length} chars`);
+            logInfo(`[SubagentReceiver] プロンプトプレビュー: ${prompt.substring(0, 150)}${prompt.length > 150 ? '...' : ''}`);
             try {
-                // 新しいチャットを開始してプロンプト送信
-                await cdp.startNewChat();
-                await cdp.sendPrompt(prompt);
-
-                // FileIpc 経由でレスポンスを待つ
+                // FileIpc のレスポンスパスを先に生成
                 const wsName = vscode.workspace.name ?? 'subagent';
                 const repoRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
                 const teamConfig = repoRoot ? loadTeamConfig(repoRoot) : null;
                 const timeoutMs = teamConfig?.responseTimeoutMs ?? 900_000; // デフォルト15分
-                const { responsePath } = fileIpc.createMarkdownRequestId(wsName);
+                const { requestId, responsePath } = fileIpc.createMarkdownRequestId(wsName);
+
+                // レスポンスファイルへの書き込み指示をプロンプトに付加
+                // （これがないと AI はどこに結果を書くか分からず waitForResponse がタイムアウトする）
+                const augmentedPrompt = prompt + '\n\n' +
+                    '---\n' +
+                    '## レスポンス出力指示（必須）\n' +
+                    '**すべての作業が完了したら、以下のファイルに結果を Markdown 形式で1回だけ書き込んでください。**\n' +
+                    '途中経過や確認事項は書き込まないでください。ファイルに書き込んだ時点でレスポンス完了と見なされます。\n\n' +
+                    `- ツール: \`write_to_file\`\n` +
+                    `- パス: \`${responsePath}\`\n` +
+                    `- フォーマット: Markdown\n` +
+                    `- Overwrite: true\n\n` +
+                    '結果には何をしたか・変更内容・影響範囲・テスト結果・注意点を具体的かつ詳細に記述すること。';
+
+                logInfo(`[SubagentReceiver] IPC設定: requestId=${requestId}, timeout=${Math.round(timeoutMs / 1000)}秒`);
+                logDebug(`[SubagentReceiver] responsePath=${responsePath}`);
+
+                // 新しいチャットを開始してプロンプト送信
+                logDebug(`[SubagentReceiver] 新しいチャットを開始中...`);
+                await cdp.startNewChat();
+                logDebug(`[SubagentReceiver] 新しいチャット開始完了。プロンプト送信中... (${augmentedPrompt.length} chars)`);
+                await cdp.sendPrompt(augmentedPrompt);
+                logInfo(`[SubagentReceiver] プロンプト送信完了。レスポンス待機開始 (timeout=${Math.round(timeoutMs / 1000)}秒)`);
+
+                // FileIpc 経由でレスポンスを待つ
                 const result = await fileIpc.waitForResponse(responsePath, timeoutMs);
-                logDebug(`[Subagent] Cascade レスポンス取得完了 (${result.length} chars)`);
+
+                // レスポンス内容の検証
+                const elapsedMs = Date.now() - handlerStartTime;
+                if (!result || result.trim().length === 0) {
+                    logWarn(`[SubagentReceiver] ⚠️ レスポンス空 (requestId=${requestId}, elapsed=${Math.round(elapsedMs / 1000)}秒)`);
+                    return '[error] Cascade からのレスポンスが空でした。タスクが正常に完了しなかった可能性があります。';
+                }
+
+                logInfo(`[SubagentReceiver] ✅ レスポンス成功: ${result.length} chars, ${Math.round(elapsedMs / 1000)}秒 (requestId=${requestId})`);
+                logDebug(`[SubagentReceiver] レスポンス先頭200文字: ${result.substring(0, 200)}${result.length > 200 ? '...' : ''}`);
+                logInfo(`[SubagentReceiver] ────────── 処理完了 ──────────`);
                 return result;
             } catch (e) {
                 const errMsg = e instanceof Error ? e.message : String(e);
-                logError('[Subagent] Cascade 転送失敗', e);
+                const errStack = e instanceof Error ? e.stack : undefined;
+                const elapsedMs = Date.now() - handlerStartTime;
+                const isTimeout = errMsg.includes('timeout') || errMsg.includes('Timeout');
+                if (isTimeout) {
+                    logError(`[SubagentReceiver] ❌ タイムアウト (${Math.round(elapsedMs / 1000)}秒経過): ${errMsg}`);
+                    logDebug(`[SubagentReceiver] タイムアウト詳細スタック: ${errStack || 'N/A'}`);
+                    return `[error] Cascade のレスポンスがタイムアウトしました。AI がレスポンスファイルに書き込めなかった可能性があります: ${errMsg}`;
+                }
+                logError(`[SubagentReceiver] ❌ エラー (${Math.round(elapsedMs / 1000)}秒経過): ${errMsg}`, e);
+                logDebug(`[SubagentReceiver] エラー詳細スタック: ${errStack || 'N/A'}`);
+                logInfo(`[SubagentReceiver] ────────── 処理失敗 ──────────`);
                 return `[error] Cascade 実行に失敗しました: ${errMsg}`;
             }
         });
-        logInfo('Bridge: SubagentReceiver handler updated to Cascade integration');
+        logInfo('Bridge: SubagentReceiver handler updated to Cascade integration (enhanced logging)');
     }
 
     // Bot 起動ロック

@@ -111,6 +111,7 @@ export function watchResponse(
     return new Promise((resolve) => {
         const dir = path.dirname(callbackPath);
         const basename = path.basename(callbackPath);
+        logDebug(`[subagentIpc] watchResponse 開始: file=${basename}, dir=${dir}, timeout=${timeoutMs}ms, poll=${pollIntervalMs}ms`);
         let watcher: fs.FSWatcher | null = null;
         let pollTimer: ReturnType<typeof setInterval> | null = null;
         let timeoutTimer: ReturnType<typeof setTimeout> | null = null;
@@ -156,6 +157,7 @@ export function watchResponse(
         const onDetected = () => {
             const resp = tryRead();
             if (resp) {
+                logDebug(`[subagentIpc] watchResponse ✅ レスポンス検知: status=${resp.status}, result=${resp.result?.length ?? 0} chars`);
                 cleanup();
                 resolve(resp);
             }
@@ -194,6 +196,7 @@ export function watchResponse(
         }, timeoutMs);
 
         // 初回チェック（既に存在する場合）
+        logDebug(`[subagentIpc] watchResponse 初回チェック実行中... (exists=${fs.existsSync(callbackPath)})`);
         onDetected();
     });
 }
@@ -206,6 +209,10 @@ export function watchResponse(
  * 自分宛てのプロンプトファイルを監視する。
  * 新着プロンプトが届くと onPrompt コールバックが呼ばれる。
  *
+ * fs.watch + ポーリングの二重監視で信頼性を確保。
+ * Windows 環境では fs.watch がイベントを見逃すことがあるため、
+ * 3秒間隔のポーリングでフォールバックする。
+ *
  * @param ipcDir globalStorage/ipc ディレクトリパス
  * @param myName 自分のワークスペース名
  * @param onPrompt プロンプト受信時のコールバック
@@ -217,6 +224,7 @@ export function watchPrompts(
     onPrompt: (prompt: SubagentPrompt, filePath: string) => void,
 ): () => void {
     const prefix = `subagent_${myName}_prompt_`;
+    const processedFiles = new Set<string>();
     let debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
     // ディレクトリがなければ作成
@@ -224,50 +232,80 @@ export function watchPrompts(
         fs.mkdirSync(ipcDir, { recursive: true });
     }
 
-    const watcher = fs.watch(ipcDir, (_event, filename) => {
-        if (!filename || !filename.startsWith(prefix)) return;
+    // プロンプトファイルを処理する共通関数
+    const processFile = (filename: string, source: string) => {
+        if (processedFiles.has(filename)) return;
 
-        // debounce (500ms) — Windows の重複イベント吸収
-        const existing = debounceTimers.get(filename);
-        if (existing) clearTimeout(existing);
+        const filePath = path.join(ipcDir, filename);
+        try {
+            if (!fs.existsSync(filePath)) return;
+            const data = fs.readFileSync(filePath, 'utf-8');
+            const parsed = JSON.parse(data) as SubagentPrompt;
 
-        debounceTimers.set(filename, setTimeout(() => {
-            debounceTimers.delete(filename);
-            const filePath = path.join(ipcDir, filename);
-
-            try {
-                if (!fs.existsSync(filePath)) return;
-                const data = fs.readFileSync(filePath, 'utf-8');
-                const parsed = JSON.parse(data) as SubagentPrompt;
-
-                if (parsed.type !== 'subagent_prompt' || parsed.to !== myName) {
-                    logWarn(`[subagentIpc] 無効なプロンプト (type=${parsed.type}, to=${parsed.to})`);
-                    return;
-                }
-
-                logDebug(`[subagentIpc] プロンプト受信: ${filename}`);
-                onPrompt(parsed, filePath);
-            } catch (err) {
-                logError(`[subagentIpc] プロンプト処理エラー: ${err}`);
+            if (parsed.type !== 'subagent_prompt' || parsed.to !== myName) {
+                logWarn(`[subagentIpc] 無効なプロンプト (type=${parsed.type}, to=${parsed.to})`);
+                return;
             }
-        }, 500));
-    });
 
-    watcher.on('error', (err) => {
-        logError(`[subagentIpc] プロンプト監視エラー: ${err}`);
-    });
+            processedFiles.add(filename);
+            logDebug(`[subagentIpc] プロンプト受信 (${source}): ${filename}`);
+            onPrompt(parsed, filePath);
+        } catch (err) {
+            logError(`[subagentIpc] プロンプト処理エラー: ${err}`);
+        }
+    };
 
-    logDebug(`[subagentIpc] プロンプト監視を開始: prefix="${prefix}"`);
+    // --- 1. fs.watch ベースの監視（即時検知） ---
+    let watcher: fs.FSWatcher | null = null;
+    try {
+        watcher = fs.watch(ipcDir, (_event, filename) => {
+            if (!filename || !filename.startsWith(prefix)) return;
+
+            // debounce (500ms) — Windows の重複イベント吸収
+            const existing = debounceTimers.get(filename);
+            if (existing) clearTimeout(existing);
+
+            debounceTimers.set(filename, setTimeout(() => {
+                debounceTimers.delete(filename);
+                processFile(filename, 'fs.watch');
+            }, 500));
+        });
+
+        watcher.on('error', (err) => {
+            logError(`[subagentIpc] プロンプト監視エラー (fs.watch): ${err}`);
+        });
+    } catch (err) {
+        logWarn(`[subagentIpc] fs.watch の開始に失敗 — ポーリングのみで動作: ${err}`);
+    }
+
+    // --- 2. ポーリングベースのフォールバック（3秒間隔） ---
+    const pollInterval = setInterval(() => {
+        try {
+            const files = fs.readdirSync(ipcDir);
+            const matching = files.filter(f => f.startsWith(prefix) && !processedFiles.has(f));
+
+            for (const filename of matching) {
+                logDebug(`[subagentIpc] ポーリングでプロンプト検出: ${filename}`);
+                processFile(filename, 'polling');
+            }
+        } catch (err) {
+            // ディレクトリ読み取りエラーは無視（一時的な場合がある）
+        }
+    }, 3000);
+
+    logDebug(`[subagentIpc] プロンプト監視を開始: prefix="${prefix}" (fs.watch=${watcher ? 'active' : 'disabled'} + polling=3s)`);
 
     // クリーンアップ関数を返す
     return () => {
         try {
-            watcher.close();
+            watcher?.close();
         } catch { /* ignore */ }
+        clearInterval(pollInterval);
         for (const timer of debounceTimers.values()) {
             clearTimeout(timer);
         }
         debounceTimers.clear();
+        processedFiles.clear();
         logDebug('[subagentIpc] プロンプト監視を停止');
     };
 }
