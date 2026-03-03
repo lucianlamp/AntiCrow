@@ -77,6 +77,23 @@ describe('embedHelper', () => {
             const embed = buildEmbed('#### Deep heading');
             expect((embed as any).description).toBe('**Deep heading**');
         });
+
+        it('should not set footer or timestamp by default', () => {
+            const embed = buildEmbed('Hello');
+            expect((embed as any).data?.footer).toBeUndefined();
+            expect((embed as any).data?.timestamp).toBeUndefined();
+        });
+
+        it('should set footer and timestamp when showTimestamp is true', () => {
+            const embed = buildEmbed('Hello', EmbedColor.Info, true);
+            expect((embed as any).data.footer).toEqual({ text: 'Antigravity Bridge' });
+            expect((embed as any).data.timestamp).toBe(true);
+        });
+
+        it('should not set footer when showTimestamp is false', () => {
+            const embed = buildEmbed('Hello', EmbedColor.Info, false);
+            expect((embed as any).data?.footer).toBeUndefined();
+        });
     });
 
     // -------------------------------------------------------------------

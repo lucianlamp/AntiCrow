@@ -3,7 +3,7 @@
 // ---------------------------------------------------------------------------
 
 import { describe, it, expect } from 'vitest';
-import { snowflakeToTimestamp } from '../discordUtils';
+import { snowflakeToTimestamp, truncateWithEllipsis } from '../discordUtils';
 
 describe('snowflakeToTimestamp', () => {
     it('should convert a known snowflake to correct timestamp', () => {
@@ -32,5 +32,36 @@ describe('snowflakeToTimestamp', () => {
 
     it('should return a number', () => {
         expect(typeof snowflakeToTimestamp('1234567890123456789')).toBe('number');
+    });
+});
+
+describe('truncateWithEllipsis', () => {
+    it('maxLen 以下の文字列はそのまま返す', () => {
+        expect(truncateWithEllipsis('hello', 10)).toBe('hello');
+    });
+
+    it('maxLen と同じ長さはそのまま返す', () => {
+        expect(truncateWithEllipsis('hello', 5)).toBe('hello');
+    });
+
+    it('maxLen を超える場合は末尾に ... を付加する', () => {
+        expect(truncateWithEllipsis('hello world', 8)).toBe('hello...');
+    });
+
+    it('maxLen が 3 以下の場合は ... なしで切り詰める', () => {
+        expect(truncateWithEllipsis('hello', 2)).toBe('he');
+        expect(truncateWithEllipsis('hello', 3)).toBe('hel');
+    });
+
+    it('maxLen が 4 の場合は 1文字 + ... になる', () => {
+        expect(truncateWithEllipsis('hello', 4)).toBe('h...');
+    });
+
+    it('空文字列はそのまま返す', () => {
+        expect(truncateWithEllipsis('', 10)).toBe('');
+    });
+
+    it('日本語でも正しく動作する', () => {
+        expect(truncateWithEllipsis('これはテストです', 6)).toBe('これは...');
     });
 });

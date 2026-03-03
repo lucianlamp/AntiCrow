@@ -27,16 +27,23 @@ export type EmbedColorValue = (typeof EmbedColor)[keyof typeof EmbedColor];
 /**
  * 標準スタイルの Embed を生成する。
  * フッター「Antigravity Bridge」とタイムスタンプを自動付与。
+ * showTimestamp が true の場合、フッターに現在時刻を表示する。
  */
 export function buildEmbed(
     description: string,
-    color: EmbedColorValue = EmbedColor.Info
+    color: EmbedColorValue = EmbedColor.Info,
+    showTimestamp = false,
 ): EmbedBuilder {
     // Discord は ####（4つ以上の #）をサポートしないため、**太字** 形式に変換
     const sanitized = normalizeHeadings(description || '');
-    return new EmbedBuilder()
+    const embed = new EmbedBuilder()
         .setDescription(sanitized || '\u200b')
         .setColor(color);
+    if (showTimestamp) {
+        embed.setFooter({ text: 'Antigravity Bridge' });
+        embed.setTimestamp();
+    }
+    return embed;
 }
 
 /**

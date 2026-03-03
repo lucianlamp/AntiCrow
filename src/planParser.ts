@@ -79,6 +79,7 @@ export function parsePlanJson(raw: string): PlanOutput | null {
         execution_summary: typeof o.execution_summary === 'string' ? o.execution_summary : undefined,
         prompt_summary: typeof o.prompt_summary === 'string' ? o.prompt_summary : undefined,
         attachment_paths: Array.isArray(o.attachment_paths) ? o.attachment_paths as string[] : undefined,
+        tasks: Array.isArray(o.tasks) ? (o.tasks as string[]) : undefined,
     };
 }
 
@@ -129,6 +130,7 @@ export function buildPlan(
         execution_summary: output.execution_summary,
         prompt_summary: output.prompt_summary,
         attachment_paths: output.attachment_paths,
+        tasks: output.tasks,
         status,
         created_at: new Date().toISOString(),
     };

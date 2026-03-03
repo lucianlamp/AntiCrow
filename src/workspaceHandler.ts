@@ -53,7 +53,7 @@ export async function getRunningWsNames(ports?: number[]): Promise<Set<string>> 
 // ワークスペース一覧 Embed + ボタン構築
 // ---------------------------------------------------------------------------
 
-const WS_ITEMS_PER_PAGE = 5;
+const WS_ITEMS_PER_PAGE = 3;
 
 export async function buildWorkspaceListEmbed(ctx: BridgeContext, page = 0): Promise<{
     embeds: EmbedBuilder[];

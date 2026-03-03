@@ -19,9 +19,9 @@ import { logDebug, logWarn, logError } from './logger';
 /** レスポンスファイルの最大サイズ（バイト） */
 const MAX_RESPONSE_SIZE_BYTES = 5 * 1024 * 1024;
 /** ファイル出現後の書き込み安定待機（ms） */
-const WRITE_SETTLE_MS = 500;
+const WRITE_SETTLE_MS = 200;
 /** ポーリング間隔（ms） */
-const POLL_INTERVAL_MS = 1_000;
+const POLL_INTERVAL_MS = 500;
 
 /** ワークスペース名をファイル名に安全に使えるようサニタイズする */
 export function sanitizeWorkspaceName(name?: string): string {
