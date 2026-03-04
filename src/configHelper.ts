@@ -32,8 +32,8 @@ export function getCdpPorts(_storagePath?: string): number[] {
     return [port];
 }
 
-/** CDP レスポンスタイムアウト（ms）のデフォルト値 */
-export const DEFAULT_RESPONSE_TIMEOUT_MS = 1_800_000;
+/** CDP レスポンスタイムアウト（ms）のデフォルト値。0 = 無制限（stale recovery + /cancel がセーフネット） */
+export const DEFAULT_RESPONSE_TIMEOUT_MS = 0;
 
 /** タイムゾーンのデフォルト値 */
 export const DEFAULT_TIMEZONE = 'Asia/Tokyo';
@@ -55,7 +55,7 @@ export function getConfig(): vscode.WorkspaceConfiguration {
 
 
 
-/** CDP レスポンスタイムアウト（ms）を取得する（デフォルト: 1,800,000 = 30分） */
+/** CDP レスポンスタイムアウト（ms）を取得する（デフォルト: 0 = 無制限） */
 export function getResponseTimeout(): number {
     return getConfig().get<number>('responseTimeoutMs') || DEFAULT_RESPONSE_TIMEOUT_MS;
 }

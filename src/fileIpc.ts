@@ -271,37 +271,39 @@ export class FileIpc {
                 await tryReadResponse();
             }, POLL_INTERVAL_MS);
 
-            // --- タイムアウト監視（1秒間隔でチェック） ---
-            timeoutTimer = setInterval(async () => {
-                if (settled) { return; }
-                if (Date.now() - lastActivityTime >= timeoutMs) {
-                    const totalElapsedMs = Date.now() - lastActivityTime;
-                    const totalElapsedSec = Math.round(totalElapsedMs / 1000);
-                    const progressInfo = lastProgressMtime > 0
-                        ? `last progress ${Math.round((Date.now() - lastProgressMtime) / 1000)}s ago`
-                        : 'no progress received';
+            // --- タイムアウト監視（1秒間隔でチェック）: timeoutMs=0 は無制限 ---
+            if (timeoutMs > 0) {
+                timeoutTimer = setInterval(async () => {
+                    if (settled) { return; }
+                    if (Date.now() - lastActivityTime >= timeoutMs) {
+                        const totalElapsedMs = Date.now() - lastActivityTime;
+                        const totalElapsedSec = Math.round(totalElapsedMs / 1000);
+                        const progressInfo = lastProgressMtime > 0
+                            ? `last progress ${Math.round((Date.now() - lastProgressMtime) / 1000)}s ago`
+                            : 'no progress received';
 
-                    // レスポンスファイルの存在チェック（メトリクス用）
-                    let responseFileExists = false;
-                    try {
-                        await fs.promises.access(responsePath, fs.constants.F_OK);
-                        responseFileExists = true;
-                    } catch { /* not found */ }
+                        // レスポンスファイルの存在チェック（メトリクス用）
+                        let responseFileExists = false;
+                        try {
+                            await fs.promises.access(responsePath, fs.constants.F_OK);
+                            responseFileExists = true;
+                        } catch { /* not found */ }
 
-                    settled = true;
-                    cleanup();
+                        settled = true;
+                        cleanup();
 
-                    // ログ強化: logWarn でメトリクス出力
-                    logWarn(`FileIpc: waitForResponse TIMEOUT — elapsed=${totalElapsedSec}s, timeout=${timeoutMs}ms, ${progressInfo}, responseFileExists=${responseFileExists}, path=${responsePath}`);
+                        // ログ強化: logWarn でメトリクス出力
+                        logWarn(`FileIpc: waitForResponse TIMEOUT — elapsed=${totalElapsedSec}s, timeout=${timeoutMs}ms, ${progressInfo}, responseFileExists=${responseFileExists}, path=${responsePath}`);
 
-                    // タイムアウトしたレスポンスファイルは削除しない（stale recovery でピックアップするため残す）
-                    if (responseFileExists) {
-                        logDebug('FileIpc: timed-out response file exists — leaving for stale recovery');
+                        // タイムアウトしたレスポンスファイルは削除しない（stale recovery でピックアップするため残す）
+                        if (responseFileExists) {
+                            logDebug('FileIpc: timed-out response file exists — leaving for stale recovery');
+                        }
+
+                        reject(new IpcTimeoutError(`FileIpc: response timeout (${timeoutMs}ms, ${progressInfo}) — file never appeared at ${responsePath}`));
                     }
-
-                    reject(new IpcTimeoutError(`FileIpc: response timeout (${timeoutMs}ms, ${progressInfo}) — file never appeared at ${responsePath}`));
-                }
-            }, POLL_INTERVAL_MS);
+                }, POLL_INTERVAL_MS);
+            } // if (timeoutMs > 0)
         });
     }
 

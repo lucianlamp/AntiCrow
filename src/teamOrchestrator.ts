@@ -221,12 +221,11 @@ export class TeamOrchestrator {
             const success = resp.status === 'success';
             logInfo(`[TeamOrchestrator] Agent "${name}" completed in ${durationMs}ms (${resp.status})`);
 
-            // スレッドに完了通知 + アーカイブ
+            // スレッドに完了通知
             if (threadId && this.threadOps) {
                 const statusEmoji = success ? '✅' : '❌';
                 await this.threadOps.sendToThread(threadId,
                     `${statusEmoji} 完了 (${Math.round(durationMs / 1000)}秒)`);
-                await this.threadOps.archiveThread(threadId);
             }
 
             // メインチャンネルに完了通知（スレッドリンク付き）
@@ -253,11 +252,10 @@ export class TeamOrchestrator {
             // 監視停止
             this.stopMonitor(name);
 
-            // スレッドにエラー通知 + アーカイブ
+            // スレッドにエラー通知
             if (threadId && this.threadOps) {
                 await this.threadOps.sendToThread(threadId,
                     `❌ **エラー発生** (${Math.round(durationMs / 1000)}秒)\n${errMsg}`).catch(() => { });
-                await this.threadOps.archiveThread(threadId).catch(() => { });
             }
 
             // メインチャンネルにもエラー通知
@@ -1065,8 +1063,6 @@ export class TeamOrchestrator {
                 if (threadId && this.threadOps) {
                     await this.threadOps.sendToThread(threadId,
                         `✅ **タスク完了** (${Math.round(durationMs / 1000)}秒)`);
-                    await new Promise(r => setTimeout(r, 3000)); // Discord プレビュー更新を待機
-                    await this.threadOps.archiveThread(threadId);
                 }
 
                 // メインチャンネルに完了通知（スレッドリンク + N/M 表記付き）
@@ -1096,8 +1092,6 @@ export class TeamOrchestrator {
                     await this.threadOps.sendToThread(threadId,
                         `❌ **エラー発生** (${Math.round(durationMs / 1000)}秒)\n${errMsg}`
                     ).catch(() => { });
-                    await new Promise(r => setTimeout(r, 3000)); // Discord プレビュー更新を待機
-                    await this.threadOps.archiveThread(threadId).catch(() => { });
                 }
 
                 return {

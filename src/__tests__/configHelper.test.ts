@@ -48,10 +48,10 @@ describe('configHelper', () => {
             expect(getResponseTimeout()).toBe(60000);
         });
 
-        it('should return default timeout (1,800,000ms = 30min) when not configured', () => {
+        it('should return default timeout (0 = unlimited) when not configured', () => {
             mockGet.mockReturnValue(undefined);
             expect(getResponseTimeout()).toBe(DEFAULT_RESPONSE_TIMEOUT_MS);
-            expect(getResponseTimeout()).toBe(1_800_000);
+            expect(getResponseTimeout()).toBe(0);
         });
 
         it('should return default when configured value is 0', () => {
