@@ -195,13 +195,31 @@ export async function handleDiscordMessage(
         try {
             const summaryText = plan.action_summary || plan.discord_templates.ack || plan.human_summary
                 || plan.prompt.substring(0, 100) + (plan.prompt.length > 100 ? '...' : '');
-            const execType = plan.cron ? `定期: \`${plan.cron}\`` : '即時実行';
-            const confirmText = plan.requires_confirmation ? `要確認 (${plan.choice_mode || 'none'})` : '自動実行';
+            const lines: string[] = [];
+            lines.push(`📋 **概要:** ${summaryText}`);
+
+            // タスク一覧
+            if (plan.tasks && plan.tasks.length > 0) {
+                lines.push('');
+                lines.push('**タスク:**');
+                for (let i = 0; i < plan.tasks.length; i++) {
+                    const task = plan.tasks[i];
+                    const preview = task.length > 80 ? task.substring(0, 80) + '...' : task;
+                    lines.push(`- **${i + 1}.** ${preview}`);
+                }
+            }
+
+            // 対象ファイル
+            if (plan.affected_files && plan.affected_files.length > 0) {
+                lines.push('');
+                lines.push('**対象ファイル:**');
+                for (const file of plan.affected_files) {
+                    lines.push(`- \`${file}\``);
+                }
+            }
+
             await channel.send({
-                embeds: [buildEmbed(
-                    `📋 **実行計画**\n> **📝 概要:** ${summaryText}\n> **⏱️ 実行:** ${execType}　|　**🔐 確認:** ${confirmText}`,
-                    EmbedColor.Info,
-                )]
+                embeds: [buildEmbed(lines.join('\n'), EmbedColor.Info)]
             });
         } catch (detailErr) {
             logDebug(`handleDiscordMessage: failed to send plan detail: ${detailErr}`);

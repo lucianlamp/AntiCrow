@@ -15,7 +15,7 @@ import { logError } from './logger';
 import { buildEmbed, EmbedColor } from './embedHelper';
 import { BridgeContext } from './bridgeContext';
 import { handleTemplateButton } from './templateHandler';
-import { getSuggestion, SUGGEST_AUTO_ID, AUTO_PROMPT } from './suggestionButtons';
+import { getSuggestion, getAllSuggestions, SUGGEST_AUTO_ID, AUTO_PROMPT } from './suggestionButtons';
 import { processSuggestionPrompt } from './messageHandler';
 
 /**
@@ -134,8 +134,15 @@ export async function handleMiscButton(
     // ----- 「エージェントに任せる」ボタン -----
     if (customId === SUGGEST_AUTO_ID) {
         const channelId = interaction.channelId;
+        // 直前の提案を取得してプロンプトに含める
+        const suggestions = getAllSuggestions(channelId);
+        let prompt = AUTO_PROMPT;
+        if (suggestions && suggestions.length > 0) {
+            const suggestionContext = suggestions.map((s, i) => `${i + 1}. ${s.label}: ${s.prompt}`).join('\n');
+            prompt = `以下の提案が直前に表示されています。これらを参考にして、エージェントの判断で最適なアクションを実行してください。\n\n【直前の提案】\n${suggestionContext}\n\n${AUTO_PROMPT}`;
+        }
         await interaction.reply({ embeds: [buildEmbed('🤖 **エージェントの判断で次のアクションを実行します**', EmbedColor.Info)] });
-        processSuggestionPrompt(ctx, channelId, AUTO_PROMPT, interaction.user.id).catch((e: unknown) => {
+        processSuggestionPrompt(ctx, channelId, prompt, interaction.user.id).catch((e: unknown) => {
             logError('suggest_auto button: processSuggestionPrompt failed', e);
         });
         return true;

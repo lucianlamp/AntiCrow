@@ -88,7 +88,7 @@ vi.mock('../suggestionButtons', () => ({
 
 // embedHelper モック
 vi.mock('../embedHelper', () => ({
-    EmbedColor: { Success: 0x2ecc71, Suggest: 0x9b59b6, Warning: 0xe67e22 },
+    EmbedColor: { Success: 0x2ecc71, Response: 0x8D3ED9, Suggest: 0x9b59b6, Warning: 0xe67e22 },
     buildEmbed: vi.fn(() => ({ toJSON: () => ({}) })),
     normalizeHeadings: vi.fn((text: string) => text),
 }));
@@ -177,7 +177,7 @@ describe('sendTeamResponse', () => {
             // sendEmbeds が呼ばれていること
             expect(callbacks.sendEmbeds).toHaveBeenCalled();
             const embedCall = callbacks.sendEmbeds.mock.calls[0];
-            expect(embedCall[1]).toBe(0x2ecc71); // EmbedColor.Success
+            expect(embedCall[1]).toBe(0x8D3ED9); // EmbedColor.Response
         });
 
         it('空レスポンスでもクラッシュしないこと', async () => {
@@ -388,7 +388,7 @@ describe('sendTeamResponse', () => {
             const embedsCall = callbacks.sendEmbeds.mock.calls[0];
             // descriptions 配列と color が渡されていること
             expect(Array.isArray(embedsCall[0])).toBe(true);
-            expect(embedsCall[1]).toBe(0x2ecc71); // EmbedColor.Success
+            expect(embedsCall[1]).toBe(0x8D3ED9); // EmbedColor.Response
         });
 
         it('channelId が正しく送信関数に渡されること', async () => {

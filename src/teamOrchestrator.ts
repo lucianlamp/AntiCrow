@@ -192,8 +192,6 @@ export class TeamOrchestrator {
             if (threadId) {
                 logDebug(`[TeamOrchestrator] Created thread ${threadId} for agent "${name}"`);
                 await this.threadOps.sendToThread(threadId,
-                    `🧵 **サブエージェント "${name}" の作業スレッド**\n` +
-                    `開始時刻: ${new Date().toLocaleTimeString('ja-JP')}\n\n` +
                     `📋 **作業内容:**\n${taskPreview}`);
             }
         }
@@ -211,14 +209,7 @@ export class TeamOrchestrator {
             // 進捗監視を開始（スレッドがあればスレッドに送信）
             this.startMonitor(handle.name, progressChannelId, config, threadId);
 
-            // Discord に spawn 通知（メインチャンネルにもスレッドリンク付きで通知）
-            if (threadId) {
-                await this.sendToDiscord(channelId,
-                    `🤖 **サブエージェント "${handle.name}" を起動しました。** 進捗は 🧵 スレッドで確認できます。`);
-            } else {
-                await this.sendToDiscord(channelId,
-                    `🤖 **サブエージェント "${handle.name}" を起動しました。** タスクを実行中...`);
-            }
+            // 起動通知は廃止 — 完了時に通知する
 
             // プロンプトを送信してレスポンスを待機
             const resp = await handle.sendPrompt(prompt);
@@ -234,9 +225,17 @@ export class TeamOrchestrator {
             if (threadId && this.threadOps) {
                 const statusEmoji = success ? '✅' : '❌';
                 await this.threadOps.sendToThread(threadId,
-                    `${statusEmoji} **完了** (${Math.round(durationMs / 1000)}秒)\n` +
-                    `ステータス: ${resp.status}`);
+                    `${statusEmoji} 完了 (${Math.round(durationMs / 1000)}秒)`);
                 await this.threadOps.archiveThread(threadId);
+            }
+
+            // メインチャンネルに完了通知（スレッドリンク付き）
+            if (threadId) {
+                await this.sendToDiscord(channelId,
+                    `✅ 完了しました <#${threadId}>`);
+            } else {
+                await this.sendToDiscord(channelId,
+                    `✅ **"${name}"** 完了しました (${Math.round(durationMs / 1000)}秒)`);
             }
 
             return {
@@ -262,8 +261,13 @@ export class TeamOrchestrator {
             }
 
             // メインチャンネルにもエラー通知
-            await this.sendToDiscord(channelId,
-                `❌ **サブエージェント "${name}" でエラー発生**\n${errMsg}`).catch(() => { });
+            if (threadId) {
+                await this.sendToDiscord(channelId,
+                    `❌ エラー発生 <#${threadId}>`).catch(() => { });
+            } else {
+                await this.sendToDiscord(channelId,
+                    `❌ **"${name}"** エラー発生\n${errMsg}`).catch(() => { });
+            }
 
             return {
                 agentName: name,
@@ -312,11 +316,9 @@ export class TeamOrchestrator {
 
                 lastProgress = progress;
 
-                // Discord に中間報告（プレーンテキスト形式）
-                const progressBar = this.buildProgressBar(progress.percent);
-                const progressMsg = `📊 **${agentName}** ${progressBar} ${progress.percent}%\n`
-                    + `**ステータス**: ${progress.status}`
-                    + (progress.detail ? `\n**作業内容**: ${progress.detail}` : '');
+                // Discord に中間報告（パーセンテージ付きフォーマット）
+                const progressMsg = `${progress.percent}% — ${progress.status}`
+                    + (progress.detail ? `\n${progress.detail}` : '');
 
                 if (threadId && this.threadOps) {
                     // スレッドに typing indicator を送信
@@ -335,6 +337,26 @@ export class TeamOrchestrator {
 
         this.monitorTimers.set(agentName, timer);
         logDebug(`[TeamOrchestrator] Started monitoring "${agentName}" every ${config.monitorIntervalMs}ms`);
+
+        // 初回ポーリングを即座に実行（短いタスクでも進捗を検出できるようにする）
+        // setInterval は初回実行が monitorIntervalMs 後のため、開始直後の進捗が検出されない
+        setTimeout(() => {
+            if (!this.disposed && this.monitorTimers.has(agentName)) {
+                // タイマーのコールバックと同じロジックを即座に実行
+                this.readAgentProgress(ipcDir, agentName, agentIndex)
+                    .then(async (progress) => {
+                        if (!progress) { return; }
+                        const progressMsg = `${progress.percent}% — ${progress.status}`
+                            + (progress.detail ? `\n${progress.detail}` : '');
+                        if (threadId && this.threadOps) {
+                            await this.threadOps.sendToThread(threadId, progressMsg);
+                        } else {
+                            await this.sendToDiscord(channelId, progressMsg);
+                        }
+                    })
+                    .catch(() => { /* ignore first poll errors */ });
+            }
+        }, 3_000); // 3秒後に初回チェック（サブエージェントが進捗ファイルを書き込む猶予）
     }
 
     private stopMonitor(agentName: string): void {
@@ -348,21 +370,38 @@ export class TeamOrchestrator {
 
     /**
      * IPC ディレクトリからサブエージェントの進捗ファイルを読み取る。
-     * ファイル名パターン: req_*_progress.json
+     * 以下のパターンに対応:
+     *   1. req_{requestId}_agent{N}_progress.json（writeInstructionFiles が指定）
+     *   2. req_{agentName}_{ts}_{uuid}_progress.json（executor が実際に生成）
+     *   3. req_*_progress.json（汎用フォールバック、agentIndex 未指定時）
      */
     private async readAgentProgress(ipcDir: string, agentName: string, agentIndex?: number): Promise<AgentProgress | null> {
         try {
             const files = await fs.promises.readdir(ipcDir);
 
-            // チームモード（agentIndex指定あり）の場合、対象エージェントの progress ファイルのみを読み取る
-            const agentPattern = agentIndex !== undefined
-                ? `_agent${agentIndex}_progress.json`
-                : '_progress.json';
+            // チームモード（agentIndex指定あり）の場合、複数パターンでマッチ
+            let progressFiles: string[];
+            if (agentIndex !== undefined) {
+                // パターン1: _agent{N}_progress.json（writeInstructionFiles が指定するパス）
+                const agentIdxPattern = `_agent${agentIndex}_progress.json`;
+                // パターン2: req_{agentName}_{ts}_{uuid}_progress.json（executor が生成するパス）
+                // agentName 例: "anti-crow-subagent-1"
+                const agentNameEscaped = agentName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                const agentNamePattern = new RegExp(
+                    `^req_${agentNameEscaped}_\\d+_[a-f0-9]+_progress\\.json$`
+                );
 
-            const progressFiles = files
-                .filter(f => f.endsWith(agentPattern))
-                .sort()
-                .reverse();
+                progressFiles = files
+                    .filter(f => f.endsWith(agentIdxPattern) || agentNamePattern.test(f))
+                    .sort()
+                    .reverse();
+            } else {
+                // 非チームモード: 全 _progress.json にマッチ
+                progressFiles = files
+                    .filter(f => f.endsWith('_progress.json'))
+                    .sort()
+                    .reverse();
+            }
 
             for (const file of progressFiles) {
                 try {
@@ -389,11 +428,7 @@ export class TeamOrchestrator {
     // ユーティリティ
     // -----------------------------------------------------------------------
 
-    private buildProgressBar(percent: number): string {
-        const filled = Math.round(percent / 10);
-        const empty = 10 - filled;
-        return '▓'.repeat(filled) + '░'.repeat(empty);
-    }
+    // buildProgressBar は廃止
 
     /**
      * 全監視タイマーを停止し、リソースを解放する。
@@ -726,10 +761,10 @@ export class TeamOrchestrator {
 
             // 他のサブエージェントのタスク概要（重複防止用）
             const otherTasks = tasks
-                .map((t, j) => j !== i ? `サブエージェント${j + 1}: ${t.substring(0, 100)}${t.length > 100 ? '...' : ''}` : null)
+                .map((t, j) => j !== i ? `サブエージェント${j + 1}: ${t.substring(0, 50)}${t.length > 50 ? '...' : ''}` : null)
                 .filter((x): x is string => x !== null);
 
-            const progressPath = path.join(ipcDir, `team_${requestId}_agent${agentIndex}_progress.json`);
+            const progressPath = path.join(ipcDir, `req_${requestId}_agent${agentIndex}_progress.json`);
 
             // 内部管理用: collectResponses 等で参照するフィールドを維持
             // response_path は空文字列: レスポンスは SubagentReceiver の req_*_response.md のみ
@@ -746,8 +781,9 @@ export class TeamOrchestrator {
             };
 
             // 共通ヘルパーで instruction.json を構築・書き出し
+            const taskPrompt = `⚠️ 以下はあなた専用のタスクです。他のサブエージェントのタスクは無視してください。\n\n${tasks[i]}`;
             const fileContent = buildInstructionContent({
-                prompt: tasks[i],
+                prompt: taskPrompt,
                 context: {
                     team: {
                         agentIndex,
@@ -765,7 +801,7 @@ export class TeamOrchestrator {
                 ],
             });
 
-            const instructionPath = path.join(ipcDir, `team_${requestId}_agent${agentIndex}_instruction.json`);
+            const instructionPath = path.join(ipcDir, `tmp_exec_anti-crow_req_${requestId}_agent${agentIndex}.json`);
             fs.writeFileSync(instructionPath, JSON.stringify(fileContent, null, 2), 'utf-8');
             logInfo(`[TeamOrchestrator] Wrote instruction file: ${instructionPath}`);
             instructions.push(instruction);
@@ -845,18 +881,15 @@ export class TeamOrchestrator {
                 let threadId: string | null = null;
                 if (this.threadOps) {
                     const taskPreview = instruction.task.substring(0, 500) + (instruction.task.length > 500 ? '...' : '');
-                    // スレッド名はサブエージェント名のみ
+                    // スレッド名は「タスクN」
                     threadId = await this.threadOps.createThread(
                         channelId,
-                        `サブエージェント${instruction.agentIndex}`,
+                        `タスク${instruction.agentIndex}`,
                     );
                     if (threadId) {
                         agentThreads.set(instruction.agentIndex, threadId);
                         // 開始通知に作業内容を含める
                         await this.threadOps.sendToThread(threadId,
-                            `🧵 **サブエージェント${instruction.agentIndex} の作業スレッド**\n` +
-                            `担当エージェント: ${handle.name}\n` +
-                            `開始時刻: ${new Date().toLocaleTimeString('ja-JP')}\n\n` +
                             `📋 **作業内容:**\n${taskPreview}`
                         );
                     }
@@ -867,27 +900,20 @@ export class TeamOrchestrator {
 
                 // サブエージェントにプロンプト送信:
                 // 通常モードと同じ「ファイル読み取り方式」— 短い指示のみ送信
-                const instructionPath = path.join(ipcDir, `team_${instruction.requestId}_agent${instruction.agentIndex}_instruction.json`);
+                const instructionPath = path.join(ipcDir, `tmp_exec_anti-crow_req_${instruction.requestId}_agent${instruction.agentIndex}.json`);
                 const subagentPrompt =
                     `以下のファイルを view_file ツールで読み込み、その指示に従ってください。` +
                     `ファイルパス: ${instructionPath}`;
 
                 await handle.sendPrompt(subagentPrompt);
 
-                // メインチャンネルに通知
-                if (threadId) {
-                    await this.sendToDiscord(channelId,
-                        `🤖 **サブエージェント${instruction.agentIndex}** (${handle.name}) を起動しました。進捗は 🧵 スレッドで確認できます。`);
-                } else {
-                    await this.sendToDiscord(channelId,
-                        `🤖 **サブエージェント${instruction.agentIndex}** (${handle.name}) にタスクを送信しました。`);
-                }
+                // 起動通知は廃止 — 完了時に通知する
 
             } catch (e) {
                 const errMsg = e instanceof Error ? e.message : String(e);
                 logError(`[TeamOrchestrator] Failed to spawn/send agent ${instruction.agentIndex}: ${errMsg}`, e);
                 await this.sendToDiscord(channelId,
-                    `❌ サブエージェント${instruction.agentIndex} の起動に失敗しました: ${errMsg}`);
+                    `❌ タスク${instruction.agentIndex} の起動に失敗しました: ${errMsg}`);
             }
         };
 
@@ -995,6 +1021,10 @@ export class TeamOrchestrator {
         signal?: AbortSignal,
     ): Promise<OrchestrationResult[]> {
         const results: OrchestrationResult[] = [];
+        const ipcDir = this.fileIpc.getIpcDir();
+
+        // 完了カウンター（並行実行のため各完了時にインクリメント）
+        let completedCount = 0;
 
         // 各サブエージェントのレスポンスを並行して待機
         const promises = instructions.map(async (instruction) => {
@@ -1003,17 +1033,24 @@ export class TeamOrchestrator {
             const startTime = Date.now();
 
             try {
-                // レスポンスパターン: SubagentReceiver が FileIpc 経由で生成する req_*_response.md
-                // team_*_response.md は使用しない（一本化）
+                // レスポンスパターン:
+                //   1. subagentIpc.watchResponse が書き込む subagent_{name}_response_{ts}.json
+                //   2. SubagentReceiver が FileIpc 経由で生成する req_*_response.md（フォールバック）
                 const agentNameEscaped = agentName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
                 const responsePattern = new RegExp(
-                    `^req_${agentNameEscaped}_\\d+_[a-f0-9]+_response\\.md$` +
+                    // subagentIpc.ts の writeResponse が書き込むパターン（最優先）
+                    `^subagent_${agentNameEscaped}_response_\\d+\\.json$` +
+                    // req_{name}_{ts}_{uuid}_response.md パターン（フォールバック）
+                    `|^req_${agentNameEscaped}_\\d+_[a-f0-9]+_response\\.md$` +
                     `|^req_anti-crow-subagent-${instruction.agentIndex}_\\d+_[a-f0-9]+_response\\.md$`
                 );
 
-                // レスポンスファイルの出現を待機（パターンベースのみ）
+                // primaryPath: IPCディレクトリ内のダミーパス（dir 導出に使用）
+                const primaryPath = path.join(ipcDir, `subagent_${agentName}_response_primary.json`);
+
+                // レスポンスファイルの出現を待機（パターンベース + 正しいディレクトリ）
                 const response = await this.fileIpc.waitForResponseWithPattern(
-                    '',
+                    primaryPath,
                     responsePattern,
                     config.responseTimeoutMs,
                     signal,
@@ -1027,10 +1064,16 @@ export class TeamOrchestrator {
                 // スレッドに完了通知
                 if (threadId && this.threadOps) {
                     await this.threadOps.sendToThread(threadId,
-                        `✅ **タスク完了** (${Math.round(durationMs / 1000)}秒)\n` +
-                        `結果: ${response.substring(0, 200)}${response.length > 200 ? '...' : ''}`
-                    );
+                        `✅ **タスク完了** (${Math.round(durationMs / 1000)}秒)`);
+                    await new Promise(r => setTimeout(r, 3000)); // Discord プレビュー更新を待機
                     await this.threadOps.archiveThread(threadId);
+                }
+
+                // メインチャンネルに完了通知（スレッドリンク + N/M 表記付き）
+                completedCount++;
+                if (threadId) {
+                    await this.sendToDiscord(channelId,
+                        `✅ ${completedCount}/${instructions.length} 完了しました <#${threadId}>`);
                 }
 
                 return {
@@ -1053,6 +1096,7 @@ export class TeamOrchestrator {
                     await this.threadOps.sendToThread(threadId,
                         `❌ **エラー発生** (${Math.round(durationMs / 1000)}秒)\n${errMsg}`
                     ).catch(() => { });
+                    await new Promise(r => setTimeout(r, 3000)); // Discord プレビュー更新を待機
                     await this.threadOps.archiveThread(threadId).catch(() => { });
                 }
 
@@ -1085,6 +1129,10 @@ export class TeamOrchestrator {
         await this.sendToDiscord(channelId,
             `📊 **全サブエージェント完了**: ${successCount}/${results.length} 成功`);
 
+        // 待機インジケーター: メインエージェントが結果を統合するまでの待ち時間をカバー
+        await this.sendToDiscord(channelId,
+            `⏳ メインエージェントが結果を統合中です...しばらくお待ちください`);
+
         return results;
     }
 
@@ -1106,8 +1154,8 @@ export class TeamOrchestrator {
         reportResponsePath: string,
     ): string {
         const ipcDir = this.fileIpc.getIpcDir();
-        const instructionPath = path.join(ipcDir, `team_${teamRequestId}_report_instruction.json`);
-        const progressPath = path.join(ipcDir, `team_${teamRequestId}_report_progress.json`);
+        const instructionPath = path.join(ipcDir, `tmp_exec_anti-crow_req_${teamRequestId}_report.json`);
+        const progressPath = path.join(ipcDir, `req_${teamRequestId}_report_progress.json`);
 
         // 共通ヘルパーで instruction.json を構築
         const fileContent = buildInstructionContent({
@@ -1137,7 +1185,7 @@ export class TeamOrchestrator {
         mainResponsePath: string,
     ): string {
         const ipcDir = this.fileIpc.getIpcDir();
-        const reportPath = path.join(ipcDir, `team_${requestId}_report_all.json`);
+        const reportPath = path.join(ipcDir, `req_${requestId}_report_all.json`);
 
         const allReports = results.map((r, i) => ({
             agentIndex: i + 1,

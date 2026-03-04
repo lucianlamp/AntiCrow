@@ -49,6 +49,7 @@ export interface Plan {
     action_summary?: string;        // Discord 計画詳細表示用の要約（何をするか具体的に）
     execution_summary?: string;      // Discord 実行フェーズ表示用の要約（prompt の要約と解説）
     prompt_summary?: string;         // Discord 確認メッセージの「実行内容」表示用の要約と解説（1,000文字以内）
+    affected_files?: string[];       // 計画の対象ファイル一覧（Discord 計画詳細表示用）
     attachment_paths?: string[];     // Discord 添付ファイルのローカルパス
     workspace_name?: string;        // 紐づくワークスペース名（カテゴリーベースルーティング用）
     status: PlanStatus;
@@ -73,6 +74,7 @@ export interface PlanOutput {
     action_summary?: string;        // Discord 計画詳細表示用の要約（何をするか具体的に）
     execution_summary?: string;      // Discord 実行フェーズ表示用の要約（prompt の要約と解説）
     prompt_summary?: string;         // Discord 確認メッセージの「実行内容」表示用の要約と解説（1,000文字以内）
+    affected_files?: string[];       // 計画の対象ファイル一覧（Discord 計画詳細表示用）
     attachment_paths?: string[];     // Discord 添付ファイルのローカルパス（拡張が後付け）
 }
 

@@ -7,7 +7,11 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import { execSync } from 'child_process';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+
+/** execSync の非同期版。メインスレッドをブロックしない */
+const execAsync = promisify(exec);
 import { logDebug, logWarn, logError } from './logger';
 import {
     SubagentState,
@@ -111,15 +115,13 @@ export class SubagentHandle {
             try {
                 // プール worktree 内で新しいブランチを作成してチェックアウト
                 try {
-                    execSync(`git checkout -b ${this.branch}`, {
+                    await execAsync(`git checkout -b ${this.branch}`, {
                         cwd: this.worktreePath,
-                        stdio: 'pipe',
                     });
                 } catch {
                     // ブランチが既に存在する場合はチェックアウトのみ
-                    execSync(`git checkout ${this.branch}`, {
+                    await execAsync(`git checkout ${this.branch}`, {
                         cwd: this.worktreePath,
-                        stdio: 'pipe',
                     });
                 }
                 logDebug(`[SubagentHandle] プール worktree でブランチ切替: ${this.branch}`);
@@ -142,9 +144,8 @@ export class SubagentHandle {
                 // 従来の2段階方式（git branch → git worktree add）は、git branch が
                 // 黙って失敗するとブランチなしで worktree add を実行してしまう問題があった
                 try {
-                    execSync(`git worktree add -b ${this.branch} "${this.worktreePath}" HEAD`, {
+                    await execAsync(`git worktree add -b ${this.branch} "${this.worktreePath}" HEAD`, {
                         cwd: this.repoRoot,
-                        stdio: 'pipe',
                     });
                     logDebug(`[SubagentHandle] worktree + ブランチ一括作成完了: ${this.worktreePath}`);
                 } catch (addErr) {
@@ -152,9 +153,8 @@ export class SubagentHandle {
                     const errMsg = String(addErr);
                     if (errMsg.includes('already exists')) {
                         logDebug(`[SubagentHandle] ブランチ ${this.branch} は既に存在 — worktree のみ作成`);
-                        execSync(`git worktree add "${this.worktreePath}" ${this.branch}`, {
+                        await execAsync(`git worktree add "${this.worktreePath}" ${this.branch}`, {
                             cwd: this.repoRoot,
-                            stdio: 'pipe',
                         });
                         logDebug(`[SubagentHandle] worktree 作成完了（既存ブランチ使用）: ${this.worktreePath}`);
                     } else {
@@ -319,9 +319,8 @@ export class SubagentHandle {
             // プール使用時: worktree は削除せず、ブランチのみ削除
             // worktree のリセットは WorktreePool.release() で行われる
             try {
-                execSync(`git branch -D ${this.branch}`, {
+                await execAsync(`git branch -D ${this.branch}`, {
                     cwd: this.repoRoot,
-                    stdio: 'pipe',
                 });
                 logDebug(`[SubagentHandle] プール使用: ブランチ削除のみ: ${this.branch}`);
             } catch {
@@ -388,10 +387,11 @@ export class SubagentHandle {
     async mergeChanges(): Promise<{ merged: boolean; conflicted: boolean; error?: string }> {
         try {
             // メインブランチ（HEAD）とサブエージェントブランチの差分をチェック
-            const diffOutput = execSync(
+            const { stdout: diffOutput_ } = await execAsync(
                 `git log HEAD..${this.branch} --oneline`,
-                { cwd: this.repoRoot, stdio: 'pipe' },
-            ).toString().trim();
+                { cwd: this.repoRoot },
+            );
+            const diffOutput = diffOutput_.trim();
 
             if (!diffOutput) {
                 logDebug(`[SubagentHandle] ${this.name}: マージ不要（差分なし）`);
@@ -403,9 +403,8 @@ export class SubagentHandle {
 
             // マージ実行
             try {
-                execSync(`git merge ${this.branch} --no-edit`, {
+                await execAsync(`git merge ${this.branch} --no-edit`, {
                     cwd: this.repoRoot,
-                    stdio: 'pipe',
                 });
                 logDebug(`[SubagentHandle] ${this.name}: ✅ マージ成功 (${commitCount} commits)`);
                 return { merged: true, conflicted: false };
@@ -414,7 +413,7 @@ export class SubagentHandle {
                 logWarn(`[SubagentHandle] ${this.name}: ⚠️ マージコンフリクト発生。マージを中断します。`);
                 logWarn(`[SubagentHandle] コンフリクト詳細: ${mergeErr}`);
                 try {
-                    execSync('git merge --abort', { cwd: this.repoRoot, stdio: 'pipe' });
+                    await execAsync('git merge --abort', { cwd: this.repoRoot });
                 } catch { /* ignore: merge --abort 自体は失敗しても問題ない */ }
                 return { merged: false, conflicted: true, error: String(mergeErr) };
             }
@@ -430,16 +429,15 @@ export class SubagentHandle {
      */
     private async cleanupWorktree(): Promise<void> {
         try {
-            execSync(`git worktree remove "${this.worktreePath}" --force`, {
+            await execAsync(`git worktree remove "${this.worktreePath}" --force`, {
                 cwd: this.repoRoot,
-                stdio: 'pipe',
             });
             logDebug(`[SubagentHandle] worktree 削除完了: ${this.worktreePath}`);
         } catch (err) {
             logWarn(`[SubagentHandle] worktree 削除失敗: ${err}`);
             // git worktree prune でゴミを掃除
             try {
-                execSync('git worktree prune', { cwd: this.repoRoot, stdio: 'pipe' });
+                await execAsync('git worktree prune', { cwd: this.repoRoot });
             } catch { /* ignore */ }
 
             // 物理ディレクトリが残っている場合は強制削除
@@ -455,9 +453,8 @@ export class SubagentHandle {
 
         // ブランチ削除
         try {
-            execSync(`git branch -D ${this.branch}`, {
+            await execAsync(`git branch -D ${this.branch}`, {
                 cwd: this.repoRoot,
-                stdio: 'pipe',
             });
             logDebug(`[SubagentHandle] ブランチ削除完了: ${this.branch}`);
         } catch {

@@ -314,6 +314,7 @@ const FIND_MODEL_BUTTON = `
 export async function getCurrentModel(
     ops: CdpBridgeOps,
 ): Promise<string | null> {
+    const KNOWN_MODEL_KEYWORDS = /gemini|claude|gpt/i;
     try {
         await ops.conn.connect();
 
@@ -334,12 +335,18 @@ export async function getCurrentModel(
         if (result && typeof result === 'object' && 'debug' in result) {
             logDebug(`cdpModels: getCurrentModel cascade debug=${JSON.stringify(result.debug)}`);
             if (typeof result.text === 'string' && result.text.length > 0) {
-                logDebug(`cdpModels: getCurrentModel = "${result.text}" (cascade)`);
-                return result.text;
+                if (KNOWN_MODEL_KEYWORDS.test(result.text)) {
+                    logDebug(`cdpModels: getCurrentModel = "${result.text}" (cascade)`);
+                    return result.text;
+                }
+                logDebug(`cdpModels: getCurrentModel — unknown model text: "${result.text}", ignoring (cascade)`);
             }
         } else if (typeof result === 'string' && result.length > 0) {
-            logDebug(`cdpModels: getCurrentModel = "${result}" (cascade/legacy)`);
-            return result;
+            if (KNOWN_MODEL_KEYWORDS.test(result)) {
+                logDebug(`cdpModels: getCurrentModel = "${result}" (cascade/legacy)`);
+                return result;
+            }
+            logDebug(`cdpModels: getCurrentModel — unknown model text: "${result}", ignoring (cascade/legacy)`);
         }
 
         // 2. メインフレームフォールバック
@@ -349,12 +356,18 @@ export async function getCurrentModel(
             if (mainResult && typeof mainResult === 'object' && 'debug' in mainResult) {
                 logDebug(`cdpModels: getCurrentModel main debug=${JSON.stringify(mainResult.debug)}`);
                 if (typeof mainResult.text === 'string' && mainResult.text.length > 0) {
-                    logDebug(`cdpModels: getCurrentModel = "${mainResult.text}" (main)`);
-                    return mainResult.text;
+                    if (KNOWN_MODEL_KEYWORDS.test(mainResult.text)) {
+                        logDebug(`cdpModels: getCurrentModel = "${mainResult.text}" (main)`);
+                        return mainResult.text;
+                    }
+                    logDebug(`cdpModels: getCurrentModel — unknown model text: "${mainResult.text}", ignoring (main)`);
                 }
             } else if (typeof mainResult === 'string' && mainResult.length > 0) {
-                logDebug(`cdpModels: getCurrentModel = "${mainResult}" (main/legacy)`);
-                return mainResult;
+                if (KNOWN_MODEL_KEYWORDS.test(mainResult)) {
+                    logDebug(`cdpModels: getCurrentModel = "${mainResult}" (main/legacy)`);
+                    return mainResult;
+                }
+                logDebug(`cdpModels: getCurrentModel — unknown model text: "${mainResult}", ignoring (main/legacy)`);
             }
         } catch (mainErr) {
             logDebug(`cdpModels: getCurrentModel main frame fallback failed: ${mainErr instanceof Error ? mainErr.message : mainErr}`);

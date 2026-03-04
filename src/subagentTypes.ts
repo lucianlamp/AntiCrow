@@ -164,6 +164,9 @@ export interface TeamInstruction {
 /** プール内の worktree エントリの状態 */
 export type WorktreePoolEntryState = 'available' | 'in-use';
 
+/** プール内の worktree エントリのヘルス状態 */
+export type WorktreeHealthState = 'healthy' | 'degraded' | 'broken';
+
 /** プール内の worktree エントリ */
 export interface WorktreePoolEntry {
     /** プール内のインデックス（0-indexed） */
@@ -172,6 +175,8 @@ export interface WorktreePoolEntry {
     path: string;
     /** 現在の状態 */
     state: WorktreePoolEntryState;
+    /** ヘルス状態（デフォルト: 'healthy'） */
+    health: WorktreeHealthState;
     /** 使用中のサブエージェント名（in-use 時） */
     usedBy?: string;
     /** 最終使用時刻 */

@@ -48,6 +48,16 @@ export function getSuggestion(channelId: string, index: number): SuggestionItem 
     return entry.items[index] ?? null;
 }
 
+/**
+ * channelId に保存されている全提案を取得する。
+ * 「エージェントに任せる」ボタン押下時にコンテキストとして参照する。
+ */
+export function getAllSuggestions(channelId: string): SuggestionItem[] | null {
+    const entry = pendingSuggestions.get(channelId);
+    if (!entry) return null;
+    return entry.items;
+}
+
 // ---------------------------------------------------------------------------
 // Discord UI ビルダー
 // ---------------------------------------------------------------------------

@@ -233,6 +233,13 @@ export async function generatePlan(
             clearInterval(myProgressInterval);
             activePlanProgressIntervals.delete(myProgressInterval);
             fileIpc.cleanupProgress(progressPath).catch(() => { });
+            // plan_generation レスポンスファイル + meta を即削除（stale response 誤再送防止）
+            try {
+                await fs.promises.unlink(responsePath);
+                const metaPath = responsePath.replace(/_response\.(json|md)$/, '_meta.json');
+                await fs.promises.unlink(metaPath).catch(() => { });
+                logDebug(`generatePlan: cleaned up plan response: ${require('path').basename(responsePath)}`);
+            } catch { /* ignore — file may already be cleaned up */ }
         }
     } finally {
         clearInterval(myTypingInterval);
@@ -431,7 +438,7 @@ export async function dispatchPlan(
                     const tasks = ctx.teamOrchestrator.groupTasks(plan.tasks, teamConfig.maxAgents);
                     logDebug(`dispatchPlan: Team mode — grouped ${plan.tasks.length} tasks into ${tasks.length} groups (maxAgents=${teamConfig.maxAgents})`);
 
-                    const teamRequestId = `team_${Date.now()}`;
+                    const teamRequestId = `${Date.now()}`;
                     const instructions = ctx.teamOrchestrator.writeInstructionFiles(
                         tasks,
                         teamRequestId,

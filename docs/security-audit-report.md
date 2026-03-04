@@ -106,7 +106,7 @@ VSIX パッケージに含まれるファイル:
 除外されるファイル:
 - ✅ `src/**` — TypeScript ソースコード
 - ✅ `**/*.ts` — すべての TypeScript ファイル
-- ✅ `.agent/**` — AI エージェント設定
+- ✅ `.agents/**` — AI エージェント設定
 - ✅ `**/__tests__/**` — テストコード
 - ✅ `tsconfig.json`, `esbuild.js` — ビルド設定
 - ✅ `node_modules/`, `*.vsix` — 開発用ファイル

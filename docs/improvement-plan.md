@@ -293,7 +293,7 @@ const listResult = ... as { items: string[]; debug: Record<string, unknown> } | 
 ### 4.3 セキュリティポリシーの定期レビュー
 
 **計画**:
-- 3ヶ月ごとに `.agent/skills/security-policy/SKILL.md` をレビュー
+- 3ヶ月ごとに `.agents/skills/security-policy/SKILL.md` をレビュー
 - 新機能追加時にポリシーとの整合性を確認するチェックリストを PR テンプレートに追加
 
 ### 想定工数
@@ -373,7 +373,7 @@ Week 4: フェーズ5（CI/CD）+ 全体テスト・検証
 
 ## セキュリティポリシー準拠確認
 
-この改善計画の全内容がセキュリティポリシー（`.agent/skills/security-policy/SKILL.md`）に準拠していることを確認済み:
+この改善計画の全内容がセキュリティポリシー（`.agents/skills/security-policy/SKILL.md`）に準拠していることを確認済み:
 - ✅ 内部実装の詳細（プロトコル名、ポート番号等）を外部ドキュメントに露出していない
 - ✅ `package.json` の description 修正案はセキュリティポリシーに準拠
 - ✅ リファクタリング計画がセキュリティ設定（minify, sourcemap, .vscodeignore）に影響しない

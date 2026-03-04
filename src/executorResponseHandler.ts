@@ -268,7 +268,7 @@ export async function sendProcessedResponse(options: {
     const normalized = normalizeHeadings(finalContent);
     const embedGroups = splitForEmbeds(normalized);
     for (const group of embedGroups) {
-        await callbacks.sendEmbeds(group, EmbedColor.Success);
+        await callbacks.sendEmbeds(group, EmbedColor.Response);
     }
 
     // 5. 提案ボタン送信

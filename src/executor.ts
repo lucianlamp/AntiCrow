@@ -366,6 +366,16 @@ export class Executor {
             // 実行履歴を記録（新モジュールに委譲）
             recordExecution(this.planStore, plan, true, durationMs, cleanContent);
 
+            // 配信済みレスポンスファイル + meta を即削除（stale response 誤再送防止）
+            try {
+                await fs.promises.unlink(responsePath);
+                const metaPath = responsePath.replace(/_response\.(json|md)$/, '_meta.json');
+                await fs.promises.unlink(metaPath).catch(() => { });
+                logDebug(`Executor: cleaned up delivered response: ${require('path').basename(responsePath)}`);
+            } catch (e) {
+                logDebug(`Executor: failed to cleanup response file: ${e}`);
+            }
+
             // 即時実行の重複防止
             if (!plan.cron) {
                 this.recentlyExecutedPlanIds.add(plan.plan_id);

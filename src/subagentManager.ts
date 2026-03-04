@@ -7,7 +7,11 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import { execSync } from 'child_process';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+
+/** execSync の非同期版。メインスレッドをブロックしない */
+const execAsync = promisify(exec);
 import { logDebug, logWarn, logError } from './logger';
 import {
     SubagentConfig,
@@ -15,6 +19,7 @@ import {
     SubagentResponse,
     DEFAULT_SUBAGENT_CONFIG,
     WorktreePoolEntry,
+    WorktreeHealthState,
 } from './subagentTypes';
 import { SubagentHandle } from './subagentHandle';
 import { CdpBridge } from './cdpBridge';
@@ -106,7 +111,7 @@ export class SubagentManager {
             this.ipcDir,
             this.cdpBridge,
             this.config,
-            this.worktreePool?.isInitialized ? this.worktreePool.acquire(name) : undefined,
+            this.worktreePool?.isInitialized ? await this.worktreePool.acquire(name) : undefined,
         );
 
         this.agents.set(name, handle);
@@ -452,10 +457,9 @@ export class SubagentManager {
                 // git worktree list で登録済み worktree パスを取得
                 let registeredPaths: Set<string>;
                 try {
-                    const output = execSync('git worktree list --porcelain', {
+                    const { stdout: output } = await execAsync('git worktree list --porcelain', {
                         cwd: this.repoRoot,
-                        stdio: 'pipe',
-                    }).toString();
+                    });
                     registeredPaths = new Set(
                         output.split('\n')
                             .filter((line: string) => line.startsWith('worktree '))
@@ -493,9 +497,8 @@ export class SubagentManager {
 
                     // 対応するブランチも削除
                     try {
-                        execSync(`git branch -D team/subagent/${entry.name}`, {
+                        await execAsync(`git branch -D team/subagent/${entry.name}`, {
                             cwd: this.repoRoot,
-                            stdio: 'pipe',
                         });
                         logDebug(`[SubagentManager] 残存ブランチ削除: team/subagent/${entry.name}`);
                     } catch { /* ブランチが存在しない場合は無視 */ }
@@ -504,7 +507,7 @@ export class SubagentManager {
                 if (orphanCount > 0) {
                     // git worktree prune で git 側の参照も掃除
                     try {
-                        execSync('git worktree prune', { cwd: this.repoRoot, stdio: 'pipe' });
+                        await execAsync('git worktree prune', { cwd: this.repoRoot });
                     } catch { /* ignore */ }
                     logDebug(`[SubagentManager] ${orphanCount} 個の残存 worktree ディレクトリを削除しました`);
                 }
@@ -555,6 +558,7 @@ export class WorktreePool {
     private repoRoot: string;
     private poolDir: string;
     private initialized = false;
+    private healthCheckTimer: ReturnType<typeof setInterval> | null = null;
 
     constructor(repoRoot: string) {
         this.repoRoot = repoRoot;
@@ -594,21 +598,22 @@ export class WorktreePool {
                 // 既存 worktree を再利用
                 logDebug(`[WorktreePool] 既存 worktree 再利用: pool_${i}`);
                 try {
-                    this.resetWorktree(entryPath, branchName);
+                    await this.resetWorktree(entryPath, branchName);
                 } catch (err) {
                     logWarn(`[WorktreePool] 既存 worktree のリセット失敗（再作成します）: ${err}`);
-                    this.removeWorktreeForced(entryPath, branchName);
-                    this.createWorktree(entryPath, branchName);
+                    await this.removeWorktreeForced(entryPath, branchName);
+                    await this.createWorktree(entryPath, branchName);
                 }
             } else {
                 // 新規作成
-                this.createWorktree(entryPath, branchName);
+                await this.createWorktree(entryPath, branchName);
             }
 
             this.entries.push({
                 index: i,
                 path: entryPath,
                 state: 'available',
+                health: 'healthy',
             });
         }
 
@@ -617,24 +622,30 @@ export class WorktreePool {
     }
 
     /**
-     * 空き worktree を取得する。
+     * 空き worktree を取得する（LRU 順: lastUsedAt が古いものを優先）。
+     * health === 'healthy' のエントリのみ返す。
      * @param agentName 使用するサブエージェント名
      * @returns WorktreePoolEntry（空きがない場合は自動拡張）
      */
-    acquire(agentName: string): WorktreePoolEntry {
-        // 空きエントリを検索
-        let entry = this.entries.find(e => e.state === 'available');
+    async acquire(agentName: string): Promise<WorktreePoolEntry> {
+        // 空きエントリを LRU 順で検索（healthy のみ）
+        const availableEntries = this.entries
+            .filter(e => e.state === 'available' && e.health === 'healthy')
+            .sort((a, b) => (a.lastUsedAt ?? 0) - (b.lastUsedAt ?? 0));
+
+        let entry = availableEntries[0];
 
         if (!entry) {
             // 空きがない場合は自動拡張
             const newIndex = this.entries.length;
             const entryPath = path.join(this.poolDir, `pool_${newIndex}`);
             const branchName = `team/pool/pool_${newIndex}`;
-            this.createWorktree(entryPath, branchName);
+            await this.createWorktree(entryPath, branchName);
             entry = {
                 index: newIndex,
                 path: entryPath,
                 state: 'available',
+                health: 'healthy',
             };
             this.entries.push(entry);
             logDebug(`[WorktreePool] プール自動拡張: pool_${newIndex}`);
@@ -651,7 +662,7 @@ export class WorktreePool {
      * worktree をリセットしてプールに返却する。
      * @param entryIndex 返却するエントリのインデックス
      */
-    release(entryIndex: number): void {
+    async release(entryIndex: number): Promise<void> {
         const entry = this.entries.find(e => e.index === entryIndex);
         if (!entry) {
             logWarn(`[WorktreePool] release: インデックス ${entryIndex} が見つかりません`);
@@ -661,8 +672,9 @@ export class WorktreePool {
         const branchName = `team/pool/pool_${entry.index}`;
 
         try {
-            this.resetWorktree(entry.path, branchName);
+            await this.resetWorktree(entry.path, branchName);
             entry.state = 'available';
+            entry.health = 'healthy';
             entry.usedBy = undefined;
             entry.lastUsedAt = Date.now();
             logDebug(`[WorktreePool] release: pool_${entry.index} → available`);
@@ -670,13 +682,15 @@ export class WorktreePool {
             logWarn(`[WorktreePool] release リセット失敗: pool_${entry.index}: ${err}`);
             // リセット失敗時は worktree を再作成
             try {
-                this.removeWorktreeForced(entry.path, branchName);
-                this.createWorktree(entry.path, branchName);
+                await this.removeWorktreeForced(entry.path, branchName);
+                await this.createWorktree(entry.path, branchName);
                 entry.state = 'available';
+                entry.health = 'healthy';
                 entry.usedBy = undefined;
                 entry.lastUsedAt = Date.now();
             } catch (recreateErr) {
                 logError(`[WorktreePool] worktree 再作成も失敗: pool_${entry.index}: ${recreateErr}`);
+                entry.health = 'broken';
             }
         }
     }
@@ -685,9 +699,10 @@ export class WorktreePool {
      * 全 worktree を削除してプールを破棄する。
      */
     async dispose(): Promise<void> {
+        this.stopHealthCheck();
         for (const entry of this.entries) {
             const branchName = `team/pool/pool_${entry.index}`;
-            this.removeWorktreeForced(entry.path, branchName);
+            await this.removeWorktreeForced(entry.path, branchName);
         }
         this.entries = [];
         this.initialized = false;
@@ -695,37 +710,130 @@ export class WorktreePool {
     }
 
     // -----------------------------------------------------------------------
+    // ヘルスチェック
+    // -----------------------------------------------------------------------
+
+    /**
+     * 全 worktree エントリのヘルスチェックを実行する。
+     * - git lock ファイルの残留チェック → 自動削除
+     * - dirty state チェック → 自動修復
+     * - 修復不能 → broken にして再作成
+     */
+    async worktreeHealthCheck(): Promise<void> {
+        for (const entry of this.entries) {
+            // in-use のエントリはスキップ
+            if (entry.state === 'in-use') { continue; }
+
+            const branchName = `team/pool/pool_${entry.index}`;
+
+            try {
+                // 1. git lock ファイルの残留チェック
+                const lockFile = path.join(entry.path, '.git', 'index.lock');
+                if (fs.existsSync(lockFile)) {
+                    logWarn(`[WorktreePool] git lock ファイル検出: pool_${entry.index} → 削除`);
+                    fs.unlinkSync(lockFile);
+                    entry.health = 'degraded';
+                }
+
+                // 2. dirty state チェック
+                try {
+                    const { stdout: status } = await execAsync('git status --porcelain', {
+                        cwd: entry.path,
+                    });
+                    if (status.trim()) {
+                        logWarn(`[WorktreePool] dirty state 検出: pool_${entry.index} → 自動修復`);
+                        await this.resetWorktree(entry.path, branchName);
+                        entry.health = 'healthy';
+                        logDebug(`[WorktreePool] pool_${entry.index}: 自動修復完了`);
+                    } else if (entry.health === 'degraded') {
+                        // lock 削除後にクリーンなら healthy に回復
+                        entry.health = 'healthy';
+                        logDebug(`[WorktreePool] pool_${entry.index}: healthy に回復`);
+                    }
+                } catch (statusErr) {
+                    // git status 自体が失敗 → broken
+                    logError(`[WorktreePool] git status 失敗: pool_${entry.index}: ${statusErr}`);
+                    entry.health = 'broken';
+                }
+
+                // 3. broken エントリの再作成
+                if (entry.health === 'broken') {
+                    logWarn(`[WorktreePool] broken エントリ再作成: pool_${entry.index}`);
+                    try {
+                        await this.removeWorktreeForced(entry.path, branchName);
+                        await this.createWorktree(entry.path, branchName);
+                        entry.health = 'healthy';
+                        entry.state = 'available';
+                        logDebug(`[WorktreePool] pool_${entry.index}: 再作成完了 → healthy`);
+                    } catch (recreateErr) {
+                        logError(`[WorktreePool] pool_${entry.index} 再作成失敗: ${recreateErr}`);
+                    }
+                }
+            } catch (err) {
+                logWarn(`[WorktreePool] ヘルスチェックエラー: pool_${entry.index}: ${err}`);
+            }
+        }
+    }
+
+    /**
+     * 定期ヘルスチェックを開始する（60秒間隔）。
+     */
+    startHealthCheck(): void {
+        if (this.healthCheckTimer) { return; }
+
+        const intervalMs = 60_000;
+        this.healthCheckTimer = setInterval(async () => {
+            try {
+                await this.worktreeHealthCheck();
+            } catch (err) {
+                logWarn(`[WorktreePool] 定期ヘルスチェックエラー: ${err}`);
+            }
+        }, intervalMs);
+
+        logDebug(`[WorktreePool] 定期ヘルスチェック開始 (${intervalMs}ms 間隔)`);
+    }
+
+    /**
+     * 定期ヘルスチェックを停止する。
+     */
+    stopHealthCheck(): void {
+        if (this.healthCheckTimer) {
+            clearInterval(this.healthCheckTimer);
+            this.healthCheckTimer = null;
+            logDebug('[WorktreePool] 定期ヘルスチェック停止');
+        }
+    }
+
+    // -----------------------------------------------------------------------
     // 内部ヘルパー
     // -----------------------------------------------------------------------
 
     /** worktree を新規作成 */
-    private createWorktree(wtPath: string, branchName: string): void {
+    private async createWorktree(wtPath: string, branchName: string): Promise<void> {
         // ブランチ作成（存在する場合は無視）
         try {
-            execSync(`git branch ${branchName}`, { cwd: this.repoRoot, stdio: 'pipe' });
+            await execAsync(`git branch ${branchName}`, { cwd: this.repoRoot });
         } catch { /* 既存ブランチ */ }
 
-        execSync(`git worktree add "${wtPath}" ${branchName}`, {
+        await execAsync(`git worktree add "${wtPath}" ${branchName}`, {
             cwd: this.repoRoot,
-            stdio: 'pipe',
         });
         logDebug(`[WorktreePool] worktree 作成: ${wtPath}`);
     }
 
     /** worktree をリセット（作業内容をクリーン） */
-    private resetWorktree(wtPath: string, _branchName: string): void {
+    private async resetWorktree(wtPath: string, _branchName: string): Promise<void> {
         // メインブランチの内容にリセット
-        execSync('git checkout -- .', { cwd: wtPath, stdio: 'pipe' });
-        execSync('git clean -fd', { cwd: wtPath, stdio: 'pipe' });
+        await execAsync('git checkout -- .', { cwd: wtPath });
+        await execAsync('git clean -fd', { cwd: wtPath });
         logDebug(`[WorktreePool] worktree リセット: ${wtPath}`);
     }
 
     /** worktree を強制削除 */
-    private removeWorktreeForced(wtPath: string, branchName: string): void {
+    private async removeWorktreeForced(wtPath: string, branchName: string): Promise<void> {
         try {
-            execSync(`git worktree remove "${wtPath}" --force`, {
+            await execAsync(`git worktree remove "${wtPath}" --force`, {
                 cwd: this.repoRoot,
-                stdio: 'pipe',
             });
         } catch {
             // git worktree remove 失敗時はディレクトリを直接削除
@@ -733,12 +841,12 @@ export class WorktreePool {
                 fs.rmSync(wtPath, { recursive: true, force: true });
             }
             try {
-                execSync('git worktree prune', { cwd: this.repoRoot, stdio: 'pipe' });
+                await execAsync('git worktree prune', { cwd: this.repoRoot });
             } catch { /* ignore */ }
         }
         // ブランチも削除
         try {
-            execSync(`git branch -D ${branchName}`, { cwd: this.repoRoot, stdio: 'pipe' });
+            await execAsync(`git branch -D ${branchName}`, { cwd: this.repoRoot });
         } catch { /* ignore */ }
     }
 }

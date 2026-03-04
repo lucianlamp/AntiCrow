@@ -291,6 +291,12 @@ export async function handleTemplateButton(
                 planResponse = await fileIpc.waitForResponse(responsePath, responseTimeout);
             } finally {
                 fileIpc.unregisterActiveRequest(tplReqId, tplTempFiles);
+                // plan_generation レスポンスファイル + meta を即削除（stale response 誤再送防止）
+                try {
+                    await fs.promises.unlink(responsePath);
+                    const metaPath = responsePath.replace(/_response\.(json|md)$/, '_meta.json');
+                    await fs.promises.unlink(metaPath).catch(() => { });
+                } catch { /* ignore */ }
             }
 
             const planOutput = parsePlanJson(planResponse);
@@ -459,6 +465,12 @@ export async function handleModalSubmit(
                 planResponse = await fileIpc.waitForResponse(responsePath, responseTimeout);
             } finally {
                 fileIpc.unregisterActiveRequest(tplReqId2, tplTempFiles);
+                // plan_generation レスポンスファイル + meta を即削除（stale response 誤再送防止）
+                try {
+                    await fs.promises.unlink(responsePath);
+                    const metaPath = responsePath.replace(/_response\.(json|md)$/, '_meta.json');
+                    await fs.promises.unlink(metaPath).catch(() => { });
+                } catch { /* ignore */ }
             }
 
             const planOutput = parsePlanJson(planResponse);

@@ -26,10 +26,16 @@ vi.mock('../logger', () => ({
     logWarn: vi.fn(),
 }));
 
-// child_process モック
-const mockExecSync = vi.fn((_cmd?: string, _opts?: unknown) => Buffer.from(''));
+// child_process モック（exec をコールバック形式でモック → promisify で Promise 化される）
+const mockExec = vi.fn((_cmd?: string, _opts?: unknown, cb?: Function) => {
+    const callback = cb ?? _opts;
+    if (typeof callback === 'function') {
+        (callback as Function)(null, { stdout: '', stderr: '' });
+    }
+    return { on: vi.fn(), stdout: null, stderr: null, pid: 0 };
+});
 vi.mock('child_process', () => ({
-    execSync: (cmd: string, opts?: unknown) => mockExecSync(cmd, opts),
+    exec: (cmd: string, opts?: unknown, cb?: Function) => mockExec(cmd, opts, cb),
 }));
 
 // fs モック

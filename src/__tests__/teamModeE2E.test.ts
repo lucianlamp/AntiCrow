@@ -135,7 +135,7 @@ describe('チームモード E2E テスト', () => {
 
             // ファイルが実際に作成されたか確認
             for (const inst of instructions) {
-                const filePath = path.join(TEST_IPC_DIR, `team_${requestId}_agent${inst.agentIndex}_instruction.json`);
+                const filePath = path.join(TEST_IPC_DIR, `tmp_exec_anti-crow_req_${requestId}_agent${inst.agentIndex}.json`);
                 expect(fs.existsSync(filePath)).toBe(true);
 
                 // ファイル内容を検証（tmp_exec_*.json 互換フォーマット）
@@ -188,7 +188,7 @@ describe('チームモード E2E テスト', () => {
         it('報告ファイルを正しく生成する', () => {
             const mockInstructions: TeamInstruction[] = [
                 {
-                    persona: 'サブエージェント1',
+                    persona: '',
                     agentIndex: 1,
                     task: '型チェック',
                     response_path: '/tmp/resp1.md',
@@ -199,7 +199,7 @@ describe('チームモード E2E テスト', () => {
                     totalAgents: 2,
                 },
                 {
-                    persona: 'サブエージェント2',
+                    persona: '',
                     agentIndex: 2,
                     task: 'テスト実行',
                     response_path: '/tmp/resp2.md',

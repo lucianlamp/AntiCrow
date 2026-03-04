@@ -216,13 +216,7 @@ export class FileIpc {
 
                     logDebug(`FileIpc: response received (${content.length} chars)`);
 
-                    // クリーンアップ
-                    try {
-                        await fs.promises.unlink(responsePath);
-                        logDebug('FileIpc: response file cleaned up');
-                    } catch {
-                        logWarn('FileIpc: failed to clean up response file');
-                    }
+                    // クリーンアップは cleanupOldFiles に任せる（早期削除防止）
 
                     cleanup(); resolve(content);
                     return true;
@@ -375,7 +369,7 @@ export class FileIpc {
                         try { await fs.promises.unlink(targetPath); } catch { /* ignore */ }
                         return content.substring(0, MAX_RESPONSE_SIZE_BYTES);
                     }
-                    try { await fs.promises.unlink(targetPath); } catch { /* ignore */ }
+                    // クリーンアップは cleanupOldFiles に任せる（早期削除防止）
                     return content;
                 } catch {
                     return null;

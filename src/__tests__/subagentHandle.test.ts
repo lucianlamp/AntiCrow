@@ -26,10 +26,10 @@ vi.mock('../logger', () => ({
     logWarn: vi.fn(),
 }));
 
-// child_process モック
-const mockExecSync = vi.fn();
+// child_process モック（exec をコールバック形式でモック → promisify で Promise 化される）
+const mockExec = vi.fn();
 vi.mock('child_process', () => ({
-    execSync: (...args: any[]) => mockExecSync(...args),
+    exec: (...args: any[]) => mockExec(...args),
 }));
 
 // fs モック
@@ -105,6 +105,7 @@ function createHandle(overrides: {
         index: 0,
         path: '/mock/pool/worktree-0',
         state: 'available' as const,
+        health: 'healthy' as const,
     } : undefined;
 
     const handle = new SubagentHandle(
@@ -126,7 +127,17 @@ function createHandle(overrides: {
 describe('SubagentHandle', () => {
     beforeEach(() => {
         vi.clearAllMocks();
-        mockExecSync.mockReturnValue(Buffer.from(''));
+        // exec のデフォルト動作: コールバックを成功で呼ぶ
+        mockExec.mockImplementation((_cmd: string, _opts: any, cb?: Function) => {
+            // promisify は (cmd, opts) → コールバック形式を想定
+            // promisify(exec) は exec(cmd, opts) を呼ぶ（child が返る）
+            // 第3引数がコールバックの場合と、第2引数がコールバックの場合がある
+            const callback = cb ?? _opts;
+            if (typeof callback === 'function') {
+                callback(null, { stdout: '', stderr: '' });
+            }
+            return { on: vi.fn(), stdout: null, stderr: null, pid: 0 };
+        });
         mockDiscoverInstances.mockResolvedValue([]);
         mockExtractWorkspaceName.mockReturnValue('');
     });
@@ -167,8 +178,14 @@ describe('SubagentHandle', () => {
     describe('mergeChanges', () => {
         it('差分がない場合はマージ不要を返す', async () => {
             const { handle } = createHandle();
-            // git log が空文字を返す = 差分なし
-            mockExecSync.mockReturnValue(Buffer.from(''));
+            // exec が空の stdout を返す = 差分なし
+            mockExec.mockImplementation((_cmd: string, _opts: any, cb?: Function) => {
+                const callback = cb ?? _opts;
+                if (typeof callback === 'function') {
+                    callback(null, { stdout: '', stderr: '' });
+                }
+                return { on: vi.fn(), stdout: null, stderr: null, pid: 0 };
+            });
 
             const result = await handle.mergeChanges();
             expect(result.merged).toBe(false);
@@ -178,14 +195,17 @@ describe('SubagentHandle', () => {
         it('差分がある場合にマージを実行して成功する', async () => {
             const { handle } = createHandle();
 
-            let callCount = 0;
-            mockExecSync.mockImplementation((cmd: string) => {
-                callCount++;
-                if (typeof cmd === 'string' && cmd.includes('git log')) {
-                    return Buffer.from('abc1234 commit 1\ndef5678 commit 2');
+            mockExec.mockImplementation((cmd: string, _opts: any, cb?: Function) => {
+                const callback = cb ?? _opts;
+                if (typeof callback === 'function') {
+                    if (typeof cmd === 'string' && cmd.includes('git log')) {
+                        callback(null, { stdout: 'abc1234 commit 1\ndef5678 commit 2', stderr: '' });
+                    } else {
+                        // git merge は成功
+                        callback(null, { stdout: '', stderr: '' });
+                    }
                 }
-                // git merge は成功
-                return Buffer.from('');
+                return { on: vi.fn(), stdout: null, stderr: null, pid: 0 };
             });
 
             const result = await handle.mergeChanges();
@@ -196,15 +216,19 @@ describe('SubagentHandle', () => {
         it('マージコンフリクト時に abort して結果を返す', async () => {
             const { handle } = createHandle();
 
-            mockExecSync.mockImplementation((cmd: string) => {
-                if (typeof cmd === 'string' && cmd.includes('git log')) {
-                    return Buffer.from('abc1234 conflict commit');
+            mockExec.mockImplementation((cmd: string, _opts: any, cb?: Function) => {
+                const callback = cb ?? _opts;
+                if (typeof callback === 'function') {
+                    if (typeof cmd === 'string' && cmd.includes('git log')) {
+                        callback(null, { stdout: 'abc1234 conflict commit', stderr: '' });
+                    } else if (typeof cmd === 'string' && cmd.includes('git merge') && !cmd.includes('--abort')) {
+                        callback(new Error('CONFLICT (content): Merge conflict'), { stdout: '', stderr: '' });
+                    } else {
+                        // git merge --abort は成功
+                        callback(null, { stdout: '', stderr: '' });
+                    }
                 }
-                if (typeof cmd === 'string' && cmd.includes('git merge') && !cmd.includes('--abort')) {
-                    throw new Error('CONFLICT (content): Merge conflict');
-                }
-                // git merge --abort は成功
-                return Buffer.from('');
+                return { on: vi.fn(), stdout: null, stderr: null, pid: 0 };
             });
 
             const result = await handle.mergeChanges();
@@ -216,11 +240,16 @@ describe('SubagentHandle', () => {
         it('ブランチが存在しない場合にエラーを返す', async () => {
             const { handle } = createHandle();
 
-            mockExecSync.mockImplementation((cmd: string) => {
-                if (typeof cmd === 'string' && cmd.includes('git log')) {
-                    throw new Error('unknown revision');
+            mockExec.mockImplementation((cmd: string, _opts: any, cb?: Function) => {
+                const callback = cb ?? _opts;
+                if (typeof callback === 'function') {
+                    if (typeof cmd === 'string' && cmd.includes('git log')) {
+                        callback(new Error('unknown revision'), { stdout: '', stderr: '' });
+                    } else {
+                        callback(null, { stdout: '', stderr: '' });
+                    }
                 }
-                return Buffer.from('');
+                return { on: vi.fn(), stdout: null, stderr: null, pid: 0 };
             });
 
             const result = await handle.mergeChanges();
@@ -273,8 +302,12 @@ describe('SubagentHandle', () => {
             const { handle } = createHandle();
 
             // spawn を呼んで IDLE → CREATING に遷移（エラーで FAILED に）
-            mockExecSync.mockImplementation(() => {
-                throw new Error('git error');
+            mockExec.mockImplementation((_cmd: string, _opts: any, cb?: Function) => {
+                const callback = cb ?? _opts;
+                if (typeof callback === 'function') {
+                    callback(new Error('git error'), { stdout: '', stderr: '' });
+                }
+                return { on: vi.fn(), stdout: null, stderr: null, pid: 0 };
             });
 
             await expect(handle.spawn()).rejects.toThrow('git error');
