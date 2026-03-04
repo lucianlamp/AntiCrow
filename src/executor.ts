@@ -31,9 +31,7 @@ import {
     writeTempPrompt,
 } from './executorPromptBuilder';
 import {
-    processResponseContent,
-    extractAndSaveMemory,
-    sendFileReferences,
+    sendProcessedResponse,
     sendSuggestionButtons,
     recordExecution,
 } from './executorResponseHandler';
@@ -333,14 +331,6 @@ export class Executor {
             const durationMs = Date.now() - jobStartTime;
             logDebug(`Executor: plan ${plan.plan_id} — response received (${response.length} chars)`);
 
-            // メモリ抽出・書き込み（新モジュールに委譲）
-            extractAndSaveMemory(response, responsePath, plan);
-
-            // レスポンスコンテンツ処理（新モジュールに委譲）
-            const { cleanContent, suggestions, resultMsg } = processResponseContent(response, responsePath, plan);
-
-            logDebug(`Executor: sending success notification to channel ${notifyChannel} (${resultMsg.length} chars, markdown=${responsePath.endsWith('.md')})`);
-
             // レスポンス送信前にモデル名を再取得してフッターに反映
             try {
                 this.cdp.ops.resetCascadeContext();
@@ -350,18 +340,28 @@ export class Executor {
                 }
             } catch { /* ignore */ }
 
-            // ファイル参照送信（新モジュールに委譲）
-            let finalResultMsg = resultMsg;
-            if (this.sendFile) {
-                finalResultMsg = await sendFileReferences(resultMsg, notifyChannel, this.sendFile, this.safeNotify.bind(this));
-            }
-
-            await this.safeNotify(notifyChannel, finalResultMsg, EmbedColor.Response);
-
-            // 提案ボタン送信（新モジュールに委譲）
-            if (this.postSuggestions) {
-                await sendSuggestionButtons(suggestions, notifyChannel, this.postSuggestions);
-            }
+            // メモリ抽出 + コンテンツ処理 + ファイル参照送信 + Discord送信 + 提案ボタン送信
+            // （sendProcessedResponse で通常モード・チームモード共通化）
+            const { cleanContent } = await sendProcessedResponse({
+                response,
+                responsePath,
+                plan,
+                channelId: notifyChannel,
+                callbacks: {
+                    sendToChannel: this.safeNotify.bind(this),
+                    sendFileToChannel: this.sendFile!,
+                    sendEmbeds: async (descriptions, color) => {
+                        // 通常モード: safeNotify で1メッセージ送信
+                        const combined = descriptions.join('\n');
+                        await this.safeNotify(notifyChannel, combined, color);
+                    },
+                    sendSuggestionButtons: async (suggestions) => {
+                        if (this.postSuggestions) {
+                            await sendSuggestionButtons(suggestions, notifyChannel, this.postSuggestions);
+                        }
+                    },
+                },
+            });
 
             // 実行履歴を記録（新モジュールに委譲）
             recordExecution(this.planStore, plan, true, durationMs, cleanContent);

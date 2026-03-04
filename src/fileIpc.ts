@@ -311,9 +311,184 @@ export class FileIpc {
         });
     }
 
+    /**
+     * パターンベースのレスポンス待機。
+     * primaryPath を優先して監視しつつ、見つからない場合は
+     * IPC ディレクトリ内の fallbackPattern に一致するファイルも検索する。
+     *
+     * チームモードのサブエージェントが instruction.json の response_path ではなく
+     * 独自のパスにレスポンスを書き込むケースに対応する。
+     */
+    async waitForResponseWithPattern(
+        primaryPath: string,
+        fallbackPattern: RegExp,
+        timeoutMs: number,
+        signal?: AbortSignal,
+    ): Promise<string> {
+        let lastActivityTime = Date.now();
+
+        const progressPatternRe = /_response\.(json|md)$/;
+        const progressPath = primaryPath.replace(progressPatternRe, '_progress.json');
+        let lastProgressMtime = 0;
+        const dir = path.dirname(primaryPath);
+        const filename = path.basename(primaryPath);
+        const progressFilename = path.basename(progressPath);
+
+        logDebug(`FileIpc: waitForResponseWithPattern — primary=${filename}, fallback=${fallbackPattern.source} (timeout=${timeoutMs}ms)`);
+
+        if (signal?.aborted) {
+            return Promise.reject(new Error('FileIpc: aborted before waiting'));
+        }
+
+        return new Promise<string>((resolve, reject) => {
+            let settled = false;
+            let watcher: fs.FSWatcher | null = null;
+            let pollTimer: ReturnType<typeof setInterval> | null = null;
+            let timeoutTimer: ReturnType<typeof setInterval> | null = null;
+
+            const cleanup = () => {
+                if (watcher) { try { watcher.close(); } catch { /* ignore */ } watcher = null; }
+                if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+                if (timeoutTimer) { clearInterval(timeoutTimer); timeoutTimer = null; }
+            };
+
+            if (signal) {
+                const onAbort = () => {
+                    if (!settled) {
+                        settled = true;
+                        cleanup();
+                        logDebug('FileIpc: waitForResponseWithPattern aborted by signal');
+                        reject(new Error('FileIpc: aborted'));
+                    }
+                };
+                signal.addEventListener('abort', onAbort, { once: true });
+            }
+
+            const tryReadAt = async (targetPath: string): Promise<string | null> => {
+                try {
+                    await fs.promises.access(targetPath, fs.constants.F_OK);
+                    await this.sleep(WRITE_SETTLE_MS);
+                    const content = await fs.promises.readFile(targetPath, 'utf-8');
+                    if (content.trim().length === 0) { return null; }
+                    if (content.length > MAX_RESPONSE_SIZE_BYTES) {
+                        logError(`FileIpc: response file too large (${content.length} bytes). Truncating.`);
+                        try { await fs.promises.unlink(targetPath); } catch { /* ignore */ }
+                        return content.substring(0, MAX_RESPONSE_SIZE_BYTES);
+                    }
+                    try { await fs.promises.unlink(targetPath); } catch { /* ignore */ }
+                    return content;
+                } catch {
+                    return null;
+                }
+            };
+
+            const tryReadResponse = async (): Promise<boolean> => {
+                if (settled) { return true; }
+
+                // 1. primaryPath を直接チェック
+                const primaryContent = await tryReadAt(primaryPath);
+                if (primaryContent !== null) {
+                    settled = true;
+                    logDebug(`FileIpc: response at primary path (${primaryContent.length} chars)`);
+                    cleanup(); resolve(primaryContent);
+                    return true;
+                }
+
+                // 2. fallbackPattern でディレクトリ内を検索
+                try {
+                    const files = await fs.promises.readdir(dir);
+                    for (const f of files) {
+                        if (fallbackPattern.test(f)) {
+                            const fallbackPath = path.join(dir, f);
+                            const fallbackContent = await tryReadAt(fallbackPath);
+                            if (fallbackContent !== null) {
+                                settled = true;
+                                logDebug(`FileIpc: response at fallback: ${f} (${fallbackContent.length} chars)`);
+                                cleanup(); resolve(fallbackContent);
+                                return true;
+                            }
+                        }
+                    }
+                } catch { /* readdir failure */ }
+
+                return false;
+            };
+
+            const checkProgress = async () => {
+                // primary の進捗ファイル
+                try {
+                    const progressStat = await fs.promises.stat(progressPath);
+                    if (progressStat.mtimeMs > lastProgressMtime) {
+                        if (lastProgressMtime > 0) {
+                            logDebug(`FileIpc: progress updated, resetting timeout`);
+                        }
+                        lastProgressMtime = progressStat.mtimeMs;
+                        lastActivityTime = Date.now();
+                    }
+                } catch { /* progress file not found */ }
+
+                // fallbackPattern に一致する進捗ファイルもチェック
+                try {
+                    const files = await fs.promises.readdir(dir);
+                    for (const f of files) {
+                        if (f.endsWith('_progress.json') && fallbackPattern.test(f.replace('_progress.json', '_response.md'))) {
+                            const fbPath = path.join(dir, f);
+                            const stat = await fs.promises.stat(fbPath);
+                            if (stat.mtimeMs > lastProgressMtime) {
+                                lastProgressMtime = stat.mtimeMs;
+                                lastActivityTime = Date.now();
+                                logDebug(`FileIpc: fallback progress updated: ${f}`);
+                            }
+                        }
+                    }
+                } catch { /* ignore */ }
+            };
+
+            // fs.watch
+            try {
+                watcher = fs.watch(dir, async (_event, changedFile) => {
+                    if (settled) { return; }
+                    if (changedFile === filename || (changedFile && fallbackPattern.test(changedFile))) {
+                        await tryReadResponse();
+                    } else if (changedFile === progressFilename || (changedFile && changedFile.endsWith('_progress.json'))) {
+                        await checkProgress();
+                    }
+                });
+                watcher.on('error', (err) => {
+                    logWarn(`FileIpc: fs.watch error: ${err.message}`);
+                    if (watcher) { try { watcher.close(); } catch { /* ignore */ } watcher = null; }
+                });
+            } catch (e) {
+                logWarn(`FileIpc: fs.watch failed: ${e instanceof Error ? e.message : e}`);
+            }
+
+            tryReadResponse();
+
+            pollTimer = setInterval(async () => {
+                if (settled) { return; }
+                await checkProgress();
+                await tryReadResponse();
+            }, POLL_INTERVAL_MS);
+
+            timeoutTimer = setInterval(async () => {
+                if (settled) { return; }
+                if (Date.now() - lastActivityTime >= timeoutMs) {
+                    settled = true;
+                    cleanup();
+                    const progressInfo = lastProgressMtime > 0
+                        ? `last progress ${Math.round((Date.now() - lastProgressMtime) / 1000)}s ago`
+                        : 'no progress received';
+                    logWarn(`FileIpc: waitForResponseWithPattern TIMEOUT — ${progressInfo}, primary=${filename}`);
+                    reject(new IpcTimeoutError(`FileIpc: response timeout (${timeoutMs}ms, ${progressInfo})`));
+                }
+            }, POLL_INTERVAL_MS);
+        });
+    }
+
     // -----------------------------------------------------------------
     // stale レスポンスリカバリー
     // -----------------------------------------------------------------
+
 
     /**
      * 起動時に未回収のレスポンスファイルを検出して返却する。

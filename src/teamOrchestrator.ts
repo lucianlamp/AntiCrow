@@ -14,8 +14,9 @@ import type { SubagentManager } from './subagentManager';
 import { WorktreePool } from './subagentManager';
 import type { FileIpc } from './fileIpc';
 import { loadTeamConfig, type TeamConfig } from './teamConfig';
-import type { TeamInstruction, TeamReport } from './subagentTypes';
+import type { TeamInstruction } from './subagentTypes';
 import { resolveWorkspacePaths } from './configHelper';
+import { buildInstructionContent } from './instructionBuilder';
 
 // ---------------------------------------------------------------------------
 // 型定義
@@ -706,7 +707,11 @@ export class TeamOrchestrator {
 
     /**
      * Phase 2: メインエージェントが生成したタスク分割を IPC 指令ファイルとして書き出す。
-     * @returns 書き出した指令ファイルのパス一覧
+     *
+     * 書き出す JSON は tmp_exec_*.json と同じ構造化フォーマット
+     * （task/context/prompt/output/rules/progress）に統一。
+     *
+     * @returns 書き出した指令ファイルのパス一覧（内部管理用の TeamInstruction 配列）
      */
     writeInstructionFiles(
         tasks: string[],
@@ -719,49 +724,56 @@ export class TeamOrchestrator {
         for (let i = 0; i < tasks.length; i++) {
             const agentIndex = i + 1;
 
-            // 他のサブエージェントのタスク概要を生成（重複防止用）
-            const otherTasksSummary = tasks
-                .map((t, j) => j !== i ? `- サブエージェント${j + 1}: ${t.substring(0, 100)}${t.length > 100 ? '...' : ''}` : null)
-                .filter(Boolean)
-                .join('\n');
+            // 他のサブエージェントのタスク概要（重複防止用）
+            const otherTasks = tasks
+                .map((t, j) => j !== i ? `サブエージェント${j + 1}: ${t.substring(0, 100)}${t.length > 100 ? '...' : ''}` : null)
+                .filter((x): x is string => x !== null);
 
+            const progressPath = path.join(ipcDir, `team_${requestId}_agent${agentIndex}_progress.json`);
+
+            // 内部管理用: collectResponses 等で参照するフィールドを維持
+            // response_path は空文字列: レスポンスは SubagentReceiver の req_*_response.md のみ
             const instruction: TeamInstruction = {
-                persona: `あなたはサブエージェント${agentIndex}（全${tasks.length}名中）です。チームの一員として、割り当てられたタスクを実行してください。` +
-                    `\n\n【重要】他のサブエージェントと作業が重複しないよう注意してください。` +
-                    `あなたの担当範囲のみを実行し、他のサブエージェントの担当範囲には手を出さないでください。` +
-                    `同じファイルの同じ箇所を修正しないでください。` +
-                    (otherTasksSummary ? `\n\n【他のサブエージェントの担当】\n${otherTasksSummary}` : ''),
+                persona: '', // 廃止: JSON ファイルには書き出さない
                 agentIndex,
                 task: tasks[i],
-                response_path: path.join(ipcDir, `team_${requestId}_agent${agentIndex}_response.md`),
-                progress_path: path.join(ipcDir, `team_${requestId}_agent${agentIndex}_progress.json`),
+                response_path: '',
+                progress_path: progressPath,
                 context: originalContext,
                 timestamp: Date.now(),
                 requestId,
                 totalAgents: tasks.length,
-                output: {
-                    method: 'write_to_file',
-                    response_format: 'Markdown',
-                    overwrite: true,
-                    constraint: `すべての作業が完了したら response_path に結果を Markdown 形式で1回だけ書き込むこと。途中経過や確認事項は書き込まないこと。書き込んだ時点でレスポンス完了と見なされる。結果には何をしたか・変更内容・影響範囲・テスト結果・注意点を具体的かつ詳細に記述すること。`,
-                },
-                progress_instruction: `進捗は progress_path に JSON で定期的に書き込むこと（write_to_file, Overwrite: true）。フォーマット: {"status": "現在のステータス", "detail": "詳細", "percent": 50}`,
-                execution_rules: [
-                    'このタスクは既に計画済みです。計画の生成や承認は不要で、直ちに実行に移ってください',
-                    'plan_generation タスクを生成しないでください。実行（execution）のみを行ってください',
-                    'task フィールドに記載されたタスクを実行してください',
-                ],
             };
 
-            // 指令ファイルを書き込む
+            // 共通ヘルパーで instruction.json を構築・書き出し
+            const fileContent = buildInstructionContent({
+                prompt: tasks[i],
+                context: {
+                    team: {
+                        agentIndex,
+                        totalAgents: tasks.length,
+                        otherTasks,
+                    },
+                    original_request: originalContext,
+                },
+                progressPath,
+                executionRules: [
+                    'このタスクは既に計画済みです。計画の生成や承認は不要で、直ちに実行に移ってください',
+                    'plan_generation タスクを生成しないでください。実行（execution）のみを行ってください',
+                    '他のサブエージェントの担当範囲には手を出さないでください。あなたの担当範囲のみを実行すること',
+                    '同じファイルの同じ箇所を修正しないでください',
+                ],
+            });
+
             const instructionPath = path.join(ipcDir, `team_${requestId}_agent${agentIndex}_instruction.json`);
-            fs.writeFileSync(instructionPath, JSON.stringify(instruction, null, 2), 'utf-8');
+            fs.writeFileSync(instructionPath, JSON.stringify(fileContent, null, 2), 'utf-8');
             logInfo(`[TeamOrchestrator] Wrote instruction file: ${instructionPath}`);
             instructions.push(instruction);
         }
 
         return instructions;
     }
+
 
     /**
      * Phase 3~5: サブエージェントを起動し、指令を送信し、レスポンスを収集してメインエージェントに報告する。
@@ -991,9 +1003,18 @@ export class TeamOrchestrator {
             const startTime = Date.now();
 
             try {
-                // レスポンスファイルの出現を待機（FileIpc のポーリング方式）
-                const response = await this.fileIpc.waitForResponse(
-                    instruction.response_path,
+                // レスポンスパターン: SubagentReceiver が FileIpc 経由で生成する req_*_response.md
+                // team_*_response.md は使用しない（一本化）
+                const agentNameEscaped = agentName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                const responsePattern = new RegExp(
+                    `^req_${agentNameEscaped}_\\d+_[a-f0-9]+_response\\.md$` +
+                    `|^req_anti-crow-subagent-${instruction.agentIndex}_\\d+_[a-f0-9]+_response\\.md$`
+                );
+
+                // レスポンスファイルの出現を待機（パターンベースのみ）
+                const response = await this.fileIpc.waitForResponseWithPattern(
+                    '',
+                    responsePattern,
                     config.responseTimeoutMs,
                     signal,
                 );
@@ -1075,6 +1096,8 @@ export class TeamOrchestrator {
      * メインエージェントへの報告指示をIPCファイルとして書き出す。
      * サブエージェントへのプロンプトと同じ「ファイル読み取り方式」に統一する。
      *
+     * 書き出す JSON は tmp_exec_*.json と同じ構造化フォーマット。
+     *
      * @returns 書き出した指示ファイルの絶対パス
      */
     writeReportInstructionFile(
@@ -1084,25 +1107,25 @@ export class TeamOrchestrator {
     ): string {
         const ipcDir = this.fileIpc.getIpcDir();
         const instructionPath = path.join(ipcDir, `team_${teamRequestId}_report_instruction.json`);
+        const progressPath = path.join(ipcDir, `team_${teamRequestId}_report_progress.json`);
 
-        const instruction = {
-            persona: 'あなたはメインエージェントです。サブエージェントたちからの報告を受け取り、統合レポートを作成してください。',
-            task: '全サブエージェントの報告を確認し、統合レポートを作成してください。',
-            report_path: reportPath,
-            response_path: reportResponsePath,
-            instructions: [
-                `report_path のファイルを view_file ツールで読み込んでください`,
-                `全サブエージェントの報告を確認してください`,
-                `統合レポートを作成し、response_path に Markdown で書き込んでください（write_to_file）`,
-                `レポートにはすべてのタスクの結果・成否・注意点をまとめてください`,
-                `ユーザー向けにわかりやすい報告書を作成してください`,
-                `必ず response_path に write_to_file で書き込んでください。書き込まないと完了と見なされません`,
-            ],
-            timestamp: Date.now(),
-            requestId: teamRequestId,
-        };
+        // 共通ヘルパーで instruction.json を構築
+        const fileContent = buildInstructionContent({
+            prompt: '全サブエージェントの報告を確認し、統合レポートを作成してください。\n\n' +
+                '1. report_path (context.report_path) のファイルを view_file ツールで読み込んでください\n' +
+                '2. 全サブエージェントの報告を確認してください\n' +
+                '3. 統合レポートを作成し、output.response_path に Markdown で書き込んでください（write_to_file）\n' +
+                '4. レポートにはすべてのタスクの結果・成否・注意点をまとめてください\n' +
+                '5. ユーザー向けにわかりやすい報告書を作成してください',
+            context: {
+                role: 'main_agent_report',
+                report_path: reportPath,
+            },
+            responsePath: reportResponsePath,
+            progressPath,
+        });
 
-        fs.writeFileSync(instructionPath, JSON.stringify(instruction, null, 2), 'utf-8');
+        fs.writeFileSync(instructionPath, JSON.stringify(fileContent, null, 2), 'utf-8');
         logInfo(`[TeamOrchestrator] Wrote report instruction file: ${instructionPath}`);
         return instructionPath;
     }
@@ -1123,23 +1146,25 @@ export class TeamOrchestrator {
             result: r.response,
         }));
 
-        const report: TeamReport = {
-            persona: 'あなたはメインエージェントです。サブエージェントたちからの報告を受け取り、統合レポートを作成してください。',
-            report_from: '全サブエージェント',
-            agentIndex: 0,
-            task_summary: instructions.map((inst, i) => `タスク${i + 1}: ${inst.task.substring(0, 80)}`).join('\n'),
-            result: '',
-            success: results.every(r => r.success),
-            remaining_agents: 0,
-            response_path: mainResponsePath,
-            timestamp: Date.now(),
+        // tmp_exec_*.json 互換フォーマット: データのみを構造化して書き出す
+        const reportData: Record<string, unknown> = {
+            type: 'team_report',
             requestId,
-            all_reports_collected: true,
-            all_reports: allReports,
+            timestamp: Date.now(),
+            summary: {
+                totalAgents: instructions.length,
+                successCount: results.filter(r => r.success).length,
+                failureCount: results.filter(r => !r.success).length,
+                allSucceeded: results.every(r => r.success),
+            },
+            task_summary: instructions.map((inst, i) => `タスク${i + 1}: ${inst.task.substring(0, 80)}`).join('\n'),
+            reports: allReports,
+            // response_path は writeReportInstructionFile の output.response_path でのみ指定する（一本化）
         };
 
-        fs.writeFileSync(reportPath, JSON.stringify(report, null, 2), 'utf-8');
+        fs.writeFileSync(reportPath, JSON.stringify(reportData, null, 2), 'utf-8');
         logInfo(`[TeamOrchestrator] Wrote report file: ${reportPath}`);
         return reportPath;
     }
+
 }

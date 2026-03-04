@@ -614,18 +614,23 @@ async function startBridgeInternal(
                 const timeoutMs = teamConfig?.responseTimeoutMs ?? 900_000; // デフォルト15分
                 const { requestId, responsePath } = fileIpc.createMarkdownRequestId(wsName);
 
-                // レスポンスファイルへの書き込み指示をプロンプトに付加
-                // （これがないと AI はどこに結果を書くか分からず waitForResponse がタイムアウトする）
-                const augmentedPrompt = prompt + '\n\n' +
-                    '---\n' +
-                    '## レスポンス出力指示（必須）\n' +
-                    '**すべての作業が完了したら、以下のファイルに結果を Markdown 形式で1回だけ書き込んでください。**\n' +
-                    '途中経過や確認事項は書き込まないでください。ファイルに書き込んだ時点でレスポンス完了と見なされます。\n\n' +
-                    `- ツール: \`write_to_file\`\n` +
-                    `- パス: \`${responsePath}\`\n` +
-                    `- フォーマット: Markdown\n` +
-                    `- Overwrite: true\n\n` +
-                    '結果には何をしたか・変更内容・影響範囲・テスト結果・注意点を具体的かつ詳細に記述すること。';
+                // instruction.json ファイルを生成（共通ヘルパー使用）
+                const ipcDir = fileIpc.getIpcDir();
+                const instructionPath = require('path').join(ipcDir, `${requestId}_instruction.json`);
+                const progressPath = require('path').join(ipcDir, `${requestId}_progress.json`);
+
+                const { writeInstructionJson } = require('./instructionBuilder');
+                writeInstructionJson(instructionPath, {
+                    prompt,
+                    responsePath,
+                    progressPath,
+                    workspaceName: wsName,
+                });
+
+                // プロンプトはファイル読み込み指示のみ
+                const subagentPrompt =
+                    `以下のファイルを view_file ツールで読み込み、その指示に従ってください。` +
+                    `ファイルパス: ${instructionPath}`;
 
                 logInfo(`[SubagentReceiver] IPC設定: requestId=${requestId}, timeout=${Math.round(timeoutMs / 1000)}秒`);
                 logDebug(`[SubagentReceiver] responsePath=${responsePath}`);
@@ -633,8 +638,8 @@ async function startBridgeInternal(
                 // 新しいチャットを開始してプロンプト送信
                 logDebug(`[SubagentReceiver] 新しいチャットを開始中...`);
                 await cdp.startNewChat();
-                logDebug(`[SubagentReceiver] 新しいチャット開始完了。プロンプト送信中... (${augmentedPrompt.length} chars)`);
-                await cdp.sendPrompt(augmentedPrompt);
+                logDebug(`[SubagentReceiver] 新しいチャット開始完了。プロンプト送信中... (${subagentPrompt.length} chars)`);
+                await cdp.sendPrompt(subagentPrompt);
                 logInfo(`[SubagentReceiver] プロンプト送信完了。レスポンス待機開始 (timeout=${Math.round(timeoutMs / 1000)}秒)`);
 
                 // FileIpc 経由でレスポンスを待つ

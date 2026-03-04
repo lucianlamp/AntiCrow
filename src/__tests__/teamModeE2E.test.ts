@@ -22,7 +22,7 @@ vi.mock('vscode', () => ({
 import * as fs from 'fs';
 import * as path from 'path';
 import { loadTeamConfig } from '../teamConfig';
-import type { TeamInstruction, TeamReport } from '../subagentTypes';
+import type { TeamInstruction } from '../subagentTypes';
 
 // テスト用の IPC ディレクトリ
 const TEST_IPC_DIR = path.join(__dirname, '..', '..', '__test_ipc__');
@@ -138,14 +138,14 @@ describe('チームモード E2E テスト', () => {
                 const filePath = path.join(TEST_IPC_DIR, `team_${requestId}_agent${inst.agentIndex}_instruction.json`);
                 expect(fs.existsSync(filePath)).toBe(true);
 
-                // ファイル内容を検証
+                // ファイル内容を検証（tmp_exec_*.json 互換フォーマット）
                 const content = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-                expect(content.persona).toBeTruthy();
-                expect(content.task).toBeTruthy();
-                expect(content.response_path).toBeTruthy();
-                expect(content.progress_path).toBeTruthy();
-                expect(content.requestId).toBe(requestId);
-                expect(content.totalAgents).toBe(2);
+                expect(content.task).toBe('execution');
+                expect(content.prompt).toBeTruthy();
+                // output.response_path は SubagentReceiver が instruction.json 内で指定するため不要（改修2）
+                expect(content.progress.path).toBeTruthy();
+                expect(content.context.team.totalAgents).toBe(2);
+                expect(content.context.team.agentIndex).toBe(inst.agentIndex);
                 console.log(`指令ファイル agent${inst.agentIndex}:`, JSON.stringify(content, null, 2));
             }
         });
@@ -223,12 +223,13 @@ describe('チームモード E2E テスト', () => {
             const content = JSON.parse(fs.readFileSync(reportPath, 'utf-8'));
             console.log('報告ファイル内容:', JSON.stringify(content, null, 2));
 
-            // TeamReport スキーマの主要フィールドを検証
-            expect(content).toHaveProperty('persona');
-            expect(content).toHaveProperty('all_reports_collected');
-            expect(content.all_reports_collected).toBe(true);
-            expect(content).toHaveProperty('all_reports');
-            expect(content.all_reports.length).toBe(2);
+            // 新フォーマット（tmp_exec_*.json 互換）のフィールドを検証
+            expect(content).toHaveProperty('type', 'team_report');
+            expect(content).toHaveProperty('summary');
+            expect(content.summary.allSucceeded).toBe(false); // 1つ失敗
+            expect(content.summary.totalAgents).toBe(2);
+            expect(content).toHaveProperty('reports');
+            expect(content.reports.length).toBe(2);
         });
     });
 

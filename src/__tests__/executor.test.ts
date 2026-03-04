@@ -108,8 +108,13 @@ vi.mock('../anticrowCustomizer', () => ({
 }));
 
 vi.mock('../embedHelper', () => ({
-    EmbedColor: { Progress: 0x3498db, Response: 0x2ecc71, Suggest: 0x9b59b6 },
+    EmbedColor: { Progress: 0x3498db, Response: 0x2ecc71, Success: 0x2ecc71, Suggest: 0x9b59b6 },
     buildEmbed: vi.fn(() => ({ toJSON: () => ({}) })),
+    normalizeHeadings: vi.fn((text: string) => text),
+}));
+
+vi.mock('../discordFormatter', () => ({
+    splitForEmbeds: vi.fn((text: string) => [[text]]),
 }));
 
 import { Executor } from '../executor';
@@ -622,7 +627,7 @@ describe('Executor', () => {
         it('should send suggestion buttons when suggestions are parsed', async () => {
             const { executor, fileIpc, postSuggestions } = createExecutor();
             const { parseSuggestions } = await import('../suggestionParser');
-            const { buildSuggestionRow, storeSuggestions } = await import('../suggestionButtons');
+            const { buildSuggestionRow } = await import('../suggestionButtons');
 
             fileIpc.waitForResponse.mockResolvedValue('result');
 
@@ -632,14 +637,13 @@ describe('Executor', () => {
                 cleanContent: 'result',
             });
 
-            // buildSuggestionRow がモック ActionRow を返す
+            // buildSuggestionRow がモック ActionRow を返す（sendSuggestionButtons 内の if (row) を通す）
             (buildSuggestionRow as any).mockReturnValue({ components: [] });
 
             const plan = createMockPlan({ plan_id: 'suggest-001' });
             await executor.enqueueImmediate(plan);
 
-            expect(buildSuggestionRow).toHaveBeenCalled();
-            expect(storeSuggestions).toHaveBeenCalled();
+            // sendProcessedResponse 経由で postSuggestions が呼ばれていること
             expect(postSuggestions).toHaveBeenCalled();
         });
     });

@@ -27,8 +27,7 @@ import { getResponseTimeout } from './configHelper';
 import { getCurrentModel } from './cdpModels';
 import { getCurrentMode } from './cdpModes';
 import { AUTO_PROMPT, buildSuggestionRow, buildSuggestionContent, storeSuggestions } from './suggestionButtons';
-import { parseSuggestions } from './suggestionParser';
-import { extractAndSaveMemory } from './executorResponseHandler';
+import { sendTeamResponse, TeamResponseCallbacks } from './executorResponseHandler';
 import { loadTeamConfig } from './teamConfig';
 import { buildPlanPrompt, buildConfirmMessage, countChoiceItems, cronToPrefix } from './promptBuilder';
 import { resolveWorkspace } from './workspaceResolver';
@@ -465,6 +464,7 @@ export async function dispatchPlan(
                         );
 
                         // メインエージェントに報告プロンプトを送信（ファイル読み取り方式）:
+                        // 指示の詳細は report_instruction.json に含まれるため、CDP経由では短い指示のみ送信
                         const reportInstructionPath = ctx.teamOrchestrator.writeReportInstructionFile(
                             teamRequestId,
                             reportPath,
@@ -472,16 +472,7 @@ export async function dispatchPlan(
                         );
                         const reportPrompt =
                             `あなたはメインエージェントです。以下のファイルを view_file ツールで読み込み、その指示に従ってください。` +
-                            `ファイルパス: ${reportInstructionPath}` +
-                            `\n\n重要:` +
-                            `\n- 全サブエージェントの報告を確認してください` +
-                            `\n- 統合レポートを作成し、response_path に Markdown で書き込んでください（write_to_file）` +
-                            `\n- response_path: ${reportResponsePath}` +
-                            `\n- レポートにはすべてのタスクの結果・成否・注意点をまとめてください` +
-                            `\n- ユーザー向けにわかりやすい報告書を作成してください` +
-                            `\n- 必ず response_path に write_to_file で書き込んでください。書き込まないと完了と見なされません` +
-                            `\n- 重要な学びがあればレスポンス末尾に <!-- MEMORY:global: 内容 --> または <!-- MEMORY:workspace: 内容 --> タグで記録指示を埋め込むこと` +
-                            `\n- レスポンスの最後に、ユーザーが次に取るべきアクションの提案を最大3つ、以下の HTML コメント形式で埋め込むこと: <!-- SUGGESTIONS:[{"label":"ボタン表示テキスト（20文字以内）","description":"説明（省略可）","prompt":"実行プロンプト"},...] -->`;
+                            `ファイルパス: ${reportInstructionPath}`;
 
                         logDebug(`dispatchPlan: Team mode — sending report prompt to main Cascade (${reportPrompt.length} chars)`);
 
@@ -495,43 +486,39 @@ export async function dispatchPlan(
                             const cascadeResponse = await fileIpc!.waitForResponse(reportResponsePath, cascadeReportTimeoutMs);
                             logDebug(`dispatchPlan: Team mode — received Cascade integrated report (${cascadeResponse.length} chars)`);
 
-                            // 統合レポートを Discord に送信（suggestion 分離）
-                            const formatted = FileIpc.extractResult(cascadeResponse);
-                            logDebug(`dispatchPlan: Team mode — extractResult returned ${formatted.length} chars (original: ${cascadeResponse.length} chars)`);
-
-                            // MEMORY タグを抽出して保存（通常モードと同じ処理）
-                            extractAndSaveMemory(cascadeResponse, reportResponsePath, plan);
-
-                            // 提案タグを抽出してクリーンコンテンツを取得
-                            const { suggestions, cleanContent } = parseSuggestions(formatted);
-
-                            const normalized = normalizeHeadings(cleanContent);
-                            const embedGroups = splitForEmbeds(normalized);
-                            logDebug(`dispatchPlan: Team mode — sending ${embedGroups.length} embed groups to Discord`);
-                            for (const group of embedGroups) {
-                                const embeds = group.map((desc) =>
-                                    new EmbedBuilder()
-                                        .setDescription(desc)
-                                        .setColor(EmbedColor.Success)
-                                );
-                                await channel.send({ embeds });
-                            }
-
-                            // 提案ボタンを送信（通常モードと同じ処理）
-                            if (suggestions.length > 0 && bot) {
-                                try {
+                            // 統合レポートを処理して Discord に送信（通常モードと同じパイプライン）
+                            const teamCallbacks: TeamResponseCallbacks = {
+                                sendToChannel: async (channelId, message, color) => {
+                                    await bot!.sendToChannel(channelId, message, color);
+                                },
+                                sendFileToChannel: async (channelId, filePath, comment) => {
+                                    return bot!.sendFileToChannel(channelId, filePath, comment);
+                                },
+                                sendEmbeds: async (descriptions, color) => {
+                                    const embeds = descriptions.map((desc) =>
+                                        new EmbedBuilder()
+                                            .setDescription(desc)
+                                            .setColor(color)
+                                    );
+                                    await channel.send({ embeds });
+                                },
+                                sendSuggestionButtons: async (suggestions) => {
                                     const row = buildSuggestionRow(suggestions);
                                     if (row) {
                                         storeSuggestions(channel.id, suggestions);
                                         const suggestionText = buildSuggestionContent(suggestions);
                                         const suggestionEmbed = buildEmbed(suggestionText, EmbedColor.Suggest);
-                                        await bot.sendComponentsToChannel(channel.id, [row], suggestionEmbed);
-                                        logDebug(`dispatchPlan: Team mode — sent ${suggestions.length} suggestion buttons`);
+                                        await bot!.sendComponentsToChannel(channel.id, [row], suggestionEmbed);
                                     }
-                                } catch (e) {
-                                    logDebug(`dispatchPlan: Team mode — failed to send suggestion buttons: ${e instanceof Error ? e.message : e}`);
-                                }
-                            }
+                                },
+                            };
+                            await sendTeamResponse({
+                                response: cascadeResponse,
+                                responsePath: reportResponsePath,
+                                plan,
+                                channelId: channel.id,
+                                callbacks: teamCallbacks,
+                            });
                             logInfo('dispatchPlan: Team mode — integrated report sent to Discord ✅');
                         } finally {
                             fileIpc!.unregisterActiveRequest(reportReqId);

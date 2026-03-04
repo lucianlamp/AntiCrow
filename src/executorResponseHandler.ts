@@ -202,3 +202,90 @@ export function recordExecution(
         logError('ResponseHandler: failed to record execution', e);
     }
 }
+
+// ---------------------------------------------------------------------------
+// 統合レスポンス処理（通常モード・チームモード共通）
+// ---------------------------------------------------------------------------
+
+/** レスポンス送信用コールバック（通常モード・チームモード共通） */
+export interface ResponseCallbacks {
+    /** Discord チャンネルにメッセージを送信 */
+    sendToChannel: (channelId: string, message: string, color?: number) => Promise<void>;
+    /** Discord チャンネルにファイルを送信 */
+    sendFileToChannel: (channelId: string, filePath: string, comment?: string) => Promise<SendFileResult>;
+    /** Discord チャンネルに embed 群を送信 */
+    sendEmbeds: (descriptions: string[], color: number) => Promise<void>;
+    /** Discord チャンネルに提案ボタンを送信 */
+    sendSuggestionButtons: (suggestions: SuggestionItem[]) => Promise<void>;
+}
+
+/** 後方互換エイリアス */
+export type TeamResponseCallbacks = ResponseCallbacks;
+
+/**
+ * レスポンスを処理して Discord に送信する統合関数。
+ * 通常モード（executor.ts）とチームモード（planPipeline.ts）の両方で使用。
+ *
+ * 1. extractAndSaveMemory — MEMORY タグ抽出・保存
+ * 2. processResponseContent — stripMemoryTags → parseSuggestions → prefix 生成
+ * 3. sendFileReferences — ファイル参照の送信
+ * 4. Discord 送信（呼び出し側が embed 構築を担当）
+ * 5. 提案ボタン送信
+ *
+ * @returns cleanContent — MEMORY/SUGGESTIONS 除去後のクリーンテキスト（recordExecution 用）
+ */
+export async function sendProcessedResponse(options: {
+    /** Cascade からの生のレスポンス文字列 */
+    response: string;
+    /** レスポンスファイルのパス（.md or .json） */
+    responsePath: string;
+    /** 実行計画 */
+    plan: Plan;
+    /** Discord チャンネル ID */
+    channelId: string;
+    /** Discord 送信用コールバック */
+    callbacks: ResponseCallbacks;
+}): Promise<{ cleanContent: string }> {
+    const { response, responsePath, plan, channelId, callbacks } = options;
+
+    // 1. MEMORY タグ抽出・保存
+    extractAndSaveMemory(response, responsePath, plan);
+
+    // 2. レスポンスコンテンツ処理（stripMemoryTags → parseSuggestions → prefix 生成）
+    const { cleanContent, suggestions, resultMsg } = processResponseContent(response, responsePath, plan);
+
+    // 3. ファイル参照送信
+    const finalContent = await sendFileReferences(
+        resultMsg,
+        channelId,
+        callbacks.sendFileToChannel,
+        callbacks.sendToChannel,
+    );
+
+    // 4. Discord 送信（embed 構築は呼び出し側に委譲）
+    const { normalizeHeadings } = await import('./embedHelper');
+    const { splitForEmbeds } = await import('./discordFormatter');
+    const normalized = normalizeHeadings(finalContent);
+    const embedGroups = splitForEmbeds(normalized);
+    for (const group of embedGroups) {
+        await callbacks.sendEmbeds(group, EmbedColor.Success);
+    }
+
+    // 5. 提案ボタン送信
+    if (suggestions.length > 0) {
+        try {
+            await callbacks.sendSuggestionButtons(suggestions);
+            logDebug(`ResponseHandler: sent ${suggestions.length} suggestion buttons (team mode)`);
+        } catch (e) {
+            logDebug(`ResponseHandler: failed to send suggestion buttons (team mode): ${e instanceof Error ? e.message : e}`);
+        }
+    }
+
+    logDebug(`ResponseHandler: response processing complete`);
+
+    return { cleanContent };
+}
+
+/** 後方互換エイリアス */
+export const sendTeamResponse = sendProcessedResponse;
+
