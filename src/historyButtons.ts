@@ -8,6 +8,7 @@ import {
     ButtonBuilder,
     ButtonStyle,
 } from 'discord.js';
+import { t } from './i18n';
 
 // -----------------------------------------------------------------------
 // 定数
@@ -24,12 +25,12 @@ export function formatTimeAgoJa(timeAgo: string): string {
     const num = parseInt(match[1], 10);
     const unit = match[2].toLowerCase();
     const unitMap: Record<string, string> = {
-        m: '分前',
-        h: '時間前',
-        d: '日前',
-        w: '週間前',
-        mo: 'ヶ月前',
-        y: '年前',
+        m: t('history.timeUnit.m'),
+        h: t('history.timeUnit.h'),
+        d: t('history.timeUnit.d'),
+        w: t('history.timeUnit.w'),
+        mo: t('history.timeUnit.mo'),
+        y: t('history.timeUnit.y'),
     };
     return `${num}${unitMap[unit] || timeAgo}`;
 }
@@ -51,15 +52,12 @@ export function buildHistoryListEmbed(
 ): { embeds: EmbedBuilder[]; components: ActionRowBuilder<ButtonBuilder>[] } {
     const wsLabel = workspaceName ? ` — ${workspaceName}` : '';
     const embed = new EmbedBuilder()
-        .setTitle(`📜 会話履歴${wsLabel}`)
+        .setTitle(t('history.title', wsLabel))
         .setColor(0x5865F2)
         .setTimestamp();
 
     if (conversations.length === 0) {
-        embed.setDescription(
-            '会話履歴が見つかりませんでした。\n' +
-            'Antigravity のチャットパネルが開いていることを確認してください。',
-        );
+        embed.setDescription(t('history.empty'));
         return { embeds: [embed], components: [] };
     }
 
@@ -70,8 +68,8 @@ export function buildHistoryListEmbed(
     const pageItems = conversations.slice(start, start + PAGE_SIZE);
 
     // 説明
-    const pageInfo = totalPages > 1 ? ` (${safePage + 1}/${totalPages}ページ)` : '';
-    embed.setDescription(`**${conversations.length}件の会話${pageInfo}**`);
+    const pageInfo = totalPages > 1 ? ` (${t('history.page', `${safePage + 1}/${totalPages}`)})` : '';
+    embed.setDescription(t('history.count', String(conversations.length), pageInfo));
 
     // 一覧をフィールドに
     const listLines = pageItems.map((conv, i) => {
@@ -84,7 +82,7 @@ export function buildHistoryListEmbed(
     }).join('\n');
 
     embed.addFields({
-        name: '📋 会話一覧',
+        name: t('history.fieldName'),
         value: listLines.length > 1024 ? listLines.substring(0, 1021) + '...' : listLines,
     });
 
@@ -116,7 +114,7 @@ export function buildHistoryListEmbed(
         navRow.addComponents(
             new ButtonBuilder()
                 .setCustomId(`hist_page_${safePage - 1}`)
-                .setLabel('◀ 前')
+                .setLabel(t('history.button.prev'))
                 .setStyle(ButtonStyle.Secondary)
                 .setDisabled(safePage === 0),
         );
@@ -126,7 +124,7 @@ export function buildHistoryListEmbed(
     navRow.addComponents(
         new ButtonBuilder()
             .setCustomId('hist_refresh')
-            .setLabel('🔄 更新')
+            .setLabel(t('history.button.refresh'))
             .setStyle(ButtonStyle.Primary),
     );
 
@@ -135,7 +133,7 @@ export function buildHistoryListEmbed(
         navRow.addComponents(
             new ButtonBuilder()
                 .setCustomId(`hist_page_${safePage + 1}`)
-                .setLabel('▶ 次')
+                .setLabel(t('history.button.next'))
                 .setStyle(ButtonStyle.Secondary)
                 .setDisabled(safePage >= totalPages - 1),
         );
@@ -145,7 +143,7 @@ export function buildHistoryListEmbed(
     navRow.addComponents(
         new ButtonBuilder()
             .setCustomId('hist_close')
-            .setLabel('❌ 閉じる')
+            .setLabel(t('history.button.close'))
             .setStyle(ButtonStyle.Danger),
     );
 
@@ -164,17 +162,14 @@ export function buildHistorySelectResultEmbed(
 ): EmbedBuilder {
     if (success) {
         return new EmbedBuilder()
-            .setTitle('✅ 会話を切り替えました')
-            .setDescription(`**${title}** に切り替えました。`)
+            .setTitle(t('history.switchSuccess'))
+            .setDescription(t('history.switchSuccessDesc', title))
             .setColor(0x57F287)
             .setTimestamp();
     } else {
         return new EmbedBuilder()
-            .setTitle('❌ 会話切替に失敗')
-            .setDescription(
-                `**${title}** への切り替えに失敗しました。\n` +
-                'Antigravity のチャットパネルが開いていることを確認し、もう一度お試しください。',
-            )
+            .setTitle(t('history.switchFail'))
+            .setDescription(t('history.switchFailDesc', title))
             .setColor(0xED4245)
             .setTimestamp();
     }

@@ -11,6 +11,7 @@ import {
 
 import { logDebug, logError } from './logger';
 import { buildEmbed, EmbedColor } from './embedHelper';
+import { t } from './i18n';
 import { loadTeamConfig, saveTeamConfig } from './teamConfig';
 import { BridgeContext } from './bridgeContext';
 import { resolveRepoRootFromInteraction } from './slashHelpers';
@@ -23,19 +24,19 @@ export function buildTeamButtons(config: import('./teamConfig').TeamConfig): Act
     const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder()
             .setCustomId('team_on')
-            .setLabel('🟢 チームON')
+            .setLabel(t('btnTeam.teamOn'))
             .setStyle(config.enabled ? ButtonStyle.Success : ButtonStyle.Secondary),
         new ButtonBuilder()
             .setCustomId('team_off')
-            .setLabel('🔴 チームOFF')
+            .setLabel(t('btnTeam.teamOff'))
             .setStyle(!config.enabled ? ButtonStyle.Danger : ButtonStyle.Secondary),
         new ButtonBuilder()
             .setCustomId('team_status')
-            .setLabel('📊 ステータス')
+            .setLabel(t('btnTeam.status'))
             .setStyle(ButtonStyle.Primary),
         new ButtonBuilder()
             .setCustomId('team_config')
-            .setLabel('⚙️ 設定')
+            .setLabel(t('btnTeam.config'))
             .setStyle(ButtonStyle.Secondary),
     );
     return [row];
@@ -49,15 +50,15 @@ export function buildSubagentButtons(agents: { name: string; state: string }[]):
     const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder()
             .setCustomId('subagent_spawn')
-            .setLabel('🚀 起動')
+            .setLabel(t('btnTeam.spawn'))
             .setStyle(ButtonStyle.Success),
         new ButtonBuilder()
             .setCustomId('subagent_list')
-            .setLabel('📋 一覧')
+            .setLabel(t('btnTeam.list'))
             .setStyle(ButtonStyle.Primary),
         new ButtonBuilder()
             .setCustomId('subagent_killall')
-            .setLabel('⏹️ 全停止')
+            .setLabel(t('btnTeam.killAll'))
             .setStyle(agents.length > 0 ? ButtonStyle.Danger : ButtonStyle.Secondary)
             .setDisabled(agents.length === 0),
     );
@@ -66,9 +67,9 @@ export function buildSubagentButtons(agents: { name: string; state: string }[]):
 
 export function buildSubagentListText(agents: { name: string; state: string }[]): string {
     if (agents.length === 0) {
-        return '📋 **サブエージェント管理**\n\n現在実行中のサブエージェントはありません。';
+        return t('btnTeam.noAgents');
     }
-    return `📋 **サブエージェント管理** (${agents.length}件)\n\n`
+    return t('btnTeam.agentListHeader', String(agents.length))
         + agents.map(a => `  • \`${a.name}\` — ${a.state}`).join('\n');
 }
 
@@ -86,7 +87,7 @@ export async function handleTeamButton(
     const teamAction = customId.replace('team_', '');
     const { repoRoot } = resolveRepoRootFromInteraction(interaction, ctx.cdpPool);
     if (!repoRoot) {
-        await interaction.reply({ embeds: [buildEmbed('⚠️ ワークスペースが検出されません。', EmbedColor.Warning)] });
+        await interaction.reply({ embeds: [buildEmbed(t('btnTeam.wsNotFound'), EmbedColor.Warning)] });
         return true;
     }
     const config = loadTeamConfig(repoRoot);
@@ -97,7 +98,7 @@ export async function handleTeamButton(
             config.enabled = true;
             saveTeamConfig(repoRoot, config);
             await interaction.update({
-                embeds: [buildEmbed('🟢 **チームモードを有効化しました！**\n\nメインエージェントが指揮官モードで動作します。', EmbedColor.Success)],
+                embeds: [buildEmbed(t('btnTeam.teamEnabled'), EmbedColor.Success)],
                 components: buildTeamButtons(config) as any,
             });
             return true;
@@ -112,7 +113,7 @@ export async function handleTeamButton(
                 }
             }
             await interaction.update({
-                embeds: [buildEmbed('🔴 **チームモードを無効化しました。**\n\n全サブエージェントを停止しました。', EmbedColor.Info)],
+                embeds: [buildEmbed(t('btnTeam.teamDisabled'), EmbedColor.Info)],
                 components: buildTeamButtons(config) as any,
             });
             return true;
@@ -120,12 +121,12 @@ export async function handleTeamButton(
         case 'status': {
             const statusEmoji = config.enabled ? '🟢' : '🔴';
             const statusText = config.enabled ? 'ON' : 'OFF';
-            let desc = `${statusEmoji} **エージェントチームモード: ${statusText}**\n\n`
-                + `📊 **稼働中**: ${agentCount} / ${config.maxAgents}\n`
-                + `⏱️ **タイムアウト**: ${Math.round(config.responseTimeoutMs / 60_000)}分`;
+            let desc = `${statusEmoji} **${t('btnTeam.teamMode')}: ${statusText}**\n\n`
+                + `📊 **${t('btnTeam.running')}**: ${agentCount} / ${config.maxAgents}\n`
+                + `⏱️ **${t('btnTeam.timeout')}**: ${Math.round(config.responseTimeoutMs / 60_000)}${t('btnTeam.minutes')}`;
             if (agentCount > 0 && ctx.subagentManager) {
                 const agents = ctx.subagentManager.list();
-                desc += '\n\n🤖 **サブエージェント一覧**\n' + agents.map(a => `  • **${a.name}** — ${a.state}`).join('\n');
+                desc += `\n\n🤖 **${t('btnTeam.agentList')}**\n` + agents.map(a => `  • **${a.name}** — ${a.state}`).join('\n');
             }
             await interaction.update({
                 embeds: [buildEmbed(desc, config.enabled ? EmbedColor.Success : EmbedColor.Info)],
@@ -136,7 +137,7 @@ export async function handleTeamButton(
         case 'config': {
             const configJson = JSON.stringify(config, null, 2);
             await interaction.update({
-                embeds: [buildEmbed(`⚙️ **チーム設定**\n\`\`\`json\n${configJson}\n\`\`\``, EmbedColor.Info)],
+                embeds: [buildEmbed(`⚙️ **${t('btnTeam.teamConfig')}**\n\`\`\`json\n${configJson}\n\`\`\``, EmbedColor.Info)],
                 components: buildTeamButtons(config) as any,
             });
             return true;
@@ -165,7 +166,7 @@ export async function handleSubagentButton(
             case 'spawn': {
                 if (!mgr) {
                     await interaction.update({
-                        embeds: [buildEmbed('⚠️ SubagentManager が初期化されていません。', EmbedColor.Warning)],
+                        embeds: [buildEmbed(t('btnTeam.mgrNotInit'), EmbedColor.Warning)],
                         components: buildSubagentButtons([]) as any,
                     });
                     return true;
@@ -175,7 +176,7 @@ export async function handleSubagentButton(
                 const agents = mgr.list();
                 await interaction.editReply({
                     embeds: [buildEmbed(
-                        `🚀 **サブエージェント \`${handle.name}\` を起動しました！**\n\n`
+                        t('btnTeam.spawned', handle.name)
                         + buildSubagentListText(agents),
                         EmbedColor.Success,
                     )],
@@ -194,7 +195,7 @@ export async function handleSubagentButton(
             case 'killall': {
                 if (!mgr) {
                     await interaction.update({
-                        embeds: [buildEmbed('⚠️ SubagentManager が初期化されていません。', EmbedColor.Warning)],
+                        embeds: [buildEmbed(t('btnTeam.mgrNotInit'), EmbedColor.Warning)],
                         components: buildSubagentButtons([]) as any,
                     });
                     return true;
@@ -202,7 +203,7 @@ export async function handleSubagentButton(
                 await interaction.deferUpdate();
                 await mgr.killAll();
                 await interaction.editReply({
-                    embeds: [buildEmbed('⏹️ **全サブエージェントを停止しました。**\n\n現在実行中のサブエージェントはありません。', EmbedColor.Success)],
+                    embeds: [buildEmbed(t('btnTeam.allStopped'), EmbedColor.Success)],
                     components: buildSubagentButtons([]) as any,
                 });
                 return true;
@@ -215,12 +216,12 @@ export async function handleSubagentButton(
         logError(`subagent button: ${subAction} failed`, e);
         if (interaction.deferred || interaction.replied) {
             await interaction.editReply({
-                embeds: [buildEmbed(`❌ サブエージェント操作失敗: ${errMsg}`, EmbedColor.Error)],
+                embeds: [buildEmbed(t('btnTeam.opFailed', errMsg), EmbedColor.Error)],
                 components: buildSubagentButtons(mgr?.list() ?? []) as any,
             }).catch(() => { });
         } else {
             await interaction.update({
-                embeds: [buildEmbed(`❌ サブエージェント操作失敗: ${errMsg}`, EmbedColor.Error)],
+                embeds: [buildEmbed(t('btnTeam.opFailed', errMsg), EmbedColor.Error)],
                 components: buildSubagentButtons(mgr?.list() ?? []) as any,
             });
         }

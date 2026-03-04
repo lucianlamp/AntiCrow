@@ -133,6 +133,19 @@
           },
           "default": [],
           "markdownDescription": "新規ワークスペース作成時のフォルダ配置先ディレクトリです。例: `C:\\Users\\user\\dev`, `C:\\Users\\user\\projects`"
+        },
+        "antiCrow.language": {
+          "type": "string",
+          "default": "ja",
+          "enum": [
+            "ja",
+            "en"
+          ],
+          "enumDescriptions": [
+            "日本語",
+            "English"
+          ],
+          "description": "AntiCrow の UI・プロンプト表示言語 / UI and prompt display language"
         }
       }
     }

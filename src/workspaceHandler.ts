@@ -26,6 +26,7 @@ import * as vscode from 'vscode';
 import { CdpBridge } from './cdpBridge';
 import { logInfo, logError, logWarn, logDebug } from './logger';
 import { buildEmbed, EmbedColor } from './embedHelper';
+import { t } from './i18n';
 import { BridgeContext } from './bridgeContext';
 import { getArchiveDays, getWorkspaceParentDirs, getConfig } from './configHelper';
 
@@ -110,8 +111,8 @@ export async function buildWorkspaceListEmbed(ctx: BridgeContext, page = 0): Pro
 
     const pageIndicator = totalPages > 1 ? ` (${safePage + 1}/${totalPages})` : '';
     const embed = new EmbedBuilder()
-        .setTitle('📁 ワークスペースカテゴリー')
-        .setDescription(`${totalItems}件${pageIndicator}`)
+        .setTitle(t('wsHandler.categoryTitle'))
+        .setDescription(`${totalItems}${t('wsHandler.items')}${pageIndicator}`)
         .setColor(0x5865F2)
         .setTimestamp();
 
@@ -121,13 +122,13 @@ export async function buildWorkspaceListEmbed(ctx: BridgeContext, page = 0): Pro
         const daysAgo = cat.lastActivity > 0
             ? Math.floor((Date.now() - cat.lastActivity) / (24 * 60 * 60 * 1000))
             : -1;
-        const lastActivityStr = daysAgo >= 0 ? `${daysAgo}日前` : '不明';
+        const lastActivityStr = daysAgo >= 0 ? t('wsHandler.daysAgo', String(daysAgo)) : t('wsHandler.unknown');
 
         const cdpBadge = runningWsNames.has(cat.wsName) ? '🟢' : '⚪';
         const globalIdx = startIdx + i + 1;
         embed.addFields({
             name: `${cdpBadge} ${globalIdx}. ${cat.wsName}`,
-            value: `最終使用: ${lastActivityStr}`,
+            value: `${t('wsHandler.lastUsed')}: ${lastActivityStr}`,
         });
 
         // 削除ボタン行（ActionRow 上限 5 のうちナビ用に2行確保 → 最大3行まで）
@@ -135,7 +136,7 @@ export async function buildWorkspaceListEmbed(ctx: BridgeContext, page = 0): Pro
             const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
                 new ButtonBuilder()
                     .setCustomId(`ws_delete:${cat.categoryId}:${cat.wsName}`)
-                    .setLabel(`🗑️ ${cat.wsName.substring(0, 20)}カテゴリを削除`)
+                    .setLabel(`🗑️ ${cat.wsName.substring(0, 20)}${t('wsHandler.deleteCategory')}`)
                     .setStyle(ButtonStyle.Danger),
             );
             components.push(row);
@@ -147,11 +148,11 @@ export async function buildWorkspaceListEmbed(ctx: BridgeContext, page = 0): Pro
         const actionRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
             new ButtonBuilder()
                 .setCustomId('ws_create')
-                .setLabel('➕ 新規作成')
+                .setLabel(t('wsHandler.newCreate'))
                 .setStyle(ButtonStyle.Success),
             new ButtonBuilder()
                 .setCustomId('ws_refresh')
-                .setLabel('🔄 更新')
+                .setLabel(t('wsHandler.refresh'))
                 .setStyle(ButtonStyle.Secondary),
         );
         components.push(actionRow);
@@ -162,7 +163,7 @@ export async function buildWorkspaceListEmbed(ctx: BridgeContext, page = 0): Pro
         const navRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
             new ButtonBuilder()
                 .setCustomId(`ws_page:${safePage - 1}`)
-                .setLabel('◀ 前へ')
+                .setLabel(t('wsHandler.prevPage'))
                 .setStyle(ButtonStyle.Secondary)
                 .setDisabled(safePage === 0),
             new ButtonBuilder()
@@ -172,7 +173,7 @@ export async function buildWorkspaceListEmbed(ctx: BridgeContext, page = 0): Pro
                 .setDisabled(true),
             new ButtonBuilder()
                 .setCustomId(`ws_page:${safePage + 1}`)
-                .setLabel('次へ ▶')
+                .setLabel(t('wsHandler.nextPage'))
                 .setStyle(ButtonStyle.Secondary)
                 .setDisabled(safePage >= totalPages - 1),
         );
@@ -181,9 +182,9 @@ export async function buildWorkspaceListEmbed(ctx: BridgeContext, page = 0): Pro
 
     const archiveDays = getArchiveDays();
     if (archiveDays > 0) {
-        embed.setFooter({ text: `⏰ 最終使用日から${archiveDays}日間未使用のカテゴリーは自動削除されます` });
+        embed.setFooter({ text: t('wsHandler.autoDeleteEnabled', String(archiveDays)) });
     } else {
-        embed.setFooter({ text: '⏰ 自動削除: 無効' });
+        embed.setFooter({ text: t('wsHandler.autoDeleteDisabled') });
     }
 
     return { embeds: [embed], components };
@@ -211,7 +212,7 @@ export async function handleWorkspaceButton(
             await interaction.deferUpdate();
             const { embeds, components } = await buildWorkspaceListEmbed(ctx, pageNum);
             if (embeds.length === 0) {
-                await interaction.editReply({ embeds: [buildEmbed('⚠️ Antigravity ワークスペースが見つかりませんでした。', EmbedColor.Warning)], components: [] });
+                await interaction.editReply({ embeds: [buildEmbed(t('wsHandler.wsNotFound'), EmbedColor.Warning)], components: [] });
             } else {
                 await interaction.editReply({ embeds, components: components as any });
             }
@@ -219,7 +220,7 @@ export async function handleWorkspaceButton(
             logError('handleWorkspaceButton: ws_page failed', e);
             try {
                 if (!interaction.replied && !interaction.deferred) {
-                    await interaction.reply({ embeds: [buildEmbed('⚠️ ページ切り替えに失敗しました。', EmbedColor.Warning)] });
+                    await interaction.reply({ embeds: [buildEmbed(t('wsHandler.pageFailed'), EmbedColor.Warning)] });
                 }
             } catch (e2) { logDebug(`handleWorkspaceButton: interaction response failed: ${e2}`); }
         }
@@ -232,7 +233,7 @@ export async function handleWorkspaceButton(
             await interaction.deferUpdate();
             const { embeds, components } = await buildWorkspaceListEmbed(ctx);
             if (embeds.length === 0) {
-                await interaction.editReply({ embeds: [buildEmbed('⚠️ Antigravity ワークスペースが見つかりませんでした。', EmbedColor.Warning)], components: [] });
+                await interaction.editReply({ embeds: [buildEmbed(t('wsHandler.wsNotFound'), EmbedColor.Warning)], components: [] });
             } else {
                 await interaction.editReply({ embeds, components: components as any });
             }
@@ -240,7 +241,7 @@ export async function handleWorkspaceButton(
             logError('handleWorkspaceButton: ws_refresh failed', e);
             try {
                 if (!interaction.replied && !interaction.deferred) {
-                    await interaction.reply({ embeds: [buildEmbed('⚠️ 更新に失敗しました。もう一度お試しください。', EmbedColor.Warning)] });
+                    await interaction.reply({ embeds: [buildEmbed(t('wsHandler.refreshFailed'), EmbedColor.Warning)] });
                 }
             } catch (e) { logDebug(`handleWorkspaceButton: interaction response failed: ${e}`); }
         }
@@ -254,16 +255,7 @@ export async function handleWorkspaceButton(
         if (parentDirs.length === 0) {
             await interaction.reply({
                 embeds: [buildEmbed(
-                    '⚠️ **ペアレントディレクトリが未設定です**\n\n' +
-                    'Antigravity の設定で `antiCrow.workspaceParentDirs` に\n' +
-                    '新規ワークスペースを作成するディレクトリを追加してください。\n\n' +
-                    '**設定例:**\n' +
-                    '```json\n' +
-                    '"antiCrow.workspaceParentDirs": [\n' +
-                    '  "C:\\\\Users\\\\user\\\\dev",\n' +
-                    '  "C:\\\\Users\\\\user\\\\projects"\n' +
-                    ']\n' +
-                    '```',
+                    t('wsHandler.parentDirNotSet'),
                     EmbedColor.Warning,
                 )],
             });
@@ -272,16 +264,16 @@ export async function handleWorkspaceButton(
 
         const modal = new ModalBuilder()
             .setCustomId('ws_modal_create')
-            .setTitle('新規ワークスペース作成');
+            .setTitle(t('wsHandler.newWsTitle'));
 
         const nameInput = new TextInputBuilder()
             .setCustomId('ws_name')
-            .setLabel('ワークスペース名（フォルダ名になります）')
+            .setLabel(t('wsHandler.wsNameLabel'))
             .setStyle(TextInputStyle.Short)
             .setRequired(true)
             .setMinLength(1)
             .setMaxLength(60)
-            .setPlaceholder('例: my-new-project');
+            .setPlaceholder(t('wsHandler.wsNamePlaceholder'));
 
         modal.addComponents(
             new ActionRowBuilder<TextInputBuilder>().addComponents(nameInput) as any,
@@ -291,7 +283,7 @@ export async function handleWorkspaceButton(
         if (parentDirs.length > 1) {
             const dirInput = new TextInputBuilder()
                 .setCustomId('ws_parent_dir')
-                .setLabel('ペアレントディレクトリ（番号を入力）')
+                .setLabel(t('wsHandler.parentDirLabel'))
                 .setStyle(TextInputStyle.Short)
                 .setRequired(true)
                 .setMaxLength(10)
@@ -312,7 +304,7 @@ export async function handleWorkspaceButton(
         const categoryId = parts[1];
         const wsName = parts.slice(2).join(':');
         if (!ctx.bot) {
-            await interaction.reply({ embeds: [buildEmbed('⚠️ Bot が初期化されていません。', EmbedColor.Warning)] });
+            await interaction.reply({ embeds: [buildEmbed(t('wsHandler.botNotInit'), EmbedColor.Warning)] });
             return true;
         }
 
@@ -335,7 +327,7 @@ export async function handleWorkspaceButton(
             }
             if (hasActivePlan) {
                 await interaction.reply({
-                    embeds: [buildEmbed(`⚠️ ワークスペース「**${wsName}**」にはアクティブなスケジュールがあります。\n先に \`/schedules\` コマンドでスケジュールを削除してから、再度お試しください。`, EmbedColor.Warning)],
+                    embeds: [buildEmbed(t('wsHandler.activePlanExists', wsName), EmbedColor.Warning)],
                 });
                 return true;
             }
@@ -344,15 +336,15 @@ export async function handleWorkspaceButton(
         const confirmRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
             new ButtonBuilder()
                 .setCustomId(`ws_delete_confirm:${categoryId}:${wsName}`)
-                .setLabel('✅ 削除する')
+                .setLabel(t('wsHandler.confirmDelete'))
                 .setStyle(ButtonStyle.Danger),
             new ButtonBuilder()
                 .setCustomId(`ws_delete_cancel:${categoryId}`)
-                .setLabel('❌ キャンセル')
+                .setLabel(t('wsHandler.cancelBtn'))
                 .setStyle(ButtonStyle.Secondary),
         );
         await interaction.reply({
-            embeds: [buildEmbed(`⚠️ ワークスペース「**${wsName}**」のカテゴリーと全チャンネルを削除します。\n\`workspacePaths\` 設定からも削除されます。\n\nよろしいですか？`, EmbedColor.Warning)],
+            embeds: [buildEmbed(t('wsHandler.deleteConfirm', wsName), EmbedColor.Warning)],
             components: [confirmRow as any],
         });
         return true;
@@ -364,14 +356,14 @@ export async function handleWorkspaceButton(
         const categoryId = parts[1];
         const wsName = parts.slice(2).join(':');
         if (!ctx.bot) {
-            await interaction.reply({ embeds: [buildEmbed('⚠️ Bot が初期化されていません。', EmbedColor.Warning)] });
+            await interaction.reply({ embeds: [buildEmbed(t('wsHandler.botNotInit'), EmbedColor.Warning)] });
             return true;
         }
         try {
             await interaction.deferUpdate();
             const guild = ctx.bot.getFirstGuild();
             if (!guild) {
-                await interaction.editReply({ embeds: [buildEmbed('⚠️ Guild が見つかりません。', EmbedColor.Warning)], components: [] });
+                await interaction.editReply({ embeds: [buildEmbed(t('wsHandler.guildNotFound'), EmbedColor.Warning)], components: [] });
                 return true;
             }
 
@@ -408,17 +400,17 @@ export async function handleWorkspaceButton(
             }
 
             const pathMsg = pathRemoved
-                ? '\n`workspacePaths` 設定からも削除しました。'
+                ? `\n${t('wsHandler.pathRemoved')}`
                 : '';
             await interaction.editReply({
-                embeds: [buildEmbed(`🗑️ ワークスペース「**${wsName}**」のカテゴリーを削除しました。${pathMsg}`, EmbedColor.Success)],
+                embeds: [buildEmbed(t('wsHandler.deleted', wsName) + pathMsg, EmbedColor.Success)],
                 components: [],
             });
         } catch (e) {
             logError('handleWorkspaceButton: ws_delete_confirm failed', e);
             const errMsg = e instanceof Error ? e.message : String(e);
             await interaction.editReply({
-                embeds: [buildEmbed(`❌ 削除失敗: ${errMsg}`, EmbedColor.Error)],
+                embeds: [buildEmbed(t('wsHandler.deleteFailed', errMsg), EmbedColor.Error)],
                 components: [],
             });
         }
@@ -428,7 +420,7 @@ export async function handleWorkspaceButton(
     // ----- ws_delete_cancel -----
     if (customId.startsWith('ws_delete_cancel:')) {
         await interaction.update({
-            embeds: [buildEmbed('❌ キャンセルしました。', EmbedColor.Error)],
+            embeds: [buildEmbed(t('wsHandler.cancelled'), EmbedColor.Error)],
             components: [],
         });
         return true;
@@ -456,7 +448,7 @@ export async function handleWorkspaceModalSubmit(
     const wsName = interaction.fields.getTextInputValue('ws_name').trim();
     if (!wsName) {
         await interaction.reply({
-            embeds: [buildEmbed('⚠️ ワークスペース名が空です。', EmbedColor.Warning)],
+            embeds: [buildEmbed(t('wsHandler.wsNameEmpty'), EmbedColor.Warning)],
         });
         return true;
     }
@@ -464,7 +456,7 @@ export async function handleWorkspaceModalSubmit(
     // ファイルシステム上の不正な文字をチェック
     if (/[<>:"|?*\/\\]/.test(wsName)) {
         await interaction.reply({
-            embeds: [buildEmbed('⚠️ ワークスペース名にファイル名として使用できない文字が含まれています。\n使用不可文字: `< > : " | ? * / \\`', EmbedColor.Warning)],
+            embeds: [buildEmbed(t('wsHandler.invalidChars'), EmbedColor.Warning)],
         });
         return true;
     }
@@ -472,7 +464,7 @@ export async function handleWorkspaceModalSubmit(
     const parentDirs = getWorkspaceParentDirs();
     if (parentDirs.length === 0) {
         await interaction.reply({
-            embeds: [buildEmbed('⚠️ ペアレントディレクトリが設定されていません。', EmbedColor.Warning)],
+            embeds: [buildEmbed(t('wsHandler.parentDirMissing'), EmbedColor.Warning)],
         });
         return true;
     }
@@ -487,7 +479,7 @@ export async function handleWorkspaceModalSubmit(
         if (isNaN(dirIndex) || dirIndex < 0 || dirIndex >= parentDirs.length) {
             await interaction.reply({
                 embeds: [buildEmbed(
-                    `⚠️ 無効な番号です。1〜${parentDirs.length} の番号を入力してください。\n\n` +
+                    `⚠️ ${t('wsHandler.invalidNumber', String(parentDirs.length))}\n\n` +
                     parentDirs.map((d, i) => `**${i + 1}:** \`${d}\``).join('\n'),
                     EmbedColor.Warning,
                 )],
@@ -513,7 +505,7 @@ export async function handleWorkspaceModalSubmit(
         // 2. Discord カテゴリ作成
         if (!ctx.bot) {
             await interaction.editReply({
-                embeds: [buildEmbed('⚠️ Bot が初期化されていません。', EmbedColor.Warning)],
+                embeds: [buildEmbed(t('wsHandler.botNotInit'), EmbedColor.Warning)],
             });
             return true;
         }
@@ -521,7 +513,7 @@ export async function handleWorkspaceModalSubmit(
         const guild = ctx.bot.getFirstGuild();
         if (!guild) {
             await interaction.editReply({
-                embeds: [buildEmbed('⚠️ Guild が見つかりません。', EmbedColor.Warning)],
+                embeds: [buildEmbed(t('wsHandler.guildNotFound'), EmbedColor.Warning)],
             });
             return true;
         }
@@ -529,7 +521,7 @@ export async function handleWorkspaceModalSubmit(
         const categoryId = await ctx.bot.ensureWorkspaceCategory(guild.id, wsName);
         if (!categoryId) {
             await interaction.editReply({
-                embeds: [buildEmbed('❌ Discord カテゴリの作成に失敗しました。', EmbedColor.Error)],
+                embeds: [buildEmbed(t('wsHandler.categoryCreateFailed'), EmbedColor.Error)],
             });
             return true;
         }
@@ -562,11 +554,7 @@ export async function handleWorkspaceModalSubmit(
 
         await interaction.editReply({
             embeds: [buildEmbed(
-                `✅ **ワークスペース「${wsName}」を作成しました！**\n\n` +
-                `📁 フォルダ: \`${fullPath}\`\n` +
-                `📂 カテゴリ: ${WORKSPACE_CATEGORY_PREFIX}${wsName}\n` +
-                `💬 チャンネル: <#${chatChannelId}>\n\n` +
-                '`#agent-chat` にメッセージを送ると、ワークスペースが自動起動します。',
+                t('wsHandler.wsCreated', wsName, fullPath, `${WORKSPACE_CATEGORY_PREFIX}${wsName}`, chatChannelId),
                 EmbedColor.Success,
             )],
         });
@@ -578,11 +566,11 @@ export async function handleWorkspaceModalSubmit(
         try {
             if (interaction.deferred) {
                 await interaction.editReply({
-                    embeds: [buildEmbed(`❌ ワークスペース作成に失敗しました: ${errMsg}`, EmbedColor.Error)],
+                    embeds: [buildEmbed(t('wsHandler.wsCreateFailed', errMsg), EmbedColor.Error)],
                 });
             } else {
                 await interaction.reply({
-                    embeds: [buildEmbed(`❌ ワークスペース作成に失敗しました: ${errMsg}`, EmbedColor.Error)],
+                    embeds: [buildEmbed(t('wsHandler.wsCreateFailed', errMsg), EmbedColor.Error)],
                 });
             }
         } catch (replyErr) {

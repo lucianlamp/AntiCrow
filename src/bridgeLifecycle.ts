@@ -43,6 +43,7 @@ import { SubagentReceiver } from './subagentReceiver';
 import { TeamOrchestrator } from './teamOrchestrator';
 import { loadTeamConfig } from './teamConfig';
 import { deployAntiCrowSkill } from './embeddedSkill';
+import { t } from './i18n';
 import * as fs from 'fs';
 
 /** ワークスペース名としてカテゴリ作成すべきでない名前を判定する */
@@ -113,7 +114,7 @@ async function redeliverStaleResponses(
                     }
 
                     // 再送メッセージにヘッダー付与（MEMORY/SUGGESTIONS タグは除去）
-                    const header = '⚠️ **前回のセッションで未配信だったレスポンスを再送します:**\\n\\n';
+                    const header = t('bridge.staleHeader');
                     const cleanedText = stripSuggestionTags(stripMemoryTags(text));
                     await ctx.bot.sendToChannel(targetChannelId, header + cleanedText, 0xFFA500);
                     logDebug(`Bridge: stale response re-delivered — requestId=${sr.requestId}, channelId=${targetChannelId} (source=${source}, workspace=${wsName ?? 'none'})`);
@@ -390,7 +391,7 @@ async function startBridgeInternal(
     const token = await context.secrets.get('discord-bot-token');
     if (!token) {
         throw new Error(
-            'Bot Token が設定されていません。コマンドパレットで "AntiCrow: Set Bot Token" を実行してください。'
+            t('bridge.noToken')
         );
     }
 
@@ -649,7 +650,7 @@ async function startBridgeInternal(
                 const elapsedMs = Date.now() - handlerStartTime;
                 if (!result || result.trim().length === 0) {
                     logWarn(`[SubagentReceiver] ⚠️ レスポンス空 (requestId=${requestId}, elapsed=${Math.round(elapsedMs / 1000)}秒)`);
-                    return '[error] Cascade からのレスポンスが空でした。タスクが正常に完了しなかった可能性があります。';
+                    return t('bridge.cascadeEmptyResponse');
                 }
 
                 logInfo(`[SubagentReceiver] ✅ レスポンス成功: ${result.length} chars, ${Math.round(elapsedMs / 1000)}秒 (requestId=${requestId})`);
@@ -664,12 +665,12 @@ async function startBridgeInternal(
                 if (isTimeout) {
                     logError(`[SubagentReceiver] ❌ タイムアウト (${Math.round(elapsedMs / 1000)}秒経過): ${errMsg}`);
                     logDebug(`[SubagentReceiver] タイムアウト詳細スタック: ${errStack || 'N/A'}`);
-                    return `[error] Cascade のレスポンスがタイムアウトしました。AI がレスポンスファイルに書き込めなかった可能性があります: ${errMsg}`;
+                    return t('bridge.cascadeTimeout', errMsg);
                 }
                 logError(`[SubagentReceiver] ❌ エラー (${Math.round(elapsedMs / 1000)}秒経過): ${errMsg}`, e);
                 logDebug(`[SubagentReceiver] エラー詳細スタック: ${errStack || 'N/A'}`);
                 logInfo(`[SubagentReceiver] ────────── 処理失敗 ──────────`);
-                return `[error] Cascade 実行に失敗しました: ${errMsg}`;
+                return t('bridge.cascadeError', errMsg);
             }
         });
         logInfo('Bridge: SubagentReceiver handler updated to Cascade integration (enhanced logging)');
@@ -914,7 +915,7 @@ export async function stopBridge(ctx: BridgeContext): Promise<void> {
 
     const licenseSuffix = getLicenseSuffix();
     ctx.statusBarItem.text = `$(circle-slash) AntiCrow${licenseSuffix}`;
-    ctx.statusBarItem.tooltip = `AntiCrow — Stopped\n${getLicenseTooltipLine()}`;
+    ctx.statusBarItem.tooltip = t('bridge.tooltipStopped', getLicenseTooltipLine());
     ctx.statusBarItem.command = 'anti-crow.start';
 
     logDebug('Bridge stopped');
@@ -931,7 +932,7 @@ function getPlanName(type: LicenseType, trialDaysRemaining?: number): string {
         case 'lifetime': return 'Pro';
         case 'trial': {
             const days = trialDaysRemaining ?? 0;
-            return days > 0 ? `Trial: 残り${days}日` : 'Trial';
+            return days > 0 ? t('bridge.trialDaysRemaining', days) : 'Trial';
         }
         case 'free': return 'Free';
         default: return 'Free';
@@ -956,15 +957,15 @@ function getLicenseTooltipLine(): string {
     const planName = getPlanName(status.type, trialDays);
 
     if (status.type === 'free' && status.reason === 'no_key') {
-        return `プラン: ${planName} — クリックして Pro にアップグレード`;
+        return t('bridge.tooltipFreeUpgrade', planName);
     }
     if (status.valid) {
         const expiryText = status.expiresAt
-            ? ` (${new Date(status.expiresAt).toLocaleDateString('ja-JP')} まで)`
+            ? t('bridge.tooltipExpiryDate', new Date(status.expiresAt).toLocaleDateString('ja-JP'))
             : '';
-        return `プラン: ${planName}${expiryText}`;
+        return t('bridge.tooltipPlanExpiry', planName, expiryText);
     }
-    return `プラン: ライセンス問題あり — クリックして対処`;
+    return t('bridge.tooltipLicenseIssue');
 }
 
 export function updateStatusBar(ctx: BridgeContext): void {
@@ -973,10 +974,10 @@ export function updateStatusBar(ctx: BridgeContext): void {
 
     if (ctx.isBotOwner) {
         ctx.statusBarItem.text = `$(check) AntiCrow${licenseSuffix}`;
-        ctx.statusBarItem.tooltip = `AntiCrow — Active (メッセージを処理中)\n${licenseTooltip}`;
+        ctx.statusBarItem.tooltip = t('bridge.tooltipActive', licenseTooltip);
     } else {
         ctx.statusBarItem.text = `$(check) AntiCrow${licenseSuffix}`;
-        ctx.statusBarItem.tooltip = `AntiCrow — Standby (別ワークスペースが Bot 管理中)\n${licenseTooltip}`;
+        ctx.statusBarItem.tooltip = t('bridge.tooltipStandby', licenseTooltip);
     }
     ctx.statusBarItem.command = 'anti-crow.stop';
 }

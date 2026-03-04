@@ -40,6 +40,7 @@ import { fetchQuota } from './quotaProvider';
 import { buildTemplateListPanel } from './templateHandler';
 import { SUGGEST_AUTO_ID } from './suggestionButtons';
 import { readAnticrowMd } from './anticrowCustomizer';
+import { t } from './i18n';
 
 // ---------------------------------------------------------------------------
 // コマンドハンドラ（各コマンドの処理を独立関数に分離）
@@ -81,22 +82,22 @@ async function handleStatus(ctx: BridgeContext, interaction: ChatInputCommandInt
     const scheduledIds = scheduler?.getRegisteredPlanIds() || [];
     const execQueueLen = executor?.queueLength() || 0;
     const isRunning = executor?.isRunning() || false;
-    const activeTarget = cdp?.getActiveTargetTitle() || '未接続';
+    const activeTarget = cdp?.getActiveTargetTitle() || t('admin.status.notConnected');
 
     const msgQueue = getMessageQueueStatus();
     let queueDisplay: string;
     if (msgQueue.total === 0 && execQueueLen === 0) {
-        queueDisplay = '0件 (待機)';
+        queueDisplay = t('admin.status.queueEmpty');
     } else {
         const parts: string[] = [];
-        if (msgQueue.total > 0) { parts.push(`メッセージ処理中/待機: ${msgQueue.total}件`); }
-        if (execQueueLen > 0) { parts.push(`実行キュー: ${execQueueLen}件`); }
-        queueDisplay = `${parts.join(' / ')} ${isRunning ? '(実行中)' : ''}`;
+        if (msgQueue.total > 0) { parts.push(t('admin.status.msgProcessing', String(msgQueue.total))); }
+        if (execQueueLen > 0) { parts.push(t('admin.status.execQueue', String(execQueueLen))); }
+        queueDisplay = `${parts.join(' / ')} ${isRunning ? t('admin.status.running') : ''}`;
     }
 
     // モデル・モード・クォータ情報を取得（CDP 接続時のみ）
-    let modelDisplay = '取得不可';
-    let modeDisplay = '取得不可';
+    let modelDisplay = t('admin.status.unavailable');
+    let modeDisplay = t('admin.status.unavailable');
     let quotaDisplay = '';
 
     if (cdpOk && cdp) {
@@ -147,18 +148,18 @@ async function handleStatus(ctx: BridgeContext, interaction: ChatInputCommandInt
 
     const wsLabel = wsKey ? ` (${wsKey})` : '';
     const lines = [
-        `📊 **AntiCrow 状態**${wsLabel}`,
-        `- Discord Bot: ${botOk ? '🟢 オンライン' : '🔴 オフライン'}`,
-        `- Antigravity 接続: ${cdpOk ? '🟢 接続済み' : '🔴 未接続'}`,
-        `- アクティブターゲット: ${activeTarget}`,
-        `- 🤖 モデル: ${modelDisplay}`,
-        `- 🎛️ モード: ${modeDisplay}`,
-        `- スケジュール中: ${scheduledIds.length}件`,
-        `- キュー: ${queueDisplay}`,
+        t('admin.status.title', wsLabel),
+        t('admin.status.discordBot', botOk ? t('admin.status.botOnline') : t('admin.status.botOffline')),
+        t('admin.status.antigravity', cdpOk ? t('admin.status.cdpConnected') : t('admin.status.cdpDisconnected')),
+        t('admin.status.activeTarget', activeTarget),
+        t('admin.status.model', modelDisplay),
+        t('admin.status.mode', modeDisplay),
+        t('admin.status.scheduled', String(scheduledIds.length)),
+        t('admin.status.queue', queueDisplay),
     ];
 
     if (quotaDisplay) {
-        lines.push(`- 📊 クォータ: ${quotaDisplay}`);
+        lines.push(t('admin.status.quota', quotaDisplay));
     }
 
     await interaction.editReply({ embeds: [buildEmbed(lines.join('\n'), EmbedColor.Info)] });
@@ -167,7 +168,7 @@ async function handleStatus(ctx: BridgeContext, interaction: ChatInputCommandInt
 async function handleSchedules(ctx: BridgeContext, interaction: ChatInputCommandInteraction): Promise<void> {
     const { planStore } = ctx;
     if (!planStore) {
-        await interaction.reply({ embeds: [buildEmbed('⚠️ PlanStore が初期化されていません。', EmbedColor.Warning)] });
+        await interaction.reply({ embeds: [buildEmbed(t('admin.schedules.notInit'), EmbedColor.Warning)] });
         return;
     }
     const plans = planStore.getAll();
@@ -193,10 +194,7 @@ async function handleCancel(ctx: BridgeContext, interaction: ChatInputCommandInt
                 logWarn(`handleCancel: cannot resolve target workspace (pool has ${wsNames.length} workspaces: ${wsNames.join(', ')})`);
                 await interaction.reply({
                     embeds: [buildEmbed(
-                        `⚠️ 対象ワークスペースを特定できません。\n\n` +
-                        `現在 ${wsNames.length} 個のワークスペースが接続中です:\n` +
-                        wsNames.map(n => `- ${n}`).join('\n') + '\n\n' +
-                        `キャンセルしたいワークスペースのカテゴリー配下のチャンネルから \`/cancel\` を送信してください。`,
+                        t('admin.cancel.cannotResolve', String(wsNames.length), wsNames.map(n => `- ${n}`).join('\n')),
                         EmbedColor.Warning,
                     )],
                 });
@@ -226,30 +224,30 @@ async function handleCancel(ctx: BridgeContext, interaction: ChatInputCommandInt
             logDebug('handleCancel: /cancel executed — default executor stopped (no pool entries)');
         }
 
-        let cancelResult = 'CDP未接続';
+        let cancelResult = t('admin.cancel.cdpNotConnected');
 
         if (targetCdp) {
             try {
                 cancelResult = await targetCdp.clickCancelButton();
             } catch (e) {
-                cancelResult = `エラー: ${e instanceof Error ? e.message : e}`;
+                cancelResult = t('admin.cancel.error', e instanceof Error ? e.message : String(e));
                 logWarn(`handleCancel: clickCancelButton failed: ${cancelResult}`);
             }
         }
 
         const debugInfo = [
-            `対象WS: ${wsKey || 'デフォルト'}`,
-            `executor実行中: ${execRunning}`,
-            `pool実行中: ${poolRunning}`,
-            `Antigravity停止: ${cancelResult}`,
+            t('admin.cancel.targetWs', wsKey || t('admin.cancel.targetDefault')),
+            t('admin.cancel.execRunning', String(execRunning)),
+            t('admin.cancel.poolRunning', String(poolRunning)),
+            t('admin.cancel.antigravityStop', cancelResult),
         ].join('\n');
 
         // Escape フォールバックのみで停止した場合はメッセージを補足
         const escapeOnly = cancelResult.includes('escape:SENT') && !cancelResult.includes(':OK');
         const wsLabel = wsKey ? ` (${wsKey})` : '';
         const statusMsg = escapeOnly
-            ? `⏹️ キャンセルしました${wsLabel}（Escape キーで停止）。\n- 実行中のジョブ → キャンセル\n- キュー内の待機ジョブ → 保持\n\n⚠️ キャンセルボタンが見つからず Escape キーで停止しました。`
-            : `⏹️ キャンセルしました${wsLabel}。\n- 実行中のジョブ → キャンセル\n- キュー内の待機ジョブ → 保持`;
+            ? t('admin.cancel.successEscape', wsLabel)
+            : t('admin.cancel.success', wsLabel);
 
         // デバッグ情報は開発者のみ表示
         const replyMsg = isDeveloper(interaction.user.id)
@@ -259,7 +257,7 @@ async function handleCancel(ctx: BridgeContext, interaction: ChatInputCommandInt
     } catch (e) {
         const errMsg = e instanceof Error ? e.message : String(e);
         logError('handleCancel: /cancel failed', e);
-        await interaction.reply({ embeds: [buildEmbed(`❌ キャンセル失敗: ${errMsg}`, EmbedColor.Error)] });
+        await interaction.reply({ embeds: [buildEmbed(t('admin.cancel.failed', errMsg), EmbedColor.Error)] });
     }
 }
 
@@ -269,14 +267,14 @@ async function handleNewchat(ctx: BridgeContext, interaction: ChatInputCommandIn
         if (cdp) {
             await cdp.startNewChat();
             logDebug('handleNewchat: new chat started via Ctrl+Shift+L');
-            await interaction.reply({ embeds: [buildEmbed('🆕 新しいチャットを開きました。', EmbedColor.Success)] });
+            await interaction.reply({ embeds: [buildEmbed(t('admin.newchat.success'), EmbedColor.Success)] });
         } else {
-            await interaction.reply({ embeds: [buildEmbed('⚠️ Antigravity との接続が初期化されていません。', EmbedColor.Warning)] });
+            await interaction.reply({ embeds: [buildEmbed(t('admin.newchat.notInit'), EmbedColor.Warning)] });
         }
     } catch (e) {
         const errMsg = e instanceof Error ? e.message : String(e);
         logError('handleNewchat: failed', e);
-        await interaction.reply({ embeds: [buildEmbed(`❌ 新しいチャットの開始に失敗: ${errMsg}`, EmbedColor.Error)] });
+        await interaction.reply({ embeds: [buildEmbed(t('admin.newchat.failed', errMsg), EmbedColor.Error)] });
     }
 }
 
@@ -286,7 +284,7 @@ async function handleWorkspaces(ctx: BridgeContext, interaction: ChatInputComman
         const { embeds, components } = await buildWorkspaceListEmbed(ctx);
 
         if (embeds.length === 0) {
-            await interaction.editReply({ embeds: [buildEmbed('⚠️ Antigravity ワークスペースが見つかりませんでした。Antigravity が起動しているか確認してください。', EmbedColor.Warning)] });
+            await interaction.editReply({ embeds: [buildEmbed(t('admin.workspace.notFound'), EmbedColor.Warning)] });
             return;
         }
         await interaction.editReply({ embeds, components: components as any });
@@ -294,9 +292,9 @@ async function handleWorkspaces(ctx: BridgeContext, interaction: ChatInputComman
         const errMsg = e instanceof Error ? e.message : String(e);
         logError('handleWorkspaces: failed', e);
         if (interaction.deferred || interaction.replied) {
-            await interaction.editReply({ embeds: [buildEmbed(`❌ ワークスペース検出失敗: ${errMsg}`, EmbedColor.Error)] }).catch(() => { });
+            await interaction.editReply({ embeds: [buildEmbed(t('admin.workspace.failed', errMsg), EmbedColor.Error)] }).catch(() => { });
         } else {
-            await interaction.reply({ embeds: [buildEmbed(`❌ ワークスペース検出失敗: ${errMsg}`, EmbedColor.Error)] });
+            await interaction.reply({ embeds: [buildEmbed(t('admin.workspace.failed', errMsg), EmbedColor.Error)] });
         }
     }
 }
@@ -305,7 +303,7 @@ async function handleQueue(ctx: BridgeContext, interaction: ChatInputCommandInte
     const { executor } = ctx;
     const queueInfo = executor?.getQueueInfo();
     if (!queueInfo) {
-        await interaction.reply({ embeds: [buildEmbed('⚠️ Executor が初期化されていません。', EmbedColor.Warning)] });
+        await interaction.reply({ embeds: [buildEmbed(t('admin.queue.notInit'), EmbedColor.Warning)] });
         return;
     }
 
@@ -313,41 +311,41 @@ async function handleQueue(ctx: BridgeContext, interaction: ChatInputCommandInte
     const hasAnything = !!(queueInfo.current || queueInfo.pending.length > 0 || msgQueue.processing.length > 0 || msgQueue.waiting.length > 0);
 
     const phaseLabels: Record<ProcessingPhase, string> = {
-        connecting: '🔌 接続中',
-        plan_generating: '🧠 Plan 生成中',
-        confirming: '⏸️ 確認待ち',
-        dispatching: '📤 ディスパッチ中',
+        connecting: t('admin.queue.phaseConnecting'),
+        plan_generating: t('admin.queue.phasePlanGenerating'),
+        confirming: t('admin.queue.phaseConfirming'),
+        dispatching: t('admin.queue.phaseDispatching'),
     };
 
-    const lines: string[] = ['📋 **キュー状態**'];
+    const lines: string[] = [t('admin.queue.title')];
 
     // メッセージ処理パイプライン（前段）— processing/waiting 配列から直接表示
     if (msgQueue.processing.length > 0 || msgQueue.waiting.length > 0) {
         const totalCount = msgQueue.processing.length + msgQueue.waiting.length;
-        lines.push(`\n📨 **メッセージ処理中:** ${totalCount}件`);
+        lines.push(t('admin.queue.msgProcessingTitle', String(totalCount)));
         // 処理中の詳細ステータス
         for (const ps of msgQueue.processing) {
             const elapsed = Math.round((Date.now() - ps.startTime) / 1000);
             const minutes = Math.floor(elapsed / 60);
             const seconds = elapsed % 60;
-            const timeStr = minutes > 0 ? `${minutes}分${seconds}秒` : `${seconds}秒`;
+            const timeStr = minutes > 0 ? t('admin.queue.timeMinSec', String(minutes), String(seconds)) : t('admin.queue.timeSec', String(seconds));
             const label = phaseLabels[ps.phase] || ps.phase;
-            lines.push(`  - ${label}: ${ps.messagePreview} (${timeStr}経過)`);
+            lines.push(`  - ${label}: ${ps.messagePreview} (${t('admin.queue.elapsed', timeStr)})`);
         }
         // 待機中メッセージの内容表示
         if (msgQueue.waiting.length > 0) {
-            lines.push(`  - ⏳ **待機中: ${msgQueue.waiting.length}件**`);
+            lines.push(t('admin.queue.waitingTitle', String(msgQueue.waiting.length)));
             for (const w of msgQueue.waiting) {
                 const elapsed = Math.round((Date.now() - w.enqueuedAt) / 1000);
                 const minutes = Math.floor(elapsed / 60);
                 const seconds = elapsed % 60;
-                const timeStr = minutes > 0 ? `${minutes}分${seconds}秒前` : `${seconds}秒前`;
-                const preview = w.preview || '(内容なし)';
-                lines.push(`    - ${preview}${preview.length >= 50 ? '...' : ''} (${timeStr})`);
+                const timeStr = minutes > 0 ? t('admin.queue.timeMinSec', String(minutes), String(seconds)) : t('admin.queue.timeSec', String(seconds));
+                const preview = w.preview || t('admin.queue.noContent');
+                lines.push(`    - ${preview}${preview.length >= 50 ? '...' : ''} (${t('admin.queue.timeAgo', timeStr)})`);
             }
         }
     } else {
-        lines.push('\n📨 メッセージ処理キュー: なし');
+        lines.push(t('admin.queue.msgEmpty'));
     }
 
     // 実行キュー（パイプライン後段）— タスクがある場合のみ表示
@@ -355,13 +353,13 @@ async function handleQueue(ctx: BridgeContext, interaction: ChatInputCommandInte
         const elapsed = Math.round((Date.now() - queueInfo.current.startTime) / 1000);
         const minutes = Math.floor(elapsed / 60);
         const seconds = elapsed % 60;
-        const timeStr = minutes > 0 ? `${minutes}分${seconds}秒` : `${seconds}秒`;
+        const timeStr = minutes > 0 ? t('admin.queue.timeMinSec', String(minutes), String(seconds)) : t('admin.queue.timeSec', String(seconds));
         const summary = queueInfo.current.plan.human_summary || queueInfo.current.plan.plan_id;
-        lines.push(`\n🔄 **実行中:** ${summary} (${timeStr}経過)`);
+        lines.push(t('admin.queue.executingTitle', summary, timeStr));
     }
 
     if (queueInfo.pending.length > 0) {
-        lines.push(`\n⏳ **実行待ち:** ${queueInfo.pending.length}件`);
+        lines.push(t('admin.queue.pendingTitle', String(queueInfo.pending.length)));
         queueInfo.pending.forEach((p, i) => {
             const summary = p.human_summary || p.plan_id;
             lines.push(`${i + 1}. ${summary}`);
@@ -369,7 +367,7 @@ async function handleQueue(ctx: BridgeContext, interaction: ChatInputCommandInte
     }
 
     if (!hasAnything) {
-        lines.push('\n✅ すべてのキューが空です。');
+        lines.push(t('admin.queue.allEmpty'));
     }
 
     // 待機中メッセージがある場合はボタンを追加
@@ -391,7 +389,7 @@ async function handleQueue(ctx: BridgeContext, interaction: ChatInputCommandInte
                     .setStyle(ButtonStyle.Primary),
                 new ButtonBuilder()
                     .setCustomId(`queue_remove_waiting_${idSuffix}`)
-                    .setLabel(`❌ 削除`)
+                    .setLabel(t('admin.queue.deleteLabel'))
                     .setStyle(ButtonStyle.Secondary),
             );
             components.push(row);
@@ -401,7 +399,7 @@ async function handleQueue(ctx: BridgeContext, interaction: ChatInputCommandInte
         const clearRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
             new ButtonBuilder()
                 .setCustomId('queue_clear_waiting')
-                .setLabel(`🗑️ 待機キュー全削除 (${msgQueue.waiting.length}件)`)
+                .setLabel(t('admin.queue.clearLabel', String(msgQueue.waiting.length)))
                 .setStyle(ButtonStyle.Danger),
         );
         components.push(clearRow);
@@ -413,7 +411,7 @@ async function handleQueue(ctx: BridgeContext, interaction: ChatInputCommandInte
 async function handleTemplate(ctx: BridgeContext, interaction: ChatInputCommandInteraction): Promise<void> {
     const templateStore = ctx.templateStore;
     if (!templateStore) {
-        await interaction.reply({ embeds: [buildEmbed('⚠️ TemplateStore が初期化されていません。', EmbedColor.Warning)] });
+        await interaction.reply({ embeds: [buildEmbed(t('admin.template.notInit'), EmbedColor.Warning)] });
         return;
     }
     const { embeds, components } = buildTemplateListPanel(templateStore);
@@ -425,7 +423,7 @@ async function handleModels(ctx: BridgeContext, interaction: ChatInputCommandInt
     try {
         const { cdp } = resolveTargetCdp(ctx, interaction);
         if (!cdp) {
-            await interaction.editReply({ embeds: [buildEmbed('⚠️ Antigravity との接続が初期化されていません。', EmbedColor.Warning)] });
+            await interaction.editReply({ embeds: [buildEmbed(t('admin.models.notInit'), EmbedColor.Warning)] });
             return;
         }
 
@@ -449,18 +447,18 @@ async function handleModels(ctx: BridgeContext, interaction: ChatInputCommandInt
             if (isDevUser) {
                 const stepSummary = debugLog.map(e => `${e.step}: ${e.success ? '✅' : '❌'}`).join(' → ');
                 const debugLines = [
-                    '🔍 **モデル取得デバッグ情報**',
+                    t('admin.models.debugTitle'),
                     '',
-                    `**ステップ**: ${stepSummary || '(なし)'}`,
+                    t('admin.models.debugSteps', stepSummary || t('admin.models.debugNone')),
                     '',
-                    '**詳細ログ:**',
+                    t('admin.models.debugDetail'),
                     '```json',
                     JSON.stringify(debugLog, null, 2).substring(0, 800),
                     '```',
                 ];
                 await interaction.editReply({ embeds: [buildEmbed(debugLines.join('\n'), EmbedColor.Warning)] });
             } else {
-                await interaction.editReply({ embeds: [buildEmbed('⚠️ モデル一覧を取得できませんでした。Antigravity の状態を確認してください。', EmbedColor.Warning)] });
+                await interaction.editReply({ embeds: [buildEmbed(t('admin.models.notAvailable'), EmbedColor.Warning)] });
             }
             return;
         }
@@ -477,7 +475,7 @@ async function handleModels(ctx: BridgeContext, interaction: ChatInputCommandInt
     } catch (e) {
         const errMsg = e instanceof Error ? e.message : String(e);
         logError('handleModels: failed', e);
-        await interaction.editReply({ embeds: [buildEmbed(`❌ モデル一覧取得エラー: ${errMsg}`, EmbedColor.Error)] }).catch(() => { });
+        await interaction.editReply({ embeds: [buildEmbed(t('admin.models.error', errMsg), EmbedColor.Error)] }).catch(() => { });
     }
 }
 
@@ -486,7 +484,7 @@ async function handleMode(ctx: BridgeContext, interaction: ChatInputCommandInter
     try {
         const { cdp } = resolveTargetCdp(ctx, interaction);
         if (!cdp) {
-            await interaction.editReply({ embeds: [buildEmbed('⚠️ Antigravity との接続が初期化されていません。', EmbedColor.Warning)] });
+            await interaction.editReply({ embeds: [buildEmbed(t('admin.mode.notInit'), EmbedColor.Warning)] });
             return;
         }
 
@@ -510,18 +508,18 @@ async function handleMode(ctx: BridgeContext, interaction: ChatInputCommandInter
             if (isDevUser) {
                 const stepSummary = debugLog.map(e => `${e.step}: ${e.success ? '✅' : '❌'}`).join(' → ');
                 const debugLines = [
-                    '🔍 **モード取得デバッグ情報**',
+                    t('admin.mode.debugTitle'),
                     '',
-                    `**ステップ**: ${stepSummary || '(なし)'}`,
+                    t('admin.mode.debugSteps', stepSummary || t('admin.mode.debugNone')),
                     '',
-                    '**詳細ログ:**',
+                    t('admin.mode.debugDetail'),
                     '```json',
                     JSON.stringify(debugLog, null, 2).substring(0, 800),
                     '```',
                 ];
                 await interaction.editReply({ embeds: [buildEmbed(debugLines.join('\n'), EmbedColor.Warning)] });
             } else {
-                await interaction.editReply({ embeds: [buildEmbed('⚠️ モード一覧を取得できませんでした。Antigravity の状態を確認してください。', EmbedColor.Warning)] });
+                await interaction.editReply({ embeds: [buildEmbed(t('admin.mode.notAvailable'), EmbedColor.Warning)] });
             }
             return;
         }
@@ -531,7 +529,7 @@ async function handleMode(ctx: BridgeContext, interaction: ChatInputCommandInter
     } catch (e) {
         const errMsg = e instanceof Error ? e.message : String(e);
         logError('handleMode: failed', e);
-        await interaction.editReply({ embeds: [buildEmbed(`❌ モード一覧取得エラー: ${errMsg}`, EmbedColor.Error)] }).catch(() => { });
+        await interaction.editReply({ embeds: [buildEmbed(t('admin.mode.error', errMsg), EmbedColor.Error)] }).catch(() => { });
     }
 }
 
@@ -540,7 +538,7 @@ async function handleHistory(ctx: BridgeContext, interaction: ChatInputCommandIn
     try {
         const { cdp } = resolveTargetCdp(ctx, interaction);
         if (!cdp) {
-            await interaction.editReply({ embeds: [buildEmbed('⚠️ Antigravity との接続が初期化されていません。', EmbedColor.Warning)] });
+            await interaction.editReply({ embeds: [buildEmbed(t('admin.history.notInit'), EmbedColor.Warning)] });
             return;
         }
 
@@ -576,40 +574,40 @@ async function handleHistory(ctx: BridgeContext, interaction: ChatInputCommandIn
 
         // unknown セクション（セクション分類失敗）の場合、警告をフッターに追加
         if (unknownSection && !wsSection) {
-            embeds[0]?.setFooter({ text: '⚠️ セクション分類に失敗しました。別ワークスペースの会話が含まれている可能性があります。' });
+            embeds[0]?.setFooter({ text: t('admin.history.sectionWarning') });
         }
 
         await interaction.editReply({ embeds, components: components as any });
     } catch (e) {
         const errMsg = e instanceof Error ? e.message : String(e);
         logError('handleHistory: failed', e);
-        await interaction.editReply({ embeds: [buildEmbed(`❌ 会話履歴取得エラー: ${errMsg}`, EmbedColor.Error)] }).catch(() => { });
+        await interaction.editReply({ embeds: [buildEmbed(t('admin.history.error', errMsg), EmbedColor.Error)] }).catch(() => { });
     }
 }
 
 async function handleHelp(_ctx: BridgeContext, interaction: ChatInputCommandInteraction): Promise<void> {
     const helpMsg = [
-        '📖 **AntiCrow ヘルプ**',
+        t('admin.help.title'),
         '',
-        '**コマンド一覧**',
-        '`/status` — Bot・接続・キュー状態を表示',
-        '`/cancel` — 実行中のタスクをキャンセル',
-        '`/queue` — 実行キューの詳細を表示',
-        '`/schedules` — 定期実行の一覧・管理',
-        '`/newchat` — Antigravity で新しいチャットを開く',
-        '`/model` — AI モデルの一覧・切替',
-        '`/mode` — AI モード切替（Planning / Fast）',
-        '`/history` — 会話履歴を表示・切り替え',
-        '`/workspace` — ワークスペース一覧を表示',
-        '`/templates` — テンプレート一覧・管理',
-        '`/pro` — Pro ライセンス管理・購入・キー入力',
-        '`/help` — このヘルプを表示',
+        t('admin.help.commandsTitle'),
+        t('admin.help.cmdStatus'),
+        t('admin.help.cmdCancel'),
+        t('admin.help.cmdQueue'),
+        t('admin.help.cmdSchedules'),
+        t('admin.help.cmdNewchat'),
+        t('admin.help.cmdModel'),
+        t('admin.help.cmdMode'),
+        t('admin.help.cmdHistory'),
+        t('admin.help.cmdWorkspace'),
+        t('admin.help.cmdTemplates'),
+        t('admin.help.cmdPro'),
+        t('admin.help.cmdHelp'),
         '',
-        '**使い方のコツ**',
-        '💡 1メッセージ = 1タスクで送信すると精度が上がります',
-        '📎 画像やテキストファイルを添付して指示できます',
-        '⏱️ 処理中に追加メッセージを送ると自動でキューに追加されます',
-        '⏹️ タスクをやめたい時は `/cancel` を使ってください',
+        t('admin.help.tipsTitle'),
+        t('admin.help.tip1'),
+        t('admin.help.tip2'),
+        t('admin.help.tip3'),
+        t('admin.help.tip4'),
     ].join('\n');
 
     await interaction.reply({ embeds: [buildEmbed(helpMsg, EmbedColor.Info)] });
@@ -620,15 +618,15 @@ async function handlePro(ctx: BridgeContext, interaction: ChatInputCommandIntera
         const { FREE_DAILY_TASK_LIMIT, FREE_WEEKLY_TASK_LIMIT, PRO_ONLY_FEATURES, PURCHASE_URL_MONTHLY, PURCHASE_URL_LIFETIME } = await import('./licensing');
 
         const lines: string[] = [
-            '💎 **AntiCrow Pro**',
+            t('admin.pro.title'),
             '',
-            '**💰 価格プラン**',
-            `🆓 **Free** — 無料（1日${FREE_DAILY_TASK_LIMIT}タスク、週${FREE_WEEKLY_TASK_LIMIT}タスク）`,
-            '📅 **Monthly** — $5/月（全機能無制限）',
-            '♾️ **Lifetime** — $50（買い切り永久）',
+            t('admin.pro.priceTitle'),
+            t('admin.pro.free', String(FREE_DAILY_TASK_LIMIT), String(FREE_WEEKLY_TASK_LIMIT)),
+            t('admin.pro.monthly'),
+            t('admin.pro.lifetime'),
             '',
-            '**🔒 Pro 限定機能**',
-            `${[...PRO_ONLY_FEATURES].map(f => f === 'autoAccept' ? '自動承認' : `\`${f}\``).join(', ')}、無制限タスク`,
+            t('admin.pro.featuresTitle'),
+            `${[...PRO_ONLY_FEATURES].map(f => f === 'autoAccept' ? t('admin.pro.autoAcceptLabel') : `\`${f}\``).join(', ')}${t('admin.pro.unlimitedTasks') ? ', ' + t('admin.pro.unlimitedTasks') : ''}`,
         ];
 
         // トライアル情報を追加
@@ -636,21 +634,21 @@ async function handlePro(ctx: BridgeContext, interaction: ChatInputCommandIntera
         if (trialDays !== undefined) {
             if (trialDays > 0) {
                 lines.push('');
-                lines.push(`🆓 **Proトライアル期間**: 残り **${trialDays}** 日`);
+                lines.push(t('admin.pro.trialRemaining', String(trialDays)));
             } else {
                 lines.push('');
-                lines.push('⏰ **Proトライアル期間終了** — Pro にアップグレードして全機能を使い続けましょう！');
+                lines.push(t('admin.pro.trialExpired'));
             }
         }
 
         // --- ActionRow: 購入リンクボタン ---
         const purchaseRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
             new ButtonBuilder()
-                .setLabel('📅 Monthly ($5/月)')
+                .setLabel(t('admin.pro.monthlyButton'))
                 .setStyle(ButtonStyle.Link)
                 .setURL(PURCHASE_URL_MONTHLY),
             new ButtonBuilder()
-                .setLabel('♾️ Lifetime ($50)')
+                .setLabel(t('admin.pro.lifetimeButton'))
                 .setStyle(ButtonStyle.Link)
                 .setURL(PURCHASE_URL_LIFETIME),
         );
@@ -659,11 +657,11 @@ async function handlePro(ctx: BridgeContext, interaction: ChatInputCommandIntera
         const actionRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
             new ButtonBuilder()
                 .setCustomId('pro_info')
-                .setLabel('📋 ライセンス情報')
+                .setLabel(t('admin.pro.infoButton'))
                 .setStyle(ButtonStyle.Secondary),
             new ButtonBuilder()
                 .setCustomId('pro_key_input')
-                .setLabel('🔑 キー入力')
+                .setLabel(t('admin.pro.keyButton'))
                 .setStyle(ButtonStyle.Primary),
         );
 
@@ -674,7 +672,7 @@ async function handlePro(ctx: BridgeContext, interaction: ChatInputCommandIntera
     } catch (e) {
         const errMsg = e instanceof Error ? e.message : String(e);
         logError('handlePro: failed', e);
-        await interaction.reply({ embeds: [buildEmbed(`❌ Pro 情報取得エラー: ${errMsg}`, EmbedColor.Error)] });
+        await interaction.reply({ embeds: [buildEmbed(t('admin.pro.error', errMsg), EmbedColor.Error)] });
     }
 }
 
@@ -683,38 +681,24 @@ async function handlePro(ctx: BridgeContext, interaction: ChatInputCommandIntera
 // ---------------------------------------------------------------------------
 
 /** 定型の提案リクエストプロンプト */
-const SUGGEST_PROMPT =
-    '現在のプロジェクトの状態を分析して、次にやるべきタスクを3個提案してください。\n' +
-    '各提案は実行可能な具体的な指示として記述してください。\n\n' +
-    '提案は以下の形式でレスポンスの末尾に含めてください:\n' +
-    '```\n' +
-    '<!-- SUGGESTIONS: [\n' +
-    '  { "label": "ボタンに表示する短いラベル", "prompt": "実行するプロンプト", "description": "提案の説明" },\n' +
-    '  ...\n' +
-    '] -->\n' +
-    '```\n' +
-    '- label: 80文字以内の短いボタンラベル\n' +
-    '- prompt: そのタスクを実行するための具体的で詳細なプロンプト\n' +
-    '- description: ボタンの上に表示される説明テキスト（1行）\n' +
-    '- 必ず3個の提案を含めること\n' +
-    '- SUGGESTIONS タグはレスポンスの最後に配置すること';
+const SUGGEST_PROMPT = t('admin.suggest.prompt');
 
 async function handleSuggest(ctx: BridgeContext, interaction: ChatInputCommandInteraction): Promise<void> {
     const channel = interaction.channel;
     if (!channel || !channel.isTextBased()) {
-        await interaction.reply({ embeds: [buildEmbed('⚠️ テキストチャンネルでのみ使用できます。', EmbedColor.Warning)] });
+        await interaction.reply({ embeds: [buildEmbed(t('admin.suggest.textOnly'), EmbedColor.Warning)] });
         return;
     }
 
     // スラッシュコマンドの応答（「エージェントに任せる」ボタン付き）
     const autoButton = new ButtonBuilder()
         .setCustomId(SUGGEST_AUTO_ID)
-        .setLabel('エージェントに任せる')
+        .setLabel(t('admin.suggest.agentAuto'))
         .setStyle(ButtonStyle.Secondary)
         .setEmoji('🤖');
     const autoRow = new ActionRowBuilder<ButtonBuilder>().addComponents(autoButton);
     await interaction.reply({
-        embeds: [buildEmbed('💡 プロジェクトを分析して提案を生成中なのだ…\nしばらく待ってほしいのだ！', EmbedColor.Info)],
+        embeds: [buildEmbed(t('admin.suggest.generating'), EmbedColor.Info)],
         components: [autoRow],
     });
 
@@ -746,7 +730,7 @@ async function handleScreenshot(ctx: BridgeContext, interaction: ChatInputComman
         const { cdp, wsKey } = resolveTargetCdp(ctx, interaction);
 
         if (!cdp) {
-            await interaction.editReply({ embeds: [buildEmbed('⚠️ Antigravity との接続が初期化されていません。', EmbedColor.Warning)] });
+            await interaction.editReply({ embeds: [buildEmbed(t('admin.screenshot.notInit'), EmbedColor.Warning)] });
             return;
         }
 
@@ -756,12 +740,12 @@ async function handleScreenshot(ctx: BridgeContext, interaction: ChatInputComman
             const attachment = new AttachmentBuilder(buffer, { name: 'screenshot.png' });
             await interaction.editReply({ content: `📸${wsLabel}`, files: [attachment] });
         } else {
-            await interaction.editReply({ embeds: [buildEmbed('⚠️ スクリーンショットの取得に失敗しました。', EmbedColor.Warning)] });
+            await interaction.editReply({ embeds: [buildEmbed(t('admin.screenshot.failed'), EmbedColor.Warning)] });
         }
     } catch (e) {
         const errMsg = e instanceof Error ? e.message : String(e);
         logError('handleScreenshot: failed', e);
-        await interaction.editReply({ embeds: [buildEmbed(`❌ スクリーンショット取得エラー: ${errMsg}`, EmbedColor.Error)] }).catch(() => { });
+        await interaction.editReply({ embeds: [buildEmbed(t('admin.screenshot.error', errMsg), EmbedColor.Error)] }).catch(() => { });
     }
 }
 
@@ -780,7 +764,7 @@ async function handleSoul(
     if (current.length > 4000) {
         await interaction.reply({
             embeds: [buildEmbed(
-                `⚠️ SOUL.md が ${current.length} 文字あり、Discord モーダルの上限（4000文字）を超えています。\nテキストエディタで直接編集してください。`,
+                t('admin.soul.tooLong', String(current.length)),
                 EmbedColor.Warning,
             )],
         });
@@ -789,7 +773,7 @@ async function handleSoul(
 
     const textInput = new TextInputBuilder()
         .setCustomId('soul_content')
-        .setLabel('SOUL.md の内容')
+        .setLabel(t('admin.soul.label'))
         .setStyle(TextInputStyle.Paragraph)
         .setRequired(false)
         .setMaxLength(4000);
@@ -802,7 +786,7 @@ async function handleSoul(
 
     const modal = new ModalBuilder()
         .setCustomId('soul_edit_modal')
-        .setTitle('SOUL.md 編集')
+        .setTitle(t('admin.soul.modalTitle'))
         .addComponents(row);
 
     await interaction.showModal(modal);
@@ -822,11 +806,11 @@ async function handleSubagent(
         const agents = mgr?.list() ?? [];
 
         // パネル構築
-        let desc = `📋 **サブエージェント管理**\n\n`;
+        let desc = t('admin.subagent.title');
         if (agents.length === 0) {
-            desc += '現在実行中のサブエージェントはありません。';
+            desc += t('admin.subagent.empty');
         } else {
-            desc += `**稼働中**: ${agents.length}件\n\n`;
+            desc += t('admin.subagent.running', String(agents.length));
             desc += agents.map((a: { name: string; state: string }) =>
                 `  • \`${a.name}\` — ${a.state}`
             ).join('\n');
@@ -835,15 +819,15 @@ async function handleSubagent(
         const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
             new ButtonBuilder()
                 .setCustomId('subagent_spawn')
-                .setLabel('🚀 起動')
+                .setLabel(t('admin.subagent.launchLabel'))
                 .setStyle(ButtonStyle.Success),
             new ButtonBuilder()
                 .setCustomId('subagent_list')
-                .setLabel('📋 一覧')
+                .setLabel(t('admin.subagent.listLabel'))
                 .setStyle(ButtonStyle.Primary),
             new ButtonBuilder()
                 .setCustomId('subagent_killall')
-                .setLabel('⏹️ 全停止')
+                .setLabel(t('admin.subagent.stopAllLabel'))
                 .setStyle(agents.length > 0 ? ButtonStyle.Danger : ButtonStyle.Secondary)
                 .setDisabled(agents.length === 0),
         );
@@ -856,7 +840,7 @@ async function handleSubagent(
         const errMsg = e instanceof Error ? e.message : String(e);
         logError('handleSubagent failed', e);
         await interaction.reply({
-            embeds: [buildEmbed(`❌ サブエージェント操作失敗: ${errMsg}`, EmbedColor.Error)],
+            embeds: [buildEmbed(t('admin.subagent.error', errMsg), EmbedColor.Error)],
         });
     }
 }
@@ -876,30 +860,30 @@ function buildTeamPanel(
     const statusText = config.enabled ? 'ON' : 'OFF';
 
     const embed = buildEmbed(
-        `${statusEmoji} **エージェントチームモード: ${statusText}**\n\n`
-        + `📊 **稼働中サブエージェント**: ${agentCount} / ${config.maxAgents}\n`
-        + `⏱️ **タイムアウト**: ${Math.round(config.responseTimeoutMs / 60_000)}分\n`
-        + `🔄 **監視間隔**: ${Math.round(config.monitorIntervalMs / 1_000)}秒\n`
-        + `🤖 **自動スポーン**: ${config.autoSpawn ? 'ON' : 'OFF'}`,
+        `${statusEmoji} **${t('admin.team.modeLabel', statusText)}**\n\n`
+        + `${t('admin.team.agentCount', String(agentCount), String(config.maxAgents))}\n`
+        + `${t('admin.team.timeout', String(Math.round(config.responseTimeoutMs / 60_000)))}\n`
+        + `${t('admin.team.monitorInterval', String(Math.round(config.monitorIntervalMs / 1_000)))}\n`
+        + `${t('admin.team.autoSpawn', config.autoSpawn ? 'ON' : 'OFF')}`,
         config.enabled ? EmbedColor.Success : EmbedColor.Info,
     );
 
     const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder()
             .setCustomId('team_on')
-            .setLabel('🟢 チームON')
+            .setLabel(t('admin.team.onLabel'))
             .setStyle(config.enabled ? ButtonStyle.Success : ButtonStyle.Secondary),
         new ButtonBuilder()
             .setCustomId('team_off')
-            .setLabel('🔴 チームOFF')
+            .setLabel(t('admin.team.offLabel'))
             .setStyle(!config.enabled ? ButtonStyle.Danger : ButtonStyle.Secondary),
         new ButtonBuilder()
             .setCustomId('team_status')
-            .setLabel('📊 ステータス')
+            .setLabel(t('admin.team.statusLabel'))
             .setStyle(ButtonStyle.Primary),
         new ButtonBuilder()
             .setCustomId('team_config')
-            .setLabel('⚙️ 設定')
+            .setLabel(t('admin.team.configLabel'))
             .setStyle(ButtonStyle.Secondary),
     );
 
@@ -925,7 +909,7 @@ async function handleTeam(
     }
 
     if (!repoRoot) {
-        await interaction.reply({ embeds: [buildEmbed('⚠️ ワークスペースが検出されません。', EmbedColor.Warning)] });
+        await interaction.reply({ embeds: [buildEmbed(t('admin.team.noWorkspace'), EmbedColor.Warning)] });
         return;
     }
 
@@ -942,14 +926,14 @@ async function handleTeam(
             const agentList = agents.map(a =>
                 `  • **${a.name}** — ${a.state}`
             ).join('\n');
-            panel.embeds.push(buildEmbed(`🤖 **サブエージェント一覧**\n${agentList}`, EmbedColor.Info));
+            panel.embeds.push(buildEmbed(`${t('admin.team.agentListTitle')}\n${agentList}`, EmbedColor.Info));
         }
         await interaction.reply({ embeds: panel.embeds, components: panel.components as any });
     } catch (e) {
         const errMsg = e instanceof Error ? e.message : String(e);
         logError('handleTeam failed', e);
         await interaction.reply({
-            embeds: [buildEmbed(`❌ チームモード操作失敗: ${errMsg}`, EmbedColor.Error)],
+            embeds: [buildEmbed(t('admin.team.error', errMsg), EmbedColor.Error)],
         });
     }
 }
@@ -991,7 +975,7 @@ export async function handleManageSlash(
     if (handler) {
         await handler(ctx, interaction);
     } else {
-        await interaction.reply({ embeds: [buildEmbed(`⚠️ 未対応の管理コマンド: /${commandName}`, EmbedColor.Warning)] });
+        await interaction.reply({ embeds: [buildEmbed(t('admin.unknownCommand', commandName), EmbedColor.Warning)] });
     }
 }
 

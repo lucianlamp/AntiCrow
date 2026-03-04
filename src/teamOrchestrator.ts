@@ -10,6 +10,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { logDebug, logError, logInfo, logWarn } from './logger';
+import { t } from './i18n';
 import type { SubagentManager } from './subagentManager';
 import { WorktreePool } from './subagentManager';
 import type { FileIpc } from './fileIpc';
@@ -74,6 +75,7 @@ export class TeamOrchestrator {
     private readonly sendToDiscord: DiscordSender;
     private readonly repoRoot: string;
     private monitorTimers = new Map<string, ReturnType<typeof setInterval>>();
+    private typingTimers = new Map<string, ReturnType<typeof setInterval>>();
     private disposed = false;
     private threadOps: ThreadOps | null = null;
     private worktreePool: WorktreePool;
@@ -192,7 +194,7 @@ export class TeamOrchestrator {
             if (threadId) {
                 logDebug(`[TeamOrchestrator] Created thread ${threadId} for agent "${name}"`);
                 await this.threadOps.sendToThread(threadId,
-                    `📋 **作業内容:**\n${taskPreview}`);
+                    `${t('team.taskPreviewLabel')}\n${taskPreview}`);
             }
         }
 
@@ -225,16 +227,16 @@ export class TeamOrchestrator {
             if (threadId && this.threadOps) {
                 const statusEmoji = success ? '✅' : '❌';
                 await this.threadOps.sendToThread(threadId,
-                    `${statusEmoji} 完了 (${Math.round(durationMs / 1000)}秒)`);
+                    `${statusEmoji} ${t('team.completed')}`);
             }
 
             // メインチャンネルに完了通知（スレッドリンク付き）
             if (threadId) {
                 await this.sendToDiscord(channelId,
-                    `✅ 完了しました <#${threadId}>`);
+                    `✅ ${t('team.completedMain')} <#${threadId}>`);
             } else {
                 await this.sendToDiscord(channelId,
-                    `✅ **"${name}"** 完了しました (${Math.round(durationMs / 1000)}秒)`);
+                    `✅ **"${name}"** ${t('team.completedMain')}`);
             }
 
             return {
@@ -255,16 +257,16 @@ export class TeamOrchestrator {
             // スレッドにエラー通知
             if (threadId && this.threadOps) {
                 await this.threadOps.sendToThread(threadId,
-                    `❌ **エラー発生** (${Math.round(durationMs / 1000)}秒)\n${errMsg}`).catch(() => { });
+                    `❌ **${t('team.errorOccurred')}**\n${errMsg}`).catch(() => { });
             }
 
             // メインチャンネルにもエラー通知
             if (threadId) {
                 await this.sendToDiscord(channelId,
-                    `❌ エラー発生 <#${threadId}>`).catch(() => { });
+                    `❌ ${t('team.errorOccurred')} <#${threadId}>`).catch(() => { });
             } else {
                 await this.sendToDiscord(channelId,
-                    `❌ **"${name}"** エラー発生\n${errMsg}`).catch(() => { });
+                    `❌ **"${name}"** ${t('team.errorOccurred')}\n${errMsg}`).catch(() => { });
             }
 
             return {
@@ -336,6 +338,19 @@ export class TeamOrchestrator {
         this.monitorTimers.set(agentName, timer);
         logDebug(`[TeamOrchestrator] Started monitoring "${agentName}" every ${config.monitorIntervalMs}ms`);
 
+        // 8秒間隔のタイピングインジケーター（スレッドがある場合のみ）
+        if (threadId && this.threadOps?.sendTyping) {
+            const typingTimer = setInterval(async () => {
+                if (this.disposed) { return; }
+                try {
+                    await this.threadOps!.sendTyping!(threadId!).catch(() => { });
+                } catch { /* ignore */ }
+            }, 8_000);
+            this.typingTimers.set(agentName, typingTimer);
+            // 初回即時送信
+            this.threadOps.sendTyping(threadId).catch(() => { });
+        }
+
         // 初回ポーリングを即座に実行（短いタスクでも進捗を検出できるようにする）
         // setInterval は初回実行が monitorIntervalMs 後のため、開始直後の進捗が検出されない
         setTimeout(() => {
@@ -363,6 +378,11 @@ export class TeamOrchestrator {
             clearInterval(timer);
             this.monitorTimers.delete(agentName);
             logDebug(`[TeamOrchestrator] Stopped monitoring "${agentName}"`);
+        }
+        const typingTimer = this.typingTimers.get(agentName);
+        if (typingTimer) {
+            clearInterval(typingTimer);
+            this.typingTimers.delete(agentName);
         }
     }
 
@@ -1146,7 +1166,7 @@ export class TeamOrchestrator {
         teamRequestId: string,
         reportPath: string,
         reportResponsePath: string,
-    ): string {
+    ): { instructionPath: string; progressPath: string } {
         const ipcDir = this.fileIpc.getIpcDir();
         const instructionPath = path.join(ipcDir, `tmp_exec_anti-crow_req_${teamRequestId}_report.json`);
         const progressPath = path.join(ipcDir, `req_${teamRequestId}_report_progress.json`);
@@ -1169,7 +1189,7 @@ export class TeamOrchestrator {
 
         fs.writeFileSync(instructionPath, JSON.stringify(fileContent, null, 2), 'utf-8');
         logInfo(`[TeamOrchestrator] Wrote report instruction file: ${instructionPath}`);
-        return instructionPath;
+        return { instructionPath, progressPath };
     }
 
     writeReportFile(

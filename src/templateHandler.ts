@@ -7,6 +7,7 @@
 //   3. テンプレートモーダル送信ハンドラ
 // ---------------------------------------------------------------------------
 import * as fs from 'fs';
+import { t } from './i18n';
 
 import {
     ButtonInteraction,
@@ -39,27 +40,27 @@ export function buildTemplateListPanel(
     const templates = templateStore.getAll();
 
     const guideText = [
-        '\n📖 **変数ガイド**',
-        '**組み込み変数:** `{{date}}` `{{time}}` `{{datetime}}` `{{year}}` `{{month}}` `{{day}}`',
-        '**環境変数:** `{{env:VARIABLE_NAME}}` — OS環境変数を展開',
-        '**カスタム引数:** `{{引数名}}` 形式で定義 → 実行時にモーダルで入力（最大5個）',
+        t('template.guide.title'),
+        t('template.guide.builtIn'),
+        t('template.guide.env'),
+        t('template.guide.customArgs'),
     ].join('\n');
 
     if (templates.length === 0) {
-        const embed = buildEmbed('📋 **テンプレート一覧**\n\n保存済みテンプレートはありません。\n「➕ 新規作成」ボタンからテンプレートを追加できます。' + guideText, EmbedColor.Info);
+        const embed = buildEmbed(t('template.list.empty') + guideText, EmbedColor.Info);
         const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
             new ButtonBuilder()
                 .setCustomId('tpl_new')
-                .setLabel('➕ 新規作成')
+                .setLabel(t('template.button.new'))
                 .setStyle(ButtonStyle.Success),
         );
         return { embeds: [embed], components: [row] };
     }
 
-    const lines = ['📋 **テンプレート一覧**\n'];
-    templates.forEach((t, i) => {
-        const shortPrompt = t.prompt.length > 60 ? t.prompt.substring(0, 60) + '...' : t.prompt;
-        lines.push(`**${i + 1}. ${t.name}**\n\`${shortPrompt}\``);
+    const lines = [t('template.list.title') + '\n'];
+    templates.forEach((tpl, i) => {
+        const shortPrompt = tpl.prompt.length > 60 ? tpl.prompt.substring(0, 60) + '...' : tpl.prompt;
+        lines.push(`**${i + 1}. ${tpl.name}**\n\`${shortPrompt}\``);
     });
     lines.push(guideText);
 
@@ -67,8 +68,8 @@ export function buildTemplateListPanel(
     const rows: ActionRowBuilder<ButtonBuilder>[] = [];
     const maxRows = Math.min(templates.length, 4);
     for (let i = 0; i < maxRows; i++) {
-        const t = templates[i];
-        const safeName = t.name.substring(0, 40);
+        const tpl = templates[i];
+        const safeName = tpl.name.substring(0, 40);
         const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
             new ButtonBuilder()
                 .setCustomId(`tpl_run_${safeName}`)
@@ -86,7 +87,7 @@ export function buildTemplateListPanel(
     const createRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder()
             .setCustomId('tpl_new')
-            .setLabel('➕ 新規作成')
+            .setLabel(t('template.button.new'))
             .setStyle(ButtonStyle.Success),
     );
     rows.push(createRow);
@@ -105,7 +106,7 @@ export async function handleTemplateButton(
 ): Promise<void> {
     const templateStore = ctx.templateStore;
     if (!templateStore) {
-        await interaction.reply({ embeds: [buildEmbed('⚠️ TemplateStore が初期化されていません。', EmbedColor.Warning)] });
+        await interaction.reply({ embeds: [buildEmbed(t('template.error.storeNotInit'), EmbedColor.Warning)] });
         return;
     }
 
@@ -113,23 +114,23 @@ export async function handleTemplateButton(
     if (customId === 'tpl_new') {
         const modal = new ModalBuilder()
             .setCustomId('tpl_modal_save')
-            .setTitle('テンプレート新規作成');
+            .setTitle(t('template.modal.createTitle'));
 
         const nameInput = new TextInputBuilder()
             .setCustomId('tpl_name')
-            .setLabel('テンプレート名')
+            .setLabel(t('template.modal.nameLabel'))
             .setStyle(TextInputStyle.Short)
             .setRequired(true)
             .setMaxLength(40)
-            .setPlaceholder('例: daily-report');
+            .setPlaceholder(t('template.modal.namePlaceholder'));
 
         const promptInput = new TextInputBuilder()
             .setCustomId('tpl_prompt')
-            .setLabel('プロンプト内容')
+            .setLabel(t('template.modal.promptLabel'))
             .setStyle(TextInputStyle.Paragraph)
             .setRequired(true)
             .setMaxLength(2000)
-            .setPlaceholder('例: 今日のタスクをまとめてください。変数: {{date}}, {{time}}');
+            .setPlaceholder(t('template.modal.promptPlaceholder'));
 
         modal.addComponents(
             new ActionRowBuilder<TextInputBuilder>().addComponents(nameInput) as any,
@@ -142,7 +143,7 @@ export async function handleTemplateButton(
 
     // キャンセルボタン
     if (customId === 'tpl_cancel') {
-        await interaction.update({ embeds: [buildEmbed('❌ キャンセルしました。', EmbedColor.Info)], components: [] });
+        await interaction.update({ embeds: [buildEmbed(t('template.cancel'), EmbedColor.Info)], components: [] });
         return;
     }
 
@@ -151,7 +152,7 @@ export async function handleTemplateButton(
         const name = customId.slice('tpl_run_'.length);
         const template = templateStore.get(name);
         if (!template) {
-            await interaction.reply({ embeds: [buildEmbed(`⚠️ テンプレート「${name}」が見つかりません。`, EmbedColor.Warning)] });
+            await interaction.reply({ embeds: [buildEmbed(t('template.error.notFound', name), EmbedColor.Warning)] });
             return;
         }
 
@@ -163,7 +164,7 @@ export async function handleTemplateButton(
             const safeName = name.substring(0, 30);
             const modal = new ModalBuilder()
                 .setCustomId(`tpl_modal_args_${safeName}`)
-                .setTitle(`テンプレート「${safeName}」実行`);
+                .setTitle(t('template.execTitle', safeName));
 
             const maxArgs = Math.min(args.length, 5); // Discord モーダル上限: 5
             for (let i = 0; i < maxArgs; i++) {
@@ -187,7 +188,7 @@ export async function handleTemplateButton(
         // 引数なし → 従来通りプレビュー確認に遷移
         const expandedPrompt = TemplateStore.expandVariables(template.prompt);
         const previewLines = [
-            `📄 **テンプレート「${name}」プレビュー**`,
+            t('template.preview', name),
             '',
             '```',
             expandedPrompt.length > 500 ? expandedPrompt.substring(0, 500) + '...' : expandedPrompt,
@@ -198,11 +199,11 @@ export async function handleTemplateButton(
         const confirmRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
             new ButtonBuilder()
                 .setCustomId(`tpl_confirm_run_${safeName}`)
-                .setLabel('▶ 実行')
+                .setLabel(t('template.button.run'))
                 .setStyle(ButtonStyle.Success),
             new ButtonBuilder()
                 .setCustomId('tpl_cancel')
-                .setLabel('❌ キャンセル')
+                .setLabel(t('template.button.cancel'))
                 .setStyle(ButtonStyle.Secondary),
         );
 
@@ -215,7 +216,7 @@ export async function handleTemplateButton(
         const name = customId.slice('tpl_del_'.length);
         const template = templateStore.get(name);
         if (!template) {
-            await interaction.reply({ embeds: [buildEmbed(`⚠️ テンプレート「${name}」が見つかりません。`, EmbedColor.Warning)] });
+            await interaction.reply({ embeds: [buildEmbed(t('template.error.notFound', name), EmbedColor.Warning)] });
             return;
         }
 
@@ -223,15 +224,15 @@ export async function handleTemplateButton(
         const confirmRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
             new ButtonBuilder()
                 .setCustomId(`tpl_confirm_del_${safeName}`)
-                .setLabel('🗑️ 削除する')
+                .setLabel(t('template.button.delete'))
                 .setStyle(ButtonStyle.Danger),
             new ButtonBuilder()
                 .setCustomId('tpl_cancel')
-                .setLabel('❌ キャンセル')
+                .setLabel(t('template.button.cancel'))
                 .setStyle(ButtonStyle.Secondary),
         );
 
-        await interaction.reply({ embeds: [buildEmbed(`⚠️ テンプレート「${name}」を本当に削除しますか？`, EmbedColor.Warning)], components: [confirmRow as any] });
+        await interaction.reply({ embeds: [buildEmbed(t('template.deleteConfirm', name), EmbedColor.Warning)], components: [confirmRow as any] });
         return;
     }
 
@@ -240,7 +241,7 @@ export async function handleTemplateButton(
         const name = customId.slice('tpl_confirm_run_'.length);
         const template = templateStore.get(name);
         if (!template) {
-            await interaction.reply({ embeds: [buildEmbed(`⚠️ テンプレート「${name}」が見つかりません。`, EmbedColor.Warning)] });
+            await interaction.reply({ embeds: [buildEmbed(t('template.error.notFound', name), EmbedColor.Warning)] });
             return;
         }
 
@@ -248,7 +249,7 @@ export async function handleTemplateButton(
         const planStore = ctx.planStore;
 
         if (!fileIpc || !planStore) {
-            await interaction.reply({ embeds: [buildEmbed('⚠️ Bridge が初期化されていません。', EmbedColor.Warning)] });
+            await interaction.reply({ embeds: [buildEmbed(t('template.error.bridgeNotInit'), EmbedColor.Warning)] });
             return;
         }
 
@@ -271,11 +272,11 @@ export async function handleTemplateButton(
         }
 
         if (!activeCdp) {
-            await interaction.reply({ embeds: [buildEmbed('⚠️ Antigravity との接続が初期化されていません。', EmbedColor.Warning)] });
+            await interaction.reply({ embeds: [buildEmbed(t('template.error.cdpNotInit'), EmbedColor.Warning)] });
             return;
         }
 
-        await interaction.update({ embeds: [buildEmbed(`⏳ テンプレート「${name}」を実行中...`, EmbedColor.Info)], components: [] });
+        await interaction.update({ embeds: [buildEmbed(t('template.executing', name), EmbedColor.Info)], components: [] });
 
         const tplIpcDir = fileIpc.getIpcDir();
         const expandedPrompt = TemplateStore.expandVariables(template.prompt);
@@ -305,7 +306,7 @@ export async function handleTemplateButton(
                 if (/^(?:#|\*\*|[-•]|[✅❌🔧📋📸💡⚠️🎉])/.test(trimmedResp)) {
                     logWarn(`handleTemplateButton: plan_generation response appears to be Markdown instead of JSON`);
                 }
-                await interaction.editReply({ embeds: [buildEmbed('⚠️ 応答を解析できませんでした。', EmbedColor.Warning)] });
+                await interaction.editReply({ embeds: [buildEmbed(t('template.error.parseFailed'), EmbedColor.Warning)] });
                 return;
             }
 
@@ -327,7 +328,7 @@ export async function handleTemplateButton(
         } catch (e) {
             const errMsg = e instanceof Error ? e.message : String(e);
             logError('handleTemplateButton: tpl_confirm_run failed', e);
-            await interaction.editReply({ embeds: [buildEmbed(`❌ テンプレート実行エラー: ${errMsg}`, EmbedColor.Error)] }).catch(() => { });
+            await interaction.editReply({ embeds: [buildEmbed(t('template.error.execError', errMsg), EmbedColor.Error)] }).catch(() => { });
         } finally {
             // 一時ファイルのクリーンアップ
             for (const f of tplTempFiles) {
@@ -344,16 +345,16 @@ export async function handleTemplateButton(
         if (deleted) {
             // 削除成功 → 更新されたテンプレート一覧を再表示
             const { embeds, components } = buildTemplateListPanel(templateStore);
-            const successEmbed = buildEmbed(`🗑️ テンプレート「${name}」を削除しました。`, EmbedColor.Success);
+            const successEmbed = buildEmbed(t('template.deleted', name), EmbedColor.Success);
             await interaction.update({ embeds: [successEmbed, ...embeds], components: components as any });
         } else {
-            await interaction.reply({ embeds: [buildEmbed(`⚠️ テンプレート「${name}」が見つかりません。`, EmbedColor.Warning)] });
+            await interaction.reply({ embeds: [buildEmbed(t('template.error.notFound', name), EmbedColor.Warning)] });
         }
         return;
     }
 
     logWarn(`handleTemplateButton: unknown tpl_ customId: ${customId}`);
-    await interaction.reply({ embeds: [buildEmbed(`⚠️ 不明なテンプレートボタン: ${customId}`, EmbedColor.Warning)] });
+    await interaction.reply({ embeds: [buildEmbed(t('template.error.unknownButton', customId), EmbedColor.Warning)] });
 }
 
 // ---------------------------------------------------------------------------
@@ -368,7 +369,7 @@ export async function handleModalSubmit(
     if (interaction.customId === 'tpl_modal_save') {
         const templateStore = ctx.templateStore;
         if (!templateStore) {
-            await interaction.reply({ embeds: [buildEmbed('⚠️ TemplateStore が初期化されていません。', EmbedColor.Warning)] });
+            await interaction.reply({ embeds: [buildEmbed(t('template.error.storeNotInit'), EmbedColor.Warning)] });
             return;
         }
 
@@ -376,7 +377,7 @@ export async function handleModalSubmit(
         const prompt = interaction.fields.getTextInputValue('tpl_prompt').trim();
 
         if (!name || !prompt) {
-            await interaction.reply({ embeds: [buildEmbed('⚠️ テンプレート名とプロンプトの両方を入力してください。', EmbedColor.Warning)] });
+            await interaction.reply({ embeds: [buildEmbed(t('template.error.inputRequired'), EmbedColor.Warning)] });
             return;
         }
 
@@ -386,9 +387,9 @@ export async function handleModalSubmit(
         const { embeds, components } = buildTemplateListPanel(templateStore);
         const detectedArgs = parseTemplateArgs(prompt);
         const argInfo = detectedArgs.length > 0
-            ? `\n検出された引数: ${detectedArgs.map(a => `\`{{${a.name}}}\``).join(', ')}`
+            ? t('template.savedArgsDetected', detectedArgs.map(a => `\`{{${a.name}}}\``).join(', '))
             : '';
-        const successEmbed = buildEmbed(`📝 テンプレート「${name}」を保存しました。${argInfo}`, EmbedColor.Success);
+        const successEmbed = buildEmbed(t('template.saved', name, argInfo), EmbedColor.Success);
         await interaction.reply({ embeds: [successEmbed, ...embeds], components: components as any });
         return;
     }
@@ -398,13 +399,13 @@ export async function handleModalSubmit(
         const name = interaction.customId.slice('tpl_modal_args_'.length);
         const templateStore = ctx.templateStore;
         if (!templateStore) {
-            await interaction.reply({ embeds: [buildEmbed('⚠️ TemplateStore が初期化されていません。', EmbedColor.Warning)] });
+            await interaction.reply({ embeds: [buildEmbed(t('template.error.storeNotInit'), EmbedColor.Warning)] });
             return;
         }
 
         const template = templateStore.get(name);
         if (!template) {
-            await interaction.reply({ embeds: [buildEmbed(`⚠️ テンプレート「${name}」が見つかりません。`, EmbedColor.Warning)] });
+            await interaction.reply({ embeds: [buildEmbed(t('template.error.notFound', name), EmbedColor.Warning)] });
             return;
         }
 
@@ -412,7 +413,7 @@ export async function handleModalSubmit(
         const planStore = ctx.planStore;
 
         if (!fileIpc || !planStore) {
-            await interaction.reply({ embeds: [buildEmbed('⚠️ Bridge が初期化されていません。', EmbedColor.Warning)] });
+            await interaction.reply({ embeds: [buildEmbed(t('template.error.bridgeNotInit'), EmbedColor.Warning)] });
             return;
         }
 
@@ -435,7 +436,7 @@ export async function handleModalSubmit(
         }
 
         if (!activeCdp) {
-            await interaction.reply({ embeds: [buildEmbed('⚠️ Antigravity との接続が初期化されていません。', EmbedColor.Warning)] });
+            await interaction.reply({ embeds: [buildEmbed(t('template.error.cdpNotInit'), EmbedColor.Warning)] });
             return;
         }
 
@@ -449,7 +450,7 @@ export async function handleModalSubmit(
             } catch { /* optional arg not submitted */ }
         }
 
-        await interaction.reply({ embeds: [buildEmbed(`⏳ テンプレート「${name}」を実行中...`, EmbedColor.Info)] });
+        await interaction.reply({ embeds: [buildEmbed(t('template.executing', name), EmbedColor.Info)] });
 
         const tplIpcDir = fileIpc.getIpcDir();
         const expandedPrompt = TemplateStore.expandVariables(template.prompt, userArgs);
@@ -479,7 +480,7 @@ export async function handleModalSubmit(
                 if (/^(?:#|\*\*|[-•]|[✅❌🔧📋📸💡⚠️🎉])/.test(trimmedResp)) {
                     logWarn(`handleModalSubmit: plan_generation response appears to be Markdown instead of JSON`);
                 }
-                await interaction.editReply({ embeds: [buildEmbed('⚠️ 応答を解析できませんでした。', EmbedColor.Warning)] });
+                await interaction.editReply({ embeds: [buildEmbed(t('template.error.parseFailed'), EmbedColor.Warning)] });
                 return;
             }
 
@@ -502,7 +503,7 @@ export async function handleModalSubmit(
         } catch (e) {
             const errMsg = e instanceof Error ? e.message : String(e);
             logError('handleModalSubmit: tpl_modal_args failed', e);
-            await interaction.editReply({ embeds: [buildEmbed(`❌ テンプレート実行エラー: ${errMsg}`, EmbedColor.Error)] }).catch(() => { });
+            await interaction.editReply({ embeds: [buildEmbed(t('template.error.execError', errMsg), EmbedColor.Error)] }).catch(() => { });
         } finally {
             for (const f of tplTempFiles) {
                 try { fs.unlinkSync(f); } catch { /* ignore */ }

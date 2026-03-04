@@ -5,6 +5,7 @@
 import { ButtonInteraction } from 'discord.js';
 
 import { buildEmbed, EmbedColor } from './embedHelper';
+import { t } from './i18n';
 import { buildModelListEmbed, buildModelSwitchResultEmbed } from './modelButtons';
 import { getAvailableModels, selectModel } from './cdpModels';
 import { BridgeContext } from './bridgeContext';
@@ -25,13 +26,13 @@ export async function handleModelButton(
 
         const cdp = ctx.cdp;
         if (!cdp) {
-            await interaction.followUp({ embeds: [buildEmbed('⚠️ Antigravity との接続が初期化されていません。', EmbedColor.Warning)] });
+            await interaction.followUp({ embeds: [buildEmbed(t('btnModel.notConnected'), EmbedColor.Warning)] });
             return true;
         }
 
         // インデックスベースで直接選択（getAvailableModels の再呼出しを省略）
         const success = await selectModel(cdp.ops, modelIndex);
-        const resultEmbed = buildModelSwitchResultEmbed(`モデル #${modelIndex}`, success);
+        const resultEmbed = buildModelSwitchResultEmbed(`${t('btnModel.model')} #${modelIndex}`, success);
 
         if (success) {
             // 切替後にリストを更新
@@ -50,7 +51,7 @@ export async function handleModelButton(
 
         const cdp = ctx.cdp;
         if (!cdp) {
-            await interaction.followUp({ embeds: [buildEmbed('⚠️ Antigravity との接続が初期化されていません。', EmbedColor.Warning)] });
+            await interaction.followUp({ embeds: [buildEmbed(t('btnModel.notConnected'), EmbedColor.Warning)] });
             return true;
         }
 

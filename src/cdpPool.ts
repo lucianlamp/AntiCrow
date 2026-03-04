@@ -12,6 +12,7 @@ import { CdpBridge, DiscoveredInstance } from './cdpBridge';
 import { getCdpPorts, resolveWorkspacePaths } from './configHelper';
 import { logDebug, logError, logWarn } from './logger';
 import { WorkspaceStore } from './workspaceStore';
+import { t } from './i18n';
 
 /** デフォルトワークスペース名（カテゴリー未指定時のフォールバック） */
 export const DEFAULT_WORKSPACE = '__default__';
@@ -210,7 +211,7 @@ export class CdpPool {
                     } catch (launchErr) {
                         logError(`CdpPool: launchAntigravity failed for "${workspaceName}"`, launchErr);
                         throw new WorkspaceConnectionError(
-                            `ワークスペース "${workspaceName}" の起動に失敗しました。手動で Antigravity を起動してください。`,
+                            t('cdpPool.launchFailed', workspaceName),
                             `launchAntigravity failed: ${launchErr instanceof Error ? launchErr.message : launchErr}`,
                         );
                     }
@@ -263,7 +264,7 @@ export class CdpPool {
                         } catch (launchErr) {
                             logError(`CdpPool: launchAntigravity failed for guessed path "${guessedPath}"`, launchErr);
                             throw new WorkspaceConnectionError(
-                                `ワークスペース "${workspaceName}" の起動に失敗しました。手動で Antigravity を起動してください。`,
+                                t('cdpPool.launchFailed', workspaceName),
                                 `launchAntigravity failed (guessed path): ${launchErr instanceof Error ? launchErr.message : launchErr}`,
                             );
                         }
@@ -343,11 +344,11 @@ export class CdpPool {
                     const hasFolder = !!resolveWorkspacePaths(this.workspaceStore)[workspaceName];
                     if (hasFolder) {
                         throw new WorkspaceConnectionError(
-                            `ワークスペース "${workspaceName}" の起動を試みましたが、接続できませんでした。Antigravity を手動で再起動してみてください。`,
+                            t('cdpPool.connectFailed', workspaceName),
                         );
                     } else {
                         throw new WorkspaceConnectionError(
-                            `ワークスペース "${workspaceName}" が見つかりません。Antigravity でこのフォルダを開いてからもう一度試してください。`,
+                            t('cdpPool.notFound', workspaceName),
                         );
                     }
                 }

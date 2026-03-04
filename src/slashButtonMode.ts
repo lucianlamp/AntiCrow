@@ -5,6 +5,7 @@
 import { ButtonInteraction } from 'discord.js';
 
 import { buildEmbed, EmbedColor } from './embedHelper';
+import { t } from './i18n';
 import { buildModeListEmbed, buildModeSwitchResultEmbed } from './modeButtons';
 import { getAvailableModes, selectMode } from './cdpModes';
 import { BridgeContext } from './bridgeContext';
@@ -24,7 +25,7 @@ export async function handleModeButton(
 
         const cdp = ctx.cdp;
         if (!cdp) {
-            await interaction.followUp({ embeds: [buildEmbed('⚠️ Antigravity との接続が初期化されていません。', EmbedColor.Warning)] });
+            await interaction.followUp({ embeds: [buildEmbed(t('btnMode.notConnected'), EmbedColor.Warning)] });
             return true;
         }
 
@@ -32,7 +33,7 @@ export async function handleModeButton(
         const { modes: currentModes } = await getAvailableModes(cdp.ops);
         const modeName = currentModes[modeIndex];
         if (!modeName) {
-            await interaction.followUp({ embeds: [buildEmbed(`⚠️ モードインデックス ${modeIndex} が範囲外です。一覧を更新してください。`, EmbedColor.Warning)] });
+            await interaction.followUp({ embeds: [buildEmbed(t('btnMode.indexOutOfRange', String(modeIndex)), EmbedColor.Warning)] });
             return true;
         }
 
@@ -60,7 +61,7 @@ export async function handleModeButton(
 
         const cdp = ctx.cdp;
         if (!cdp) {
-            await interaction.followUp({ embeds: [buildEmbed('⚠️ Antigravity との接続が初期化されていません。', EmbedColor.Warning)] });
+            await interaction.followUp({ embeds: [buildEmbed(t('btnMode.notConnected'), EmbedColor.Warning)] });
             return true;
         }
 

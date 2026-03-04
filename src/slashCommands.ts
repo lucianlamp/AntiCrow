@@ -4,6 +4,7 @@
 
 import { SlashCommandBuilder, REST, Routes } from 'discord.js';
 import { logDebug, logError } from './logger';
+import { t } from './i18n';
 
 // -----------------------------------------------------------------------
 // コマンド定義
@@ -12,73 +13,73 @@ import { logDebug, logError } from './logger';
 export const slashCommandDefinitions = [
     new SlashCommandBuilder()
         .setName('status')
-        .setDescription('Bot・接続・キュー状態を一覧表示'),
+        .setDescription(t('command.status.desc')),
 
     new SlashCommandBuilder()
         .setName('schedules')
-        .setDescription('定期実行の一覧・管理パネルを表示'),
+        .setDescription(t('command.schedules.desc')),
 
     new SlashCommandBuilder()
         .setName('cancel')
-        .setDescription('実行中のタスクをキャンセル'),
+        .setDescription(t('command.cancel.desc')),
 
     new SlashCommandBuilder()
         .setName('newchat')
-        .setDescription('Antigravity で新しいチャットセッションを開始'),
+        .setDescription(t('command.newchat.desc')),
 
     new SlashCommandBuilder()
         .setName('workspace')
-        .setDescription('検出された Antigravity ワークスペース一覧を表示'),
+        .setDescription(t('command.workspace.desc')),
 
     new SlashCommandBuilder()
         .setName('queue')
-        .setDescription('メッセージ処理キュー・実行キューの詳細を表示'),
+        .setDescription(t('command.queue.desc')),
 
     new SlashCommandBuilder()
         .setName('template')
-        .setDescription('テンプレート一覧を表示・管理'),
+        .setDescription(t('command.template.desc')),
 
     new SlashCommandBuilder()
         .setName('model')
-        .setDescription('利用可能な AI モデル一覧を表示・切り替え'),
+        .setDescription(t('command.model.desc')),
 
     new SlashCommandBuilder()
         .setName('mode')
-        .setDescription('AI モード切替（Planning / Fast）'),
+        .setDescription(t('command.mode.desc')),
 
     new SlashCommandBuilder()
         .setName('history')
-        .setDescription('Antigravity の会話履歴を表示・切り替え'),
+        .setDescription(t('command.history.desc')),
 
     new SlashCommandBuilder()
         .setName('suggest')
-        .setDescription('プロジェクトを分析して次にやることを提案します'),
+        .setDescription(t('command.suggest.desc')),
 
     new SlashCommandBuilder()
         .setName('help')
-        .setDescription('AntiCrow のコマンド一覧と使い方を表示'),
+        .setDescription(t('command.help.desc')),
 
     new SlashCommandBuilder()
         .setName('pro')
-        .setDescription('Pro ライセンスの管理・購入・キー入力'),
+        .setDescription(t('command.pro.desc')),
 
     new SlashCommandBuilder()
         .setName('screenshot')
-        .setDescription('現在の画面のスクリーンショットを取得します'),
+        .setDescription(t('command.screenshot.desc')),
 
     new SlashCommandBuilder()
         .setName('soul')
-        .setDescription('SOUL.md（カスタマイズ設定）を編集します'),
+        .setDescription(t('command.soul.desc')),
 
     new SlashCommandBuilder()
         .setName('subagent')
-        .setDescription('サブエージェント管理'),
+        .setDescription(t('command.subagent.desc')),
 
 
     // /team — エージェントチームモード管理
     new SlashCommandBuilder()
         .setName('team')
-        .setDescription('エージェントチームモードの管理'),
+        .setDescription(t('command.team.desc')),
 
 
 ];

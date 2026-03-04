@@ -14,6 +14,7 @@ import {
     ButtonInteraction,
 } from 'discord.js';
 import { logDebug, logError } from './logger';
+import { t } from './i18n';
 
 // -----------------------------------------------------------------------
 // アクティブコレクタ管理（外部からのキャンセル用）
@@ -53,11 +54,11 @@ export async function waitForConfirmation(
         const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
             new ButtonBuilder()
                 .setCustomId('confirm_approve')
-                .setLabel('承認')
+                .setLabel(t('reactions.approve'))
                 .setStyle(ButtonStyle.Success),
             new ButtonBuilder()
                 .setCustomId('confirm_reject')
-                .setLabel('却下')
+                .setLabel(t('reactions.reject'))
                 .setStyle(ButtonStyle.Danger),
         );
 
@@ -133,12 +134,12 @@ export async function waitForChoice(
         buttons.push(
             new ButtonBuilder()
                 .setCustomId('choice_agent')
-                .setLabel('エージェントに任せる')
+                .setLabel(t('reactions.delegateAgent'))
                 .setStyle(ButtonStyle.Secondary)
                 .setEmoji('🤖'),
             new ButtonBuilder()
                 .setCustomId('choice_reject')
-                .setLabel('却下')
+                .setLabel(t('reactions.reject'))
                 .setStyle(ButtonStyle.Danger),
         );
 
@@ -232,20 +233,20 @@ export async function waitForMultiChoice(
         const controlRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
             new ButtonBuilder()
                 .setCustomId('mchoice_confirm')
-                .setLabel('確定')
+                .setLabel(t('reactions.confirm'))
                 .setStyle(ButtonStyle.Success),
             new ButtonBuilder()
                 .setCustomId('mchoice_all')
-                .setLabel('全選択')
+                .setLabel(t('reactions.selectAll'))
                 .setStyle(ButtonStyle.Primary),
             new ButtonBuilder()
                 .setCustomId('mchoice_agent')
-                .setLabel('エージェントに任せる')
+                .setLabel(t('reactions.delegateAgent'))
                 .setStyle(ButtonStyle.Secondary)
                 .setEmoji('🤖'),
             new ButtonBuilder()
                 .setCustomId('mchoice_reject')
-                .setLabel('却下')
+                .setLabel(t('reactions.reject'))
                 .setStyle(ButtonStyle.Danger),
         );
 

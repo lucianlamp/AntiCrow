@@ -19,6 +19,7 @@ import { EmbedColor } from './embedHelper';
 import { getCurrentModel } from './cdpModels';
 import { UIWatcher } from './uiWatcher';
 import { getMaxRetries } from './configHelper';
+import { t } from './i18n';
 import * as fs from 'fs';
 
 // 新モジュールから関数を import
@@ -149,7 +150,7 @@ export class Executor {
             while (attempt <= maxRetries && !success && !this.aborted) {
                 if (attempt > 0) {
                     logDebug(`Executor: retrying plan ${job.plan.plan_id} (attempt ${attempt}/${maxRetries})`);
-                    await this.safeNotify(job.plan.notify_channel_id, `🔄 リトライ中... (${attempt}/${maxRetries})`);
+                    await this.safeNotify(job.plan.notify_channel_id, t('executor.run.retry', String(attempt), String(maxRetries)));
                 }
                 try {
                     await this.executeJob(job);
@@ -158,7 +159,7 @@ export class Executor {
                     // aborted の場合はリトライせず即座に終了
                     if (this.aborted) {
                         logDebug(`Executor: plan ${job.plan.plan_id} aborted, skipping retry`);
-                        await this.safeNotify(job.plan.notify_channel_id, '⏹️ 停止しました');
+                        await this.safeNotify(job.plan.notify_channel_id, t('executor.run.stopped'));
                         break;
                     }
 
@@ -167,7 +168,7 @@ export class Executor {
                         const errMsg = retryErr.message;
                         logWarn(`Executor: plan ${job.plan.plan_id} timed out — skipping retry (task may still be in progress)`);
                         await this.safeNotify(job.plan.notify_channel_id,
-                            `⏱️ タイムアウトしました。処理は進行中の可能性があります。\n\`\`\`\n${errMsg}\n\`\`\``);
+                            t('executor.run.timeout', errMsg));
                         recordExecution(this.planStore, job.plan, false, Date.now() - this.currentJobStartTime, errMsg);
                         break;
                     }
@@ -176,8 +177,8 @@ export class Executor {
                     logWarn(`Executor: plan ${job.plan.plan_id} attempt ${attempt} failed — ${errMsg}`);
                     if (attempt >= maxRetries) {
                         // 最終試行も失敗: エラー通知
-                        const errorTemplate = job.plan.discord_templates.run_error || '❌ 実行失敗';
-                        const retryNote = maxRetries > 0 ? `\n(${maxRetries}回リトライ後も失敗)` : '';
+                        const errorTemplate = job.plan.discord_templates.run_error || t('executor.run.errorDefault');
+                        const retryNote = maxRetries > 0 ? t('executor.run.retryExhausted', String(maxRetries)) : '';
                         await this.safeNotify(job.plan.notify_channel_id, `${errorTemplate}${retryNote}\n\`\`\`\n${errMsg}\n\`\`\``);
                         recordExecution(this.planStore, job.plan, false, Date.now() - this.currentJobStartTime, errMsg);
                     }
@@ -207,7 +208,7 @@ export class Executor {
         try {
             // 開始通知
             const startMsg = plan.discord_templates.run_start
-                || `⏳ 実行開始: ${plan.human_summary || plan.plan_id}`;
+                || t('executor.run.startDefault', plan.human_summary || plan.plan_id);
             logDebug(`Executor: sending start notification to channel ${notifyChannel}`);
             await this.safeNotify(notifyChannel, startMsg);
 
@@ -216,7 +217,7 @@ export class Executor {
                 const detailParts: string[] = [];
                 const summary = plan.execution_summary || plan.action_summary || plan.human_summary;
                 if (summary) {
-                    detailParts.push(`📋 **実行内容**\n> ${summary.replace(/\n/g, '\n> ')}`);
+                    detailParts.push(`${t('executor.run.detailLabel')}\n> ${summary.replace(/\n/g, '\n> ')}`);
                 }
                 if (detailParts.length > 0) {
                     await this.safeNotify(notifyChannel, detailParts.join('\n\n'));
@@ -272,7 +273,7 @@ export class Executor {
                             lastProgressContent = currentContent;
                             const percentStr = progress.percent !== undefined ? ` (${progress.percent}%)` : '';
                             const detailStr = progress.detail ? `\n${progress.detail}` : '';
-                            const progressMsg = `📊 **進捗${percentStr}:** ${progress.status}${detailStr}`;
+                            const progressMsg = t('executor.run.progress', percentStr, progress.status, detailStr);
                             logDebug(`Executor: progress update — ${progress.status}`);
                             await this.safeNotify(notifyChannel, progressMsg, EmbedColor.Progress);
                         }
@@ -297,7 +298,7 @@ export class Executor {
                 } catch (sendErr) {
                     if (sendErr instanceof CdpConnectionError) {
                         logWarn(`Executor: sendPrompt failed due to connection error, attempting reconnect — ${sendErr.message}`);
-                        await this.safeNotify(notifyChannel, '🔌 接続断を検出しました。再接続中...');
+                        await this.safeNotify(notifyChannel, t('executor.run.connectionLost'));
                         try {
                             await this.cdp.ensureConnected();
                             logDebug('Executor: reconnected successfully, retrying sendPrompt');
@@ -313,7 +314,7 @@ export class Executor {
                 logDebug(`Executor: prompt sent, waiting for file response at ${responsePath}`);
 
                 // 伝令完了ステータスを Discord に通知
-                await this.safeNotify(notifyChannel, '✅ 指示を伝令しました。応答を待っています...');
+                await this.safeNotify(notifyChannel, t('executor.run.promptSent'));
 
                 // 一時プロンプトファイルを即時クリーンアップ
                 await this.fileIpc.cleanupTmpFiles([tmpExecPath]);

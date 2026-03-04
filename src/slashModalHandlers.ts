@@ -6,6 +6,7 @@ import { ModalSubmitInteraction } from 'discord.js';
 
 import { logDebug, logError } from './logger';
 import { buildEmbed, EmbedColor } from './embedHelper';
+import { t } from './i18n';
 import { naturalTextToCron, cronToHuman } from './scheduleButtons';
 import { BridgeContext } from './bridgeContext';
 import { getTimezone } from './configHelper';
@@ -33,11 +34,11 @@ export async function handleModalSubmit(
         if (result.success) {
             const bytes = Buffer.byteLength(content, 'utf-8');
             await interaction.reply({
-                embeds: [buildEmbed(`✅ SOUL.md を更新しました（${bytes} bytes）`, EmbedColor.Success)],
+                embeds: [buildEmbed(t('modal.soulUpdated', String(bytes)), EmbedColor.Success)],
             });
         } else {
             await interaction.reply({
-                embeds: [buildEmbed(`❌ SOUL.md の更新に失敗しました: ${result.error || '不明なエラー'}`, EmbedColor.Error)],
+                embeds: [buildEmbed(t('modal.soulFailed', result.error || t('modal.unknownError')), EmbedColor.Error)],
             });
         }
         return;
@@ -48,14 +49,14 @@ export async function handleModalSubmit(
         const key = interaction.fields.getTextInputValue('license_key').trim();
         if (!key) {
             await interaction.reply({
-                embeds: [buildEmbed('⚠️ ライセンスキーが空です。', EmbedColor.Warning)],
+                embeds: [buildEmbed(t('modal.licenseKeyEmpty'), EmbedColor.Warning)],
             });
             return;
         }
 
         if (!ctx.setLicenseKeyFn) {
             await interaction.reply({
-                embeds: [buildEmbed('⚠️ ライセンスシステムが初期化されていません。VS Code 側で `AntiCrow: Set License Key` コマンドを実行してください。', EmbedColor.Warning)],
+                embeds: [buildEmbed(t('modal.licenseNotInit'), EmbedColor.Warning)],
             });
             return;
         }
@@ -64,11 +65,11 @@ export async function handleModalSubmit(
             const result = await ctx.setLicenseKeyFn(key);
             if (result.valid && result.planType !== 'free') {
                 await interaction.reply({
-                    embeds: [buildEmbed(`✅ ライセンス認証成功！\n\nプラン: **${result.planType}**\nキー: \`${key.substring(0, 8)}...\``, EmbedColor.Success)],
+                    embeds: [buildEmbed(t('modal.licenseSuccess', result.planType, key.substring(0, 8)), EmbedColor.Success)],
                 });
             } else {
                 await interaction.reply({
-                    embeds: [buildEmbed(`⚠️ ライセンスキーが無効です。正しいキーを入力してください。\n\nキー: \`${key.substring(0, 8)}...\``, EmbedColor.Warning)],
+                    embeds: [buildEmbed(t('modal.licenseInvalid', key.substring(0, 8)), EmbedColor.Warning)],
                 });
             }
             logDebug(`pro_key_modal: license key set, valid=${result.valid}, plan=${result.planType}`);
@@ -76,7 +77,7 @@ export async function handleModalSubmit(
             logError('pro_key_modal: failed to set license key', e);
             const errDetail = e instanceof Error ? e.message : String(e);
             await interaction.reply({
-                embeds: [buildEmbed(`❌ ライセンスキーの設定中にエラーが発生しました。\n\n**エラー:** ${errDetail}\n\nキーが保存済みの場合は、次回の自動検証で反映されます。手動で再試行する場合は \`/pro\` → 🔑キー入力 を再度お試しください。`, EmbedColor.Error)],
+                embeds: [buildEmbed(t('modal.licenseError', errDetail), EmbedColor.Error)],
             });
         }
         return;
@@ -94,7 +95,7 @@ export async function handleModalSubmit(
         const newContent = interaction.fields.getTextInputValue('queue_edit_content').trim();
         if (!newContent) {
             await interaction.reply({
-                embeds: [buildEmbed('⚠️ メッセージ内容が空です。', EmbedColor.Warning)],
+                embeds: [buildEmbed(t('modal.msgEmpty'), EmbedColor.Warning)],
             });
             return;
         }
@@ -103,11 +104,11 @@ export async function handleModalSubmit(
         const edited = editWaitingMessage(msgId, newContent);
         if (edited) {
             await interaction.reply({
-                embeds: [buildEmbed(`✅ 待機メッセージを編集しました`, EmbedColor.Success)],
+                embeds: [buildEmbed(t('modal.msgEdited'), EmbedColor.Success)],
             });
         } else {
             await interaction.reply({
-                embeds: [buildEmbed(`⚠️ 該当のメッセージは既に処理済みか削除されています`, EmbedColor.Warning)],
+                embeds: [buildEmbed(t('modal.msgAlreadyProcessed'), EmbedColor.Warning)],
             });
         }
         return;
@@ -121,7 +122,7 @@ export async function handleModalSubmit(
 
         if (!prompt) {
             await interaction.reply({
-                embeds: [buildEmbed('⚠️ プロンプトが空です。', EmbedColor.Warning)],
+                embeds: [buildEmbed(t('modal.promptEmpty'), EmbedColor.Warning)],
             });
             return;
         }
@@ -131,14 +132,7 @@ export async function handleModalSubmit(
         if (!cron) {
             await interaction.reply({
                 embeds: [buildEmbed(
-                    `⚠️ スケジュール「${cronText}」を cron 式に変換できませんでした。\n\n` +
-                    '**対応形式の例:**\n' +
-                    '- `毎日9時` / `毎日 09:30`\n' +
-                    '- `毎週月曜の10時`\n' +
-                    '- `平日の18時`\n' +
-                    '- `3時間おき` / `30分おき`\n' +
-                    '- `毎月1日の9時`\n' +
-                    '- cron 式: `0 9 * * *`',
+                    t('modal.cronConvertFailed', cronText),
                     EmbedColor.Warning,
                 )],
             });
@@ -147,7 +141,7 @@ export async function handleModalSubmit(
 
         if (!ctx.planStore || !ctx.scheduler) {
             await interaction.reply({
-                embeds: [buildEmbed('⚠️ Bridge が初期化されていません。', EmbedColor.Warning)],
+                embeds: [buildEmbed(t('modal.bridgeNotInit'), EmbedColor.Warning)],
             });
             return;
         }
@@ -177,11 +171,7 @@ export async function handleModalSubmit(
 
         await interaction.reply({
             embeds: [buildEmbed(
-                `✅ スケジュールを登録しました！\n\n` +
-                `**${plan.human_summary}**\n` +
-                `⏰ \`${cron}\` (${humanCron})\n` +
-                `🆔 \`${plan.plan_id.substring(0, 8)}...\`\n\n` +
-                `入力: 「${cronText}」`,
+                t('modal.schedCreated', plan.human_summary || '', cron, humanCron, plan.plan_id.substring(0, 8), cronText),
                 EmbedColor.Success,
             )],
         });
@@ -197,7 +187,7 @@ export async function handleModalSubmit(
 
         if (!prompt) {
             await interaction.reply({
-                embeds: [buildEmbed('⚠️ プロンプトが空です。', EmbedColor.Warning)],
+                embeds: [buildEmbed(t('modal.promptEmpty'), EmbedColor.Warning)],
             });
             return;
         }
@@ -206,14 +196,7 @@ export async function handleModalSubmit(
         if (!cron) {
             await interaction.reply({
                 embeds: [buildEmbed(
-                    `⚠️ スケジュール「${cronText}」を cron 式に変換できませんでした。\n\n` +
-                    '**対応形式の例:**\n' +
-                    '- `毎日9時` / `毎日 09:30`\n' +
-                    '- `毎週月曜の10時`\n' +
-                    '- `平日の18時`\n' +
-                    '- `3時間おき` / `30分おき`\n' +
-                    '- `毎月1日の9時`\n' +
-                    '- cron 式: `0 9 * * *`',
+                    t('modal.cronConvertFailed', cronText),
                     EmbedColor.Warning,
                 )],
             });
@@ -222,7 +205,7 @@ export async function handleModalSubmit(
 
         if (!ctx.planStore || !ctx.scheduler) {
             await interaction.reply({
-                embeds: [buildEmbed('⚠️ Bridge が初期化されていません。', EmbedColor.Warning)],
+                embeds: [buildEmbed(t('modal.bridgeNotInit'), EmbedColor.Warning)],
             });
             return;
         }
@@ -230,7 +213,7 @@ export async function handleModalSubmit(
         const oldPlan = ctx.planStore.get(planId);
         if (!oldPlan) {
             await interaction.reply({
-                embeds: [buildEmbed(`⚠️ 計画 \`${planId}\` が見つかりません。`, EmbedColor.Warning)],
+                embeds: [buildEmbed(t('modal.planNotFound', planId), EmbedColor.Warning)],
             });
             return;
         }
@@ -255,11 +238,7 @@ export async function handleModalSubmit(
 
         await interaction.reply({
             embeds: [buildEmbed(
-                `✅ スケジュールを更新しました！\n\n` +
-                `**${summary || prompt.substring(0, 60)}**\n` +
-                `⏰ \`${cron}\` (${humanCron})\n` +
-                (oldCron !== cron ? `📝 変更前: \`${oldCron}\` (${oldHumanCron})\n` : '') +
-                `🆔 \`${planId.substring(0, 8)}...\``,
+                t('modal.schedUpdated', summary || prompt.substring(0, 60), cron, humanCron, oldCron !== cron ? (oldCron || '') : '', oldCron !== cron ? oldHumanCron : '', planId.substring(0, 8)),
                 EmbedColor.Success,
             )],
         });

@@ -5,6 +5,7 @@
 import { ButtonInteraction } from 'discord.js';
 
 import { buildEmbed, EmbedColor } from './embedHelper';
+import { t } from './i18n';
 import { buildHistoryListEmbed, buildHistorySelectResultEmbed } from './historyButtons';
 import { openHistoryAndGetSections, selectConversation, closePopup, type ConversationSection } from './cdpHistory';
 import { BridgeContext } from './bridgeContext';
@@ -26,7 +27,7 @@ export async function handleHistoryButton(
 
         const { cdp } = resolveHistoryCdp(ctx, interaction);
         if (!cdp) {
-            await interaction.followUp({ embeds: [buildEmbed('⚠️ Antigravity との接続が初期化されていません。', EmbedColor.Warning)] });
+            await interaction.followUp({ embeds: [buildEmbed(t('btnHistory.notConnected'), EmbedColor.Warning)] });
             return true;
         }
 
@@ -37,7 +38,7 @@ export async function handleHistoryButton(
             ? wsSection.items
             : sections.flatMap((s: ConversationSection) => s.items);
         const targetConv = conversations.find(c => c.index === index);
-        const title = targetConv?.title || `会話 #${index + 1}`;
+        const title = targetConv?.title || `${t('btnHistory.conversation')} #${index + 1}`;
 
         // globalIndex を使って selectConversation を呼び出す
         const globalIdx = targetConv?.globalIndex ?? index;
@@ -59,7 +60,7 @@ export async function handleHistoryButton(
 
         const { cdp, wsName } = resolveHistoryCdp(ctx, interaction);
         if (!cdp) {
-            await interaction.followUp({ embeds: [buildEmbed('⚠️ Antigravity との接続が初期化されていません。', EmbedColor.Warning)] });
+            await interaction.followUp({ embeds: [buildEmbed(t('btnHistory.notConnected'), EmbedColor.Warning)] });
             return true;
         }
 
@@ -97,7 +98,7 @@ export async function handleHistoryButton(
 
         // unknown セクション（セクション分類失敗）の場合、警告をフッターに追加
         if (unknownSection && !wsSection) {
-            embeds[0]?.setFooter({ text: '⚠️ セクション分類に失敗しました。別ワークスペースの会話が含まれている可能性があります。' });
+            embeds[0]?.setFooter({ text: t('btnHistory.sectionWarning') });
         }
 
         await interaction.editReply({ embeds, components: components as any });

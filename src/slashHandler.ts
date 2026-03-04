@@ -28,6 +28,7 @@ import {
 import { ChannelIntent } from './types';
 import { logDebug, logError, logWarn } from './logger';
 import { buildEmbed, EmbedColor, sanitizeErrorForDiscord } from './embedHelper';
+import { t } from './i18n';
 import { BridgeContext } from './bridgeContext';
 import { isUserAllowed } from './configHelper';
 import { handleWorkspaceButton } from './workspaceHandler';
@@ -80,7 +81,7 @@ export async function handleSlashCommand(
     }
 
     // /schedule コマンドは廃止済み — 未対応コマンドとして応答
-    await interaction.reply({ embeds: [buildEmbed(`⚠️ 未対応のコマンド: /${commandName}`, EmbedColor.Warning)] });
+    await interaction.reply({ embeds: [buildEmbed(t('slash.unknownCmd', commandName), EmbedColor.Warning)] });
 }
 
 // ---------------------------------------------------------------------------
@@ -125,7 +126,7 @@ export async function handleButtonInteraction(
 
     // ----- Bridge 初期化チェック -----
     if (!ctx.planStore || !ctx.scheduler) {
-        await interaction.reply({ embeds: [buildEmbed('⚠️ Bridge が初期化されていません。', EmbedColor.Warning)] });
+        await interaction.reply({ embeds: [buildEmbed(t('slash.notInit'), EmbedColor.Warning)] });
         return;
     }
 
@@ -140,13 +141,13 @@ export async function handleButtonInteraction(
         if (await handleSubagentButton(ctx, interaction, customId)) { return; }
 
         logWarn(`ButtonHandler: unknown customId: ${customId}`);
-        await interaction.reply({ embeds: [buildEmbed(`⚠️ 不明なボタン: ${customId}`, EmbedColor.Warning)] });
+        await interaction.reply({ embeds: [buildEmbed(t('slash.unknownButton', customId), EmbedColor.Warning)] });
 
     } catch (e) {
         logError(`handleButtonInteraction failed for ${customId}`, e);
         const errMsg = e instanceof Error ? e.message : String(e);
         if (!interaction.replied && !interaction.deferred) {
-            await interaction.reply({ embeds: [buildEmbed(`❌ エラー: ${sanitizeErrorForDiscord(errMsg)}`, EmbedColor.Error)] });
+            await interaction.reply({ embeds: [buildEmbed(t('slash.error', sanitizeErrorForDiscord(errMsg)), EmbedColor.Error)] });
         }
     }
 }

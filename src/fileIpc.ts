@@ -11,6 +11,7 @@ import * as vscode from 'vscode';
 import { ProgressUpdate } from './types';
 import { IpcTimeoutError } from './errors';
 import { logDebug, logWarn, logError } from './logger';
+import { t } from './i18n';
 
 // ---------------------------------------------------------------------------
 // 定数
@@ -567,10 +568,10 @@ export class FileIpc {
 
     /**
      * 古い IPC ファイルをクリーンアップ。
-     * - tmp_* は 5分以上で削除
-     * - req_*_progress.json は 2分以上で削除
-     * - req_*_response.* は 30分以上で削除（stale recovery 間隔より長く設定）
-     * - その他は 5分以上で削除
+     * - tmp_* は 30分以上で削除（チームモードのサブエージェント実行に対応）
+     * - req_*_progress.json は 30分以上で削除
+     * - req_*_response.* は 60分以上で削除（stale recovery 間隔より長く設定）
+     * - その他は 30分以上で削除
      * - activeRequests に含まれるファイルはスキップ（誤削除防止）
      * - protectedFiles に含まれるファイルはスキップ（tmp ファイル保護）
      */
@@ -601,36 +602,36 @@ export class FileIpc {
                     const stat = await fs.promises.stat(fp);
                     const ageMs = now - stat.mtimeMs;
 
-                    // tmp_* 系（一時プロンプト/ルール/グローバルファイル）: 5分以上で削除
-                    if (f.startsWith('tmp_') && ageMs > 5 * 60 * 1000) {
+                    // tmp_* 系（一時プロンプト/ルール/グローバルファイル）: 30分以上で削除
+                    if (f.startsWith('tmp_') && ageMs > 30 * 60 * 1000) {
                         await fs.promises.unlink(fp);
                         logDebug(`FileIpc: cleaned up tmp file ${f}`);
                         continue;
                     }
 
-                    // req_*_progress.json: 応答完了後2分で削除
-                    if (f.includes('_progress.json') && ageMs > 2 * 60 * 1000) {
+                    // req_*_progress.json: 応答完了後30分で削除
+                    if (f.includes('_progress.json') && ageMs > 30 * 60 * 1000) {
                         await fs.promises.unlink(fp);
                         logDebug(`FileIpc: cleaned up progress file ${f}`);
                         continue;
                     }
 
-                    // req_*_response.*: 30分以上で削除（stale recovery 間隔より長く設定）
-                    if (f.includes('_response.') && ageMs > 30 * 60 * 1000) {
+                    // req_*_response.*: 60分以上で削除（stale recovery 間隔より長く設定）
+                    if (f.includes('_response.') && ageMs > 60 * 60 * 1000) {
                         await fs.promises.unlink(fp);
                         logDebug(`FileIpc: cleaned up old response file ${f}`);
                         continue;
                     }
 
-                    // req_*_meta.json: response と同じ 30分閾値で削除
-                    if (f.includes('_meta.json') && ageMs > 30 * 60 * 1000) {
+                    // req_*_meta.json: response と同じ 60分閾値で削除
+                    if (f.includes('_meta.json') && ageMs > 60 * 60 * 1000) {
                         await fs.promises.unlink(fp);
                         logDebug(`FileIpc: cleaned up old meta file ${f}`);
                         continue;
                     }
 
-                    // その他（response/meta 以外）: 5分以上前のファイル
-                    if (!f.includes('_response.') && !f.includes('_meta.json') && ageMs > 5 * 60 * 1000) {
+                    // その他（response/meta 以外）: 30分以上前のファイル
+                    if (!f.includes('_response.') && !f.includes('_meta.json') && ageMs > 30 * 60 * 1000) {
                         await fs.promises.unlink(fp);
                         logDebug(`FileIpc: cleaned up old file ${f}`);
                     }
@@ -755,23 +756,23 @@ export class FileIpc {
     static formatJsonForDiscord(obj: Record<string, unknown>): string | null {
         const lines: string[] = [];
 
-        // キー名の日本語ラベルマッピング
+        // キー名のローカライズラベルマッピング
         const labelMap: Record<string, string> = {
-            summary: '📋 概要',
-            result: '結果',
-            changes: '📝 変更内容',
-            files_modified: '変更ファイル',
-            files_created: '新規ファイル',
-            files_deleted: '削除ファイル',
-            details: '詳細',
-            impact: '🔍 影響範囲',
-            test_results: '🧪 テスト結果',
-            deploy: '🚀 デプロイ',
-            notes: '⚠️ 注意点',
-            warnings: '⚠️ 警告',
-            errors: '❌ エラー',
-            status: 'ステータス',
-            description: '説明',
+            summary: t('ipc.label.summary'),
+            result: t('ipc.label.result'),
+            changes: t('ipc.label.changes'),
+            files_modified: t('ipc.label.files_modified'),
+            files_created: t('ipc.label.files_created'),
+            files_deleted: t('ipc.label.files_deleted'),
+            details: t('ipc.label.details'),
+            impact: t('ipc.label.impact'),
+            test_results: t('ipc.label.test_results'),
+            deploy: t('ipc.label.deploy'),
+            notes: t('ipc.label.notes'),
+            warnings: t('ipc.label.warnings'),
+            errors: t('ipc.label.errors'),
+            status: t('ipc.label.status'),
+            description: t('ipc.label.description'),
         };
 
         const getLabel = (key: string): string => labelMap[key] || key;

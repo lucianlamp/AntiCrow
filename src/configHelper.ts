@@ -10,6 +10,7 @@
 import * as vscode from 'vscode';
 import { logDebug, logWarn } from './logger';
 import type { WorkspaceStore } from './workspaceStore';
+import { t } from './i18n';
 
 // ---------------------------------------------------------------------------
 // デフォルト値定数
@@ -53,7 +54,10 @@ export function getConfig(): vscode.WorkspaceConfiguration {
     return vscode.workspace.getConfiguration(SECTION);
 }
 
-
+/** i18n 言語設定を取得する（デフォルト: 'ja'） */
+export function getLanguage(): string {
+    return getConfig().get<string>('language') || 'ja';
+}
 
 /** CDP レスポンスタイムアウト（ms）を取得する（デフォルト: 0 = 無制限） */
 export function getResponseTimeout(): number {
@@ -119,10 +123,10 @@ export function getAllowedUserIds(): string[] {
 export function isUserAllowed(userId: string): { allowed: boolean; reason?: string } {
     const allowedIds = getAllowedUserIds();
     if (allowedIds.length === 0) {
-        return { allowed: false, reason: '許可ユーザーIDが設定されていません。Antigravity の設定で `antiCrow.allowedUserIds` にあなたの Discord ユーザーIDを追加してください。' };
+        return { allowed: false, reason: t('config.noAllowedUsers') };
     }
     if (!allowedIds.includes(userId)) {
-        return { allowed: false, reason: 'このユーザーは操作を許可されていません。' };
+        return { allowed: false, reason: t('config.userNotAllowed') };
     }
     return { allowed: true };
 }
@@ -136,3 +140,5 @@ export function getMaxMessageLength(): number {
 export function getMaxRetries(): number {
     return getConfig().get<number>('maxRetries') ?? 0;
 }
+
+

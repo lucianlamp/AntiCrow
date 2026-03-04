@@ -9,6 +9,7 @@ import {
     ButtonStyle,
 } from 'discord.js';
 import { ModelQuota, QuotaData } from './quotaProvider';
+import { t } from './i18n';
 
 // -----------------------------------------------------------------------
 // プログレスバー生成
@@ -39,16 +40,16 @@ export function buildQuotaEmbed(
     data: QuotaData,
 ): { embeds: EmbedBuilder[]; components: ActionRowBuilder<ButtonBuilder>[] } {
     const embed = new EmbedBuilder()
-        .setTitle('📊 モデルクォータ')
+        .setTitle(t('quota.title'))
         .setColor(0x5865F2)
         .setTimestamp(data.lastUpdated);
 
     // アカウント情報
     const descLines: string[] = [];
-    descLines.push(`**アカウント:** ${data.accountLevel}`);
+    descLines.push(t('quota.account', data.accountLevel));
     if (data.promptCredits) {
         const pc = data.promptCredits;
-        descLines.push(`**プロンプトクレジット:** ${pc.used.toLocaleString()} / ${pc.total.toLocaleString()} (残り ${pc.remainingPercentage}%)`);
+        descLines.push(t('quota.credits', pc.used.toLocaleString(), pc.total.toLocaleString(), String(pc.remainingPercentage)));
     }
     embed.setDescription(descLines.join('\n'));
 
@@ -58,7 +59,7 @@ export function buildQuotaEmbed(
             const emoji = statusEmoji(m.remainingPercentage);
             const bar = progressBar(m.remainingPercentage);
             const reset = m.timeUntilResetFormatted && m.timeUntilResetFormatted !== 'N/A'
-                ? ` (リセットまで ${m.timeUntilResetFormatted})`
+                ? ` (${t('quota.resetTime', m.timeUntilResetFormatted)})`
                 : '';
             return `${emoji} **${m.displayName}**\n${bar} ${m.remainingPercentage}%${reset}`;
         });
@@ -67,14 +68,14 @@ export function buildQuotaEmbed(
         const chunks = splitIntoChunks(modelLines, 900);
         chunks.forEach((chunk, i) => {
             embed.addFields({
-                name: i === 0 ? `📋 モデル別クォータ (${data.models.length}件)` : '\u200b',
+                name: i === 0 ? t('quota.modelField', String(data.models.length)) : '\u200b',
                 value: chunk.join('\n'),
             });
         });
     } else {
         embed.addFields({
-            name: '📋 モデル別クォータ',
-            value: 'モデル情報が取得できませんでした。',
+            name: t('quota.modelFieldNoData'),
+            value: t('quota.modelNoData'),
         });
     }
 
@@ -82,7 +83,7 @@ export function buildQuotaEmbed(
     const exhausted = data.models.filter(m => m.isExhausted);
     if (exhausted.length > 0) {
         embed.addFields({
-            name: '⚠️ 枯渇モデル',
+            name: t('quota.exhausted'),
             value: exhausted.map(m => `- ${m.displayName}`).join('\n'),
         });
     }
@@ -91,7 +92,7 @@ export function buildQuotaEmbed(
     const refreshRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder()
             .setCustomId('quota_refresh')
-            .setLabel('🔄 更新')
+            .setLabel(t('quota.refresh'))
             .setStyle(ButtonStyle.Primary),
     );
 
@@ -103,12 +104,8 @@ export function buildQuotaEmbed(
  */
 export function buildQuotaErrorEmbed(reason: string): EmbedBuilder {
     return new EmbedBuilder()
-        .setTitle('📊 モデルクォータ')
-        .setDescription(
-            `⚠️ クォータ情報の取得に失敗しました。\n\n` +
-            `**理由:** ${reason}\n\n` +
-            `Antigravity が起動していることを確認してください。`,
-        )
+        .setTitle(t('quota.title'))
+        .setDescription(t('quota.errorDesc', reason))
         .setColor(0xFEE75C)
         .setTimestamp();
 }

@@ -9,6 +9,7 @@
 import { Message, TextChannel, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import { logDebug, logError } from './logger';
 import { buildEmbed, EmbedColor } from './embedHelper';
+import { t } from './i18n';
 import { DiscordBot } from './discordBot';
 import { cancelActiveConfirmation } from './discordReactions';
 
@@ -345,7 +346,7 @@ export async function enqueueMessage(
             if (cancelled) {
                 logDebug(`messageHandler: auto-dismissed confirmation for channel ${channelId}`);
                 try {
-                    await channel.send({ embeds: [buildEmbed('🔄 前のタスクの確認を自動却下しました。新しいメッセージを処理します。', EmbedColor.Warning)] });
+                    await channel.send({ embeds: [buildEmbed(t('queue.autoDismissed'), EmbedColor.Warning)] });
                 } catch (e) {
                     logDebug(`messageHandler: failed to send auto-dismiss notification: ${e}`);
                 }
@@ -353,10 +354,10 @@ export async function enqueueMessage(
                 try {
                     const editBtn = new ButtonBuilder()
                         .setCustomId(`queue_edit_waiting_${msgId}`)
-                        .setLabel('✏️ 編集する')
+                        .setLabel(t('queue.editBtn'))
                         .setStyle(ButtonStyle.Primary);
                     const editRow = new ActionRowBuilder<ButtonBuilder>().addComponents(editBtn);
-                    await channel.send({ embeds: [buildEmbed(`📥 キューに追加しました（待ち: ${prevCount}件）。前のタスク完了後に処理します。`, EmbedColor.Info)], components: [editRow] });
+                    await channel.send({ embeds: [buildEmbed(t('queue.enqueued', String(prevCount)), EmbedColor.Info)], components: [editRow] });
                 } catch (e) {
                     logDebug(`messageHandler: failed to send queue notification: ${e}`);
                 }
@@ -365,10 +366,10 @@ export async function enqueueMessage(
             try {
                 const editBtn = new ButtonBuilder()
                     .setCustomId(`queue_edit_waiting_${msgId}`)
-                    .setLabel('✏️ 編集する')
+                    .setLabel(t('queue.editBtn'))
                     .setStyle(ButtonStyle.Primary);
                 const editRow = new ActionRowBuilder<ButtonBuilder>().addComponents(editBtn);
-                await channel.send({ embeds: [buildEmbed(`📥 キューに追加しました（待ち: ${prevCount}件）。前のタスク完了後に処理します。`, EmbedColor.Info)], components: [editRow] });
+                await channel.send({ embeds: [buildEmbed(t('queue.enqueued', String(prevCount)), EmbedColor.Info)], components: [editRow] });
             } catch (e) {
                 logDebug(`messageHandler: failed to send queue notification: ${e}`);
             }

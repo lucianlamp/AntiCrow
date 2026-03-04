@@ -25,6 +25,7 @@ import { ChannelIntent } from './types';
 import { splitForEmbeds, extractTableFields } from './discordFormatter';
 import { logDebug, logError, logWarn } from './logger';
 import { buildEmbed, EmbedColor, normalizeHeadings } from './embedHelper';
+import { t } from './i18n';
 
 // 委譲先モジュール
 import * as reactions from './discordReactions';
@@ -151,7 +152,7 @@ export class DiscordBot {
                         logError(`Discord: button handler error for ${cid}`, e);
                         const errMsg = e instanceof Error ? e.message : String(e);
                         if (!interaction.replied && !interaction.deferred) {
-                            await interaction.reply({ embeds: [buildEmbed(`❌ エラー: ${errMsg}`, EmbedColor.Error)], ephemeral: true }).catch(() => { });
+                            await interaction.reply({ embeds: [buildEmbed(t('bot.error', errMsg), EmbedColor.Error)], ephemeral: true }).catch(() => { });
                         }
                     }
                 }
@@ -180,7 +181,7 @@ export class DiscordBot {
                         logError(`Discord: modal submit handler error for ${interaction.customId}`, e);
                         const errMsg = e instanceof Error ? e.message : String(e);
                         if (!interaction.replied && !interaction.deferred) {
-                            await interaction.reply({ embeds: [buildEmbed(`❌ エラー: ${errMsg}`, EmbedColor.Error)], ephemeral: true }).catch(() => { });
+                            await interaction.reply({ embeds: [buildEmbed(t('bot.error', errMsg), EmbedColor.Error)], ephemeral: true }).catch(() => { });
                         }
                     }
                 }
@@ -193,7 +194,7 @@ export class DiscordBot {
             const intent = this.mapCommandToIntent(commandName);
             if (!intent) {
                 logWarn(`Discord: unknown slash command /${commandName}`);
-                await interaction.reply({ embeds: [buildEmbed(`⚠️ 不明なコマンド: /${commandName}`, EmbedColor.Warning)], ephemeral: true });
+                await interaction.reply({ embeds: [buildEmbed(t('bot.unknownCommand', commandName), EmbedColor.Warning)], ephemeral: true });
                 return;
             }
 
@@ -206,9 +207,9 @@ export class DiscordBot {
                     logError(`Discord: interaction handler error for /${commandName}`, e);
                     const errMsg = e instanceof Error ? e.message : String(e);
                     if (interaction.deferred || interaction.replied) {
-                        await interaction.editReply({ embeds: [buildEmbed(`❌ エラー: ${errMsg}`, EmbedColor.Error)] }).catch(() => { });
+                        await interaction.editReply({ embeds: [buildEmbed(t('bot.error', errMsg), EmbedColor.Error)] }).catch(() => { });
                     } else {
-                        await interaction.reply({ embeds: [buildEmbed(`❌ エラー: ${errMsg}`, EmbedColor.Error)], ephemeral: true }).catch(() => { });
+                        await interaction.reply({ embeds: [buildEmbed(t('bot.error', errMsg), EmbedColor.Error)], ephemeral: true }).catch(() => { });
                     }
                 }
             }

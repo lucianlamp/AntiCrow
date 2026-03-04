@@ -10,6 +10,7 @@ import { logDebug } from './logger';
 import { getPromptRulesMd, EXECUTION_PROMPT_TEMPLATE } from './embeddedRules';
 import { getTimezone, getWorkspacePaths } from './configHelper';
 import { sanitizeWorkspaceName } from './fileIpc';
+import { t, tArray } from './i18n';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -55,7 +56,7 @@ export function loadUserGlobalRules(): string | null {
 
 /** 現在時刻(JST等)と曜日のコンテキスト文字列を生成 */
 export function buildDatetimeString(): string {
-    const dayNames = ['日', '月', '火', '水', '木', '金', '土'];
+    const dayNames = tArray('datetime.dayNames');
     const nowJst = new Date(new Date().toLocaleString('en-US', { timeZone: getTimezone() }));
     const year = nowJst.getFullYear();
     const month = nowJst.getMonth() + 1;
@@ -63,7 +64,7 @@ export function buildDatetimeString(): string {
     const dow = dayNames[nowJst.getDay()];
     const hours = String(nowJst.getHours()).padStart(2, '0');
     const minutes = String(nowJst.getMinutes()).padStart(2, '0');
-    return `${year}年${month}月${day}日（${dow}）${hours}:${minutes}`;
+    return t('datetime.format', String(year), String(month), String(day), dow, hours, minutes);
 }
 
 // ---------------------------------------------------------------------------
@@ -138,31 +139,31 @@ function buildFromTemplate(
         const tplObj = JSON.parse(expanded);
         if (plan.attachment_paths && plan.attachment_paths.length > 0) {
             tplObj.attachments = plan.attachment_paths;
-            tplObj.attachments_instruction = '添付ファイルを view_file ツールで確認してください。';
+            tplObj.attachments_instruction = t('executor.attachments_instruction');
         }
         if (userGlobalRules) {
             tplObj.user_rules = userGlobalRules;
-            tplObj.user_rules_instruction = '出力のスタイルや口調に反映してください。';
+            tplObj.user_rules_instruction = t('executor.user_rules_instruction');
         }
         if (userMemory) {
             tplObj.memory = userMemory;
-            tplObj.memory_instruction = 'これはエージェントの記憶です。過去の学びや教訓を参考にしてください。';
+            tplObj.memory_instruction = t('executor.memory_instruction');
         }
         return JSON.stringify(tplObj, null, 2);
     } catch {
         // JSON パース失敗時はテキストとしてそのまま使用（旧 .md 互換）
         let finalPrompt = expanded;
         if (plan.attachment_paths && plan.attachment_paths.length > 0) {
-            finalPrompt += `\n\n## 添付ファイル\n以下のファイルが Discord メッセージに添付されています。view_file ツールで内容を確認してください。\n\n`;
+            finalPrompt += `\n\n${t('executor.attachments_section')}`;
             for (const p of plan.attachment_paths) {
                 finalPrompt += `- ${p}\n`;
             }
         }
         if (userGlobalRules) {
-            finalPrompt += `\n\n## ユーザー設定\n${userGlobalRules}`;
+            finalPrompt += `\n\n${t('executor.user_settings_section')}\n${userGlobalRules}`;
         }
         if (userMemory) {
-            finalPrompt += `\n\n## エージェントの記憶\n${userMemory}`;
+            finalPrompt += `\n\n${t('executor.memory_section')}\n${userMemory}`;
         }
         return finalPrompt;
     }
@@ -185,26 +186,26 @@ function buildInlineFallback(
         output: {
             response_path: responsePath,
             format: 'markdown',
-            constraint: 'すべての作業が完了してから write_to_file で Markdown 形式のレスポンスを1回だけ書き込む。途中経過は書き込まない。ファイルに書き込んだ時点でレスポンス完了と見なされ、内容がそのまま Discord に送信される。Discord の Markdown 記法に準拠すること（**太字**, - 箇条書き, `コード` 等）。結果には何をしたか・変更内容・影響範囲・注意点などを具体的かつ詳細に記述すること。簡素すぎる報告は避ける。変更したファイル名・変更の概要・テスト結果・注意事項をすべて含めること。',
+            constraint: t('executor.inline.constraint'),
         },
         rules: rulesInline || undefined,
         progress: {
             path: progressPath,
-            instruction: '進捗ファイルに JSON で進捗状況を定期的に書き込むこと（write_to_file, Overwrite: true）。処理の各段階で必ず status を更新。30秒〜1分おきに percent と status を更新する。',
-            format: { status: '現在のステータス', detail: '詳細（任意）', percent: 50 },
+            instruction: t('executor.inline.progress.instruction'),
+            format: { status: t('executor.inline.progress.status'), detail: t('executor.inline.progress.detail'), percent: 50 },
         },
     };
     if (plan.attachment_paths && plan.attachment_paths.length > 0) {
         promptObj.attachments = plan.attachment_paths;
-        promptObj.attachments_instruction = '添付ファイルを view_file ツールで確認してください。';
+        promptObj.attachments_instruction = t('executor.attachments_instruction');
     }
     if (userGlobalRules) {
         promptObj.user_rules = userGlobalRules;
-        promptObj.user_rules_instruction = '出力のスタイルや口調に反映してください。';
+        promptObj.user_rules_instruction = t('executor.user_rules_instruction');
     }
     if (userMemory) {
         promptObj.memory = userMemory;
-        promptObj.memory_instruction = 'これはエージェントの記憶です。過去の学びや教訓を参考にしてください。';
+        promptObj.memory_instruction = t('executor.memory_instruction');
     }
     return JSON.stringify(promptObj, null, 2);
 }
@@ -232,6 +233,6 @@ export function writeTempPrompt(
         : path.join(ipcDir, `tmp_exec_${requestId}.json`);
     fs.writeFileSync(tmpExecPath, finalPrompt, 'utf-8');
     logDebug(`PromptBuilder: prompt written to temp file: ${tmpExecPath}`);
-    const cdpInstruction = `以下のファイルを view_file ツールで読み込み、その指示に従ってください。ファイルパス: ${tmpExecPath}`;
+    const cdpInstruction = t('executor.cdp_instruction', tmpExecPath);
     return { tmpExecPath, cdpInstruction };
 }

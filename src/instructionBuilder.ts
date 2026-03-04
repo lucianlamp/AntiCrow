@@ -6,6 +6,7 @@
  */
 import * as fs from 'fs';
 import { logInfo, logWarn } from './logger';
+import { t, tArray } from './i18n';
 
 // ---------------------------------------------------------------------------
 // 型定義
@@ -30,28 +31,19 @@ export interface InstructionOptions {
 }
 
 // ---------------------------------------------------------------------------
-// デフォルト値
+// デフォルト値（i18n 対応: 実行時に t() で解決）
 // ---------------------------------------------------------------------------
-const DEFAULT_CONSTRAINT =
-    'すべての作業が完了してから write_to_file で Markdown 形式のレスポンスを1回だけ書き込む。' +
-    '途中経過・中間報告は書き込まない。ファイルに書き込んだ時点でレスポンス完了と見なされ、' +
-    '内容がそのまま Discord に送信される。Discord の Markdown 記法に準拠すること' +
-    '（**太字**, - 箇条書き, `コード` 等）。結果には何をしたか・変更内容・影響範囲・' +
-    'テスト結果・注意点を具体的かつ詳細に記述すること。簡素すぎる報告は避ける。' +
-    '重要な学びがあればレスポンス末尾に <!-- MEMORY:global: 内容 --> または ' +
-    '<!-- MEMORY:workspace: 内容 --> タグで記録指示を埋め込むこと。' +
-    'レスポンスの最後に、ユーザーが次に取るべきアクションの提案を最大3つ、' +
-    '<!-- SUGGESTIONS:[{"label":"ボタン表示テキスト","description":"詳細説明","prompt":"実行されるプロンプト"},...] --> ' +
-    '形式で埋め込むこと。';
+function getDefaultConstraint(): string {
+    return t('instruction.constraint');
+}
 
-const DEFAULT_EXECUTION_RULES = [
-    'このタスクは既に計画済みです。計画の生成や承認は不要で、直ちに実行に移ってください',
-    'plan_generation タスクを生成しないでください',
-];
+function getDefaultExecutionRules(): string[] {
+    return tArray('instruction.execution_rules');
+}
 
-const DEFAULT_PROGRESS_INSTRUCTION =
-    '進捗ファイルに JSON で進捗状況を定期的に書き込むこと（write_to_file, Overwrite: true）。' +
-    '30秒〜1分おきに percent と status を更新する。';
+function getDefaultProgressInstruction(): string {
+    return t('instruction.progress.instruction');
+}
 
 // ---------------------------------------------------------------------------
 // 共通ヘルパー: 日時文字列生成
@@ -102,10 +94,14 @@ export function buildInstructionContent(options: InstructionOptions): Record<str
         responsePath,
         progressPath,
         format = 'markdown',
-        constraint = DEFAULT_CONSTRAINT,
-        executionRules = DEFAULT_EXECUTION_RULES,
+        constraint,
+        executionRules,
         workspaceName,
     } = options;
+
+    // デフォルト値は i18n 対応のため関数呼び出しで取得
+    const resolvedConstraint = constraint ?? getDefaultConstraint();
+    const resolvedExecutionRules = executionRules ?? getDefaultExecutionRules();
 
     const { rulesContent, userGlobalRules, userMemory } = loadPromptResources(workspaceName);
 
@@ -123,19 +119,19 @@ export function buildInstructionContent(options: InstructionOptions): Record<str
         content.output = {
             response_path: responsePath,
             format,
-            constraint,
+            constraint: resolvedConstraint,
         };
     }
 
     // progress セクション
     content.progress = {
         path: progressPath,
-        instruction: DEFAULT_PROGRESS_INSTRUCTION,
-        format: { status: '現在のステータス', detail: '詳細（任意）', percent: 50 },
+        instruction: getDefaultProgressInstruction(),
+        format: { status: t('instruction.progress.status'), detail: t('instruction.progress.detail'), percent: 50 },
     };
 
     // execution_rules
-    content.execution_rules = executionRules;
+    content.execution_rules = resolvedExecutionRules;
 
     // ルール・メモリ・ユーザー設定を追加
     if (rulesContent) {
@@ -143,11 +139,11 @@ export function buildInstructionContent(options: InstructionOptions): Record<str
     }
     if (userGlobalRules) {
         content.user_rules = userGlobalRules;
-        content.user_rules_instruction = '出力のスタイルや口調に反映してください。';
+        content.user_rules_instruction = t('instruction.user_rules_instruction');
     }
     if (userMemory) {
         content.memory = userMemory;
-        content.memory_instruction = 'これはエージェントの記憶です。過去の学びや教訓を参考にしてください。';
+        content.memory_instruction = t('instruction.memory_instruction');
     }
 
     return content;

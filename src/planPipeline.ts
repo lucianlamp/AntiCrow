@@ -20,6 +20,7 @@ import { parsePlanJson, buildPlan } from './planParser';
 import { ChannelIntent, Plan } from './types';
 import { logDebug, logError, logInfo, logWarn } from './logger';
 import { buildEmbed, EmbedColor, sanitizeErrorForDiscord, normalizeHeadings } from './embedHelper';
+import { t } from './i18n';
 import { splitForEmbeds } from './discordFormatter';
 import { DiscordBot } from './discordBot';
 import { BridgeContext } from './bridgeContext';
@@ -52,7 +53,7 @@ export async function resolveReplyContext(channel: TextChannel, text: string, me
         if (!refMsg) { return text; }
 
         const refContent = refMsg.content?.trim() || '';
-        const refAuthor = refMsg.author?.tag ?? '不明';
+        const refAuthor = refMsg.author?.tag ?? t('pipeline.unknown');
         let embedText = '';
         if (refMsg.embeds && refMsg.embeds.length > 0) {
             const parts: string[] = [];
@@ -71,7 +72,7 @@ export async function resolveReplyContext(channel: TextChannel, text: string, me
         const combinedContent = [refContent, embedText].filter(Boolean).join('\n\n');
         if (combinedContent) {
             logDebug(`handleDiscordMessage: reply detected, referenced message from ${refAuthor} (content=${refContent.length} chars, embeds=${embedText.length} chars)`);
-            return `## 返信先メッセージ（${refAuthor} の発言）\n${combinedContent}\n\n## 上記メッセージに対する指示\n${text}`;
+            return `## ${t('pipeline.replyHeader', refAuthor)}\n${combinedContent}\n\n## ${t('pipeline.replyInstruction')}\n${text}`;
         }
     } catch (e) {
         logWarn(`handleDiscordMessage: failed to fetch referenced message: ${e instanceof Error ? e.message : e}`);
@@ -101,7 +102,7 @@ export async function acquireCdpConnection(
             const activeCdp = await cdpPool.acquire(wsNameFromCategory || '', async (wsName) => {
                 try {
                     await channel.sendTyping();
-                    await channel.send({ embeds: [buildEmbed(`🚀 ワークスペース "${wsName}" を起動中です。しばらくお待ちください...`, EmbedColor.Info)] });
+                    await channel.send({ embeds: [buildEmbed(t('pipeline.launching', wsName), EmbedColor.Info)] });
                 } catch (e) { logDebug(`handleDiscordMessage: failed to react: ${e}`); }
             });
             logDebug(`handleDiscordMessage: acquired CdpBridge from pool for workspace "${wsNameFromCategory || 'default'}"`);
@@ -111,7 +112,7 @@ export async function acquireCdpConnection(
             // WorkspaceConnectionError の場合はユーザーフレンドリーな userMessage を直接表示
             const displayMsg = (e instanceof WorkspaceConnectionError)
                 ? e.userMessage
-                : `ワークスペース "${wsNameFromCategory}" への接続に失敗しました: ${sanitizeErrorForDiscord(e instanceof Error ? e.message : String(e))}`;
+                : t('pipeline.connectionFailed', wsNameFromCategory || '', sanitizeErrorForDiscord(e instanceof Error ? e.message : String(e)));
             await channel.send({ embeds: [buildEmbed(`⚠️ ${displayMsg}`, EmbedColor.Warning)] });
             return null;
         }
@@ -159,7 +160,7 @@ export async function generatePlan(
     const ipcDir = fileIpc.getIpcDir();
     const progressPath = fileIpc.createProgressPath(requestId);
     const { prompt: planPrompt, tempFiles } = buildPlanPrompt(
-        text || '（添付ファイルを確認してください）', intent, channelName,
+        text || t('pipeline.checkAttachments'), intent, channelName,
         responsePath, attachmentPaths, extensionPath, ipcDir, resolvedWsPath, progressPath,
     );
     logDebug('handleDiscordMessage: sending plan prompt via CDP...');
@@ -200,7 +201,7 @@ export async function generatePlan(
 
         // 伝令完了 → 計画生成中ステータス
         try {
-            await channel.send({ embeds: [buildEmbed('✅ 伝令完了。計画を練っています...', EmbedColor.Success)] });
+            await channel.send({ embeds: [buildEmbed(t('pipeline.planGenerating'), EmbedColor.Success)] });
         } catch (ackErr) {
             logDebug(`handleDiscordMessage: failed to send plan-generation ack: ${ackErr}`);
         }
@@ -217,7 +218,7 @@ export async function generatePlan(
                         lastPlanProgress = currentContent;
                         const percentStr = progress.percent !== undefined ? ` (${progress.percent}%)` : '';
                         const detail = progress.detail ? `\n> ${progress.detail}` : '';
-                        await channel.send({ embeds: [buildEmbed(`⏳ ${progress.status || '処理中...'}${percentStr}${detail}`, EmbedColor.Progress)] });
+                        await channel.send({ embeds: [buildEmbed(`⏳ ${progress.status || t('pipeline.processing')}${percentStr}${detail}`, EmbedColor.Progress)] });
                     }
                 }
             } catch { /* ignore */ }
@@ -259,7 +260,7 @@ export async function generatePlan(
         // 検出1: 壊れた計画JSON（plan_id や prompt を含むが不正形式）
         if (trimmed.startsWith('{') && (trimmed.includes('"plan_id"') || trimmed.includes('"prompt"'))) {
             logWarn('handleDiscordMessage: broken plan JSON detected, aborting to prevent raw JSON leak');
-            await channel.send({ embeds: [buildEmbed('❌ 計画の生成に失敗しました（JSONフォーマットエラー）。もう一度指示をお試しください。', EmbedColor.Error)] });
+            await channel.send({ embeds: [buildEmbed(t('pipeline.planJsonError'), EmbedColor.Error)] });
             return null;
         }
 
@@ -332,17 +333,17 @@ export async function handleConfirmation(
         const sentMsg = await channel.send({ embeds: [buildEmbed(confirmMsg, EmbedColor.Warning)] });
         const choices = await bot.waitForMultiChoice(sentMsg, choiceCount);
         if (choices.length === 0) {
-            await channel.send({ embeds: [buildEmbed('❌ 却下しました。', EmbedColor.Error)] });
+            await channel.send({ embeds: [buildEmbed(t('pipeline.rejected'), EmbedColor.Error)] });
             return { confirmed: false };
         }
         if (choices.length === 1 && choices[0] === 0) {
-            await channel.send({ embeds: [buildEmbed('🤖 **エージェントの判断で次のアクションを実行します**', EmbedColor.Info)] });
+            await channel.send({ embeds: [buildEmbed(t('pipeline.agentDelegated'), EmbedColor.Info)] });
             return { confirmed: false, agentDelegated: true };
         }
         if (choices[0] === -1) {
-            await channel.send({ embeds: [buildEmbed('✅ 全て選択しました。', EmbedColor.Success)] });
+            await channel.send({ embeds: [buildEmbed(t('pipeline.allSelected'), EmbedColor.Success)] });
         } else {
-            await channel.send({ embeds: [buildEmbed(`✅ 選択肢 ${choices.join(', ')} を選択しました。`, EmbedColor.Success)] });
+            await channel.send({ embeds: [buildEmbed(t('pipeline.choicesSelected', choices.join(', ')), EmbedColor.Success)] });
         }
         plan.status = 'active';
         return { confirmed: true, selectedChoices: choices };
@@ -352,14 +353,14 @@ export async function handleConfirmation(
         const sentMsg = await channel.send({ embeds: [buildEmbed(confirmMsg, EmbedColor.Warning)] });
         const choice = await bot.waitForChoice(sentMsg, choiceCount);
         if (choice === -1) {
-            await channel.send({ embeds: [buildEmbed('❌ 却下しました。', EmbedColor.Error)] });
+            await channel.send({ embeds: [buildEmbed(t('pipeline.rejected'), EmbedColor.Error)] });
             return { confirmed: false };
         }
         if (choice === 0) {
-            await channel.send({ embeds: [buildEmbed('🤖 **エージェントの判断で次のアクションを実行します**', EmbedColor.Info)] });
+            await channel.send({ embeds: [buildEmbed(t('pipeline.agentDelegated'), EmbedColor.Info)] });
             return { confirmed: false, agentDelegated: true };
         }
-        await channel.send({ embeds: [buildEmbed(`✅ 選択肢 ${choice} を承認しました。`, EmbedColor.Success)] });
+        await channel.send({ embeds: [buildEmbed(t('pipeline.choiceApproved', String(choice)), EmbedColor.Success)] });
         plan.status = 'active';
         return { confirmed: true, selectedChoices: [choice] };
     }
@@ -367,7 +368,7 @@ export async function handleConfirmation(
     const sentMsg = await channel.send({ embeds: [buildEmbed(confirmMsg, EmbedColor.Warning)] });
     const confirmed = await bot.waitForConfirmation(sentMsg);
     if (!confirmed) {
-        await channel.send({ embeds: [buildEmbed('❌ 却下しました。', EmbedColor.Error)] });
+        await channel.send({ embeds: [buildEmbed(t('pipeline.rejected'), EmbedColor.Error)] });
         return { confirmed: false };
     }
     plan.status = 'active';
@@ -383,7 +384,7 @@ export function applyChoiceSelection(plan: Plan, selectedChoices?: number[]): vo
     // 全選択（[-1]）の場合は prompt 修正不要
     if (selectedChoices.length === 1 && selectedChoices[0] === -1) { return; }
     const choiceStr = selectedChoices.join(', ');
-    plan.prompt = `【重要】ユーザーは以下のリストから選択肢 ${choiceStr} を選びました。選択された項目のみを実行してください。他の項目は無視してください。\n\n${plan.prompt}`;
+    plan.prompt = `${t('pipeline.choicePrefix', choiceStr)}\n\n${plan.prompt}`;
     logDebug(`messageHandler: applied choice selection [${choiceStr}] to plan prompt`);
 }
 
@@ -423,7 +424,7 @@ export async function dispatchPlan(
             // tasks がない場合はメインエージェント単独実行にフォールバック
             if (plan.tasks && plan.tasks.length > 1) {
                 try {
-                    await channel.send({ embeds: [buildEmbed(`🤖 **チームモード**: AI が ${plan.tasks.length} 個のタスクに分割済み。サブエージェントに指令を作成中...`, EmbedColor.Info)] });
+                    await channel.send({ embeds: [buildEmbed(t('pipeline.teamSplitting', String(plan.tasks.length)), EmbedColor.Info)] });
                     logDebug(`dispatchPlan: Team mode — AI provided ${plan.tasks.length} tasks`);
 
                     // maxAgents に従ってグループ化（WS別のrepoRootを使用）
@@ -445,7 +446,7 @@ export async function dispatchPlan(
                         plan.prompt, // 元のユーザーリクエストをコンテキストとして渡す
                     );
 
-                    await channel.send({ embeds: [buildEmbed(`📋 ${plan.tasks.length}個のタスクを${tasks.length}個のサブエージェントに割り振りました。起動中...`, EmbedColor.Info)] });
+                    await channel.send({ embeds: [buildEmbed(t('pipeline.taskAssigned', String(plan.tasks.length), String(tasks.length)), EmbedColor.Info)] });
 
                     // Phase 3~5: サブエージェント起動 → 実行 → レスポンス収集
                     const abortController = new AbortController();
@@ -472,7 +473,7 @@ export async function dispatchPlan(
 
                         // メインエージェントに報告プロンプトを送信（ファイル読み取り方式）:
                         // 指示の詳細は report_instruction.json に含まれるため、CDP経由では短い指示のみ送信
-                        const reportInstructionPath = ctx.teamOrchestrator.writeReportInstructionFile(
+                        const { instructionPath: reportInstructionPath, progressPath: reportProgressPath } = ctx.teamOrchestrator.writeReportInstructionFile(
                             teamRequestId,
                             reportPath,
                             reportResponsePath,
@@ -486,9 +487,33 @@ export async function dispatchPlan(
                         await activeCdp.sendPrompt(reportPrompt);
                         logDebug('dispatchPlan: Team mode — report prompt sent, waiting for response...');
 
-                        // メインエージェントの統合レポートを待機
+                        // メインエージェントの統合レポートを待機（進捗ポーリング付き）
                         const cascadeReportTimeoutMs = 300_000;
                         fileIpc!.registerActiveRequest(reportReqId);
+
+                        // 進捗ポーリング: メインエージェントの progress.json を 3 秒間隔で監視し Discord に中継
+                        let lastReportProgress = '';
+                        const reportProgressInterval = setInterval(async () => {
+                            try {
+                                const progress = await fileIpc!.readProgress(reportProgressPath);
+                                if (progress) {
+                                    const currentContent = JSON.stringify(progress);
+                                    if (currentContent !== lastReportProgress) {
+                                        lastReportProgress = currentContent;
+                                        const percentStr = progress.percent !== undefined ? ` (${progress.percent}%)` : '';
+                                        const detail = progress.detail ? `\n> ${progress.detail}` : '';
+                                        await channel.send({ embeds: [buildEmbed(`⏳ ${progress.status || t('pipeline.integrating')}${percentStr}${detail}`, EmbedColor.Progress)] });
+                                    }
+                                }
+                            } catch { /* ignore */ }
+                        }, 3_000);
+
+                        // 8秒間隔のタイピングインジケーター（メインチャット）
+                        const reportTypingInterval = setInterval(async () => {
+                            try { await channel.sendTyping(); } catch (e) { logDebug(`dispatchPlan: report sendTyping failed: ${e}`); }
+                        }, 8_000);
+                        try { await channel.sendTyping(); } catch (e) { logDebug(`dispatchPlan: report sendTyping failed: ${e}`); }
+
                         try {
                             const cascadeResponse = await fileIpc!.waitForResponse(reportResponsePath, cascadeReportTimeoutMs);
                             logDebug(`dispatchPlan: Team mode — received Cascade integrated report (${cascadeResponse.length} chars)`);
@@ -528,12 +553,15 @@ export async function dispatchPlan(
                             });
                             logInfo('dispatchPlan: Team mode — integrated report sent to Discord ✅');
                         } finally {
+                            clearInterval(reportProgressInterval);
+                            clearInterval(reportTypingInterval);
+                            fileIpc!.cleanupProgress(reportProgressPath).catch(() => { });
                             fileIpc!.unregisterActiveRequest(reportReqId);
                         }
                     } catch (cascadeErr) {
                         // Cascade 送信/待機に失敗した場合はフォールバック: 個別結果を直接送信
                         logWarn(`dispatchPlan: Team mode — failed to get integrated report, falling back: ${cascadeErr instanceof Error ? cascadeErr.message : cascadeErr}`);
-                        await channel.send({ embeds: [buildEmbed('⚠️ 統合レポートの生成に失敗しました。個別結果を表示します。', EmbedColor.Warning)] });
+                        await channel.send({ embeds: [buildEmbed(t('pipeline.reportFailed'), EmbedColor.Warning)] });
 
                         // フォールバック: 各サブエージェントの結果を個別に送信
                         if (teamResult) {
@@ -559,13 +587,13 @@ export async function dispatchPlan(
                 } catch (e) {
                     const errMsg = e instanceof Error ? e.message : String(e);
                     logError(`dispatchPlan: Team orchestration failed: ${errMsg}`, e);
-                    await channel.send({ embeds: [buildEmbed(`❌ チームモード実行エラー: ${sanitizeErrorForDiscord(errMsg)}`, EmbedColor.Error)] });
+                    await channel.send({ embeds: [buildEmbed(t('pipeline.teamError', sanitizeErrorForDiscord(errMsg)), EmbedColor.Error)] });
                     teamModeFallback = true;
                 }
             } else {
                 // plan.tasks がない → AI がチームモード不要と判断
                 logDebug('dispatchPlan: Team mode — no plan.tasks provided by AI, falling back to normal mode');
-                await channel.send({ embeds: [buildEmbed('📋 メインエージェントで実行します（チームモード対象外）', EmbedColor.Info)] });
+                await channel.send({ embeds: [buildEmbed(t('pipeline.normalMode'), EmbedColor.Info)] });
                 teamModeFallback = true;
             }
 
@@ -603,6 +631,6 @@ export async function dispatchPlan(
         planStore!.add(plan);
         scheduler!.register(plan);
         const channelMention = plan.channel_id ? `<#${plan.channel_id}> ` : '#schedule';
-        await channel.send({ embeds: [buildEmbed(`📅 定期実行を登録しました: \`${plan.cron}\` (${plan.timezone})\n結果は ${channelMention} チャンネルに通知されます。`, EmbedColor.Success)] });
+        await channel.send({ embeds: [buildEmbed(t('pipeline.scheduled', plan.cron || '', plan.timezone, channelMention), EmbedColor.Success)] });
     }
 }

@@ -12,6 +12,7 @@ import { AntigravityLaunchError } from './errors';
 import { getCdpPorts, getWorkspacePaths } from './configHelper';
 import { logDebug, logWarn } from './logger';
 import { buildEmbed, EmbedColor } from './embedHelper';
+import { t } from './i18n';
 
 export interface ResolveResult {
     /** 使用する CdpBridge インスタンス */
@@ -71,7 +72,7 @@ export async function resolveWorkspace(
 
             if (folderPath) {
                 logDebug(`workspaceResolver: workspace "${wsName}" not found, auto-opening folder "${folderPath}"...`);
-                await channel.send({ embeds: [buildEmbed(`🚀 ワークスペース "${wsName}" を起動中...`, EmbedColor.Info)] });
+                await channel.send({ embeds: [buildEmbed(t('wsResolver.launching', wsName), EmbedColor.Info)] });
                 try {
                     await activeCdp.launchAntigravity(folderPath);
                     const maxWaitMs = 30_000;
@@ -97,7 +98,7 @@ export async function resolveWorkspace(
                 } catch (autoOpenErr) {
                     const errMsg = autoOpenErr instanceof Error ? autoOpenErr.message : String(autoOpenErr);
                     logWarn(`workspaceResolver: auto-open failed — ${errMsg}`);
-                    await channel.send({ embeds: [buildEmbed(`⚠️ 自動起動に失敗しました: ${errMsg}`, EmbedColor.Warning)] });
+                    await channel.send({ embeds: [buildEmbed(t('wsResolver.launchFailed', errMsg), EmbedColor.Warning)] });
                     // AntigravityLaunchError として再分類
                     if (!(autoOpenErr instanceof AntigravityLaunchError)) {
                         logDebug(`workspaceResolver: wrapping error as AntigravityLaunchError`);
@@ -123,9 +124,9 @@ export async function resolveWorkspace(
             logWarn(`workspaceResolver: workspace "${wsName}" not found even after auto-open`);
             const wsPaths = getWorkspacePaths();
             if (!wsPaths[wsName]) {
-                await channel.send({ embeds: [buildEmbed(`⚠️ ワークスペース "${wsName}" のパスが設定されていません。\n設定 \`antiCrow.workspacePaths\` にパスを追加してください。\n例: \`"${wsName}": "C:\\\\Users\\\\...\\\\${wsName}"\``, EmbedColor.Warning)] });
+                await channel.send({ embeds: [buildEmbed(t('wsResolver.pathNotSet', wsName), EmbedColor.Warning)] });
             } else {
-                await channel.send({ embeds: [buildEmbed(`⚠️ ワークスペース "${wsName}" を起動しましたが、接続できませんでした。Antigravity のウインドウを確認してください。`, EmbedColor.Warning)] });
+                await channel.send({ embeds: [buildEmbed(t('wsResolver.launchButNoConnect', wsName), EmbedColor.Warning)] });
             }
             return null;
         }

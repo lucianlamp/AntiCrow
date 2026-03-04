@@ -17,6 +17,7 @@ import { BridgeContext } from './bridgeContext';
 import { handleTemplateButton } from './templateHandler';
 import { getSuggestion, getAllSuggestions, SUGGEST_AUTO_ID, AUTO_PROMPT } from './suggestionButtons';
 import { processSuggestionPrompt } from './messageHandler';
+import { t } from './i18n';
 
 /**
  * テンプレート・Pro・キュー・提案関連ボタンを処理する。
@@ -39,12 +40,12 @@ export async function handleMiscButton(
             // VS Code 側のライセンス情報コマンドを実行
             await vscode.commands.executeCommand('anti-crow.licenseInfo');
             await interaction.reply({
-                embeds: [buildEmbed('📋 VS Code 側にライセンス情報を表示しました。', EmbedColor.Success)],
+                embeds: [buildEmbed(t('misc.pro.infoShown'), EmbedColor.Success)],
             });
         } catch (e) {
             logError('pro_info button failed', e);
             await interaction.reply({
-                embeds: [buildEmbed('❌ ライセンス情報の取得に失敗しました。', EmbedColor.Error)],
+                embeds: [buildEmbed(t('misc.pro.infoError'), EmbedColor.Error)],
             });
         }
         return true;
@@ -53,11 +54,11 @@ export async function handleMiscButton(
     if (customId === 'pro_key_input') {
         const modal = new ModalBuilder()
             .setCustomId('pro_key_modal')
-            .setTitle('ライセンスキー入力');
+            .setTitle(t('misc.pro.keyModalTitle'));
 
         const keyInput = new TextInputBuilder()
             .setCustomId('license_key')
-            .setLabel('ライセンスキー')
+            .setLabel(t('misc.pro.keyLabel'))
             .setPlaceholder('XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX')
             .setStyle(TextInputStyle.Short)
             .setRequired(true)
@@ -79,18 +80,18 @@ export async function handleMiscButton(
         const content = getWaitingMessageContent(msgId);
         if (content === null) {
             await interaction.reply({
-                embeds: [buildEmbed('⚠️ 該当のメッセージは既に処理済みか削除されています', EmbedColor.Warning)],
+                embeds: [buildEmbed(t('misc.queue.messageProcessed'), EmbedColor.Warning)],
             });
             return true;
         }
 
         const modal = new ModalBuilder()
             .setCustomId(`queue_edit_modal_${msgId}`)
-            .setTitle('メッセージ編集');
+            .setTitle(t('misc.queue.editModalTitle'));
 
         const contentInput = new TextInputBuilder()
             .setCustomId('queue_edit_content')
-            .setLabel('メッセージ内容')
+            .setLabel(t('misc.queue.editLabel'))
             .setStyle(TextInputStyle.Paragraph)
             .setRequired(true)
             .setMaxLength(2000)
@@ -111,12 +112,12 @@ export async function handleMiscButton(
         const removed = removeWaitingMessage(msgId);
         if (removed) {
             await interaction.update({
-                embeds: [buildEmbed(`✅ 待機メッセージを削除しました`, EmbedColor.Success)],
+                embeds: [buildEmbed(t('misc.queue.removed'), EmbedColor.Success)],
                 components: [],
             });
         } else {
             await interaction.update({
-                embeds: [buildEmbed(`⚠️ 該当のメッセージは既に処理済みか削除されています`, EmbedColor.Warning)],
+                embeds: [buildEmbed(t('misc.queue.messageProcessed'), EmbedColor.Warning)],
                 components: [],
             });
         }
@@ -127,7 +128,7 @@ export async function handleMiscButton(
     if (customId === 'queue_clear_waiting') {
         const { clearWaitingMessages } = await import('./messageHandler');
         const count = clearWaitingMessages();
-        await interaction.reply({ embeds: [buildEmbed(`✅ ${count}件の待機メッセージを削除しました。`, EmbedColor.Success)] });
+        await interaction.reply({ embeds: [buildEmbed(t('misc.queue.cleared', String(count)), EmbedColor.Success)] });
         return true;
     }
 
@@ -139,9 +140,9 @@ export async function handleMiscButton(
         let prompt = AUTO_PROMPT;
         if (suggestions && suggestions.length > 0) {
             const suggestionContext = suggestions.map((s, i) => `${i + 1}. ${s.label}: ${s.prompt}`).join('\n');
-            prompt = `以下の提案が直前に表示されています。これらを参考にして、エージェントの判断で最適なアクションを実行してください。\n\n【直前の提案】\n${suggestionContext}\n\n${AUTO_PROMPT}`;
+            prompt = t('misc.suggest.autoPromptPrefix', suggestionContext, AUTO_PROMPT);
         }
-        await interaction.reply({ embeds: [buildEmbed('🤖 **エージェントの判断で次のアクションを実行します**', EmbedColor.Info)] });
+        await interaction.reply({ embeds: [buildEmbed(t('misc.suggest.auto'), EmbedColor.Info)] });
         processSuggestionPrompt(ctx, channelId, prompt, interaction.user.id).catch((e: unknown) => {
             logError('suggest_auto button: processSuggestionPrompt failed', e);
         });
@@ -154,10 +155,10 @@ export async function handleMiscButton(
         const index = parseInt(customId.replace('suggest_', ''), 10);
         const suggestion = getSuggestion(channelId, index);
         if (!suggestion) {
-            await interaction.reply({ embeds: [buildEmbed('⚠️ この提案は既に無効です。', EmbedColor.Warning)] });
+            await interaction.reply({ embeds: [buildEmbed(t('misc.suggest.expired'), EmbedColor.Warning)] });
             return true;
         }
-        await interaction.reply({ embeds: [buildEmbed(`💡 **提案を実行:** ${suggestion.label}`, EmbedColor.Info)] });
+        await interaction.reply({ embeds: [buildEmbed(t('misc.suggest.executing', suggestion.label), EmbedColor.Info)] });
         // メッセージパイプラインに提案プロンプトを流す（非同期で実行）
         processSuggestionPrompt(ctx, channelId, suggestion.prompt, interaction.user.id).catch((e: unknown) => {
             logError('suggest button: processSuggestionPrompt failed', e);

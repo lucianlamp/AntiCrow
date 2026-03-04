@@ -3,6 +3,7 @@
 // ---------------------------------------------------------------------------
 
 import { EmbedBuilder } from 'discord.js';
+import { t } from './i18n';
 
 /** メッセージ種別に応じた Embed カラー */
 export const EmbedColor = {
@@ -72,7 +73,7 @@ export function sanitizeErrorForDiscord(rawMessage: string): string {
     ];
     for (const pattern of sensitivePatterns) {
         if (pattern.test(rawMessage)) {
-            return '内部エラーが発生しました。詳細はログを確認してください。';
+            return t('embed.internalError');
         }
     }
     return rawMessage;

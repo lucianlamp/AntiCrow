@@ -14,6 +14,7 @@ import { buildEmbed, EmbedColor } from './embedHelper';
 import { parseSuggestions, SuggestionItem } from './suggestionParser';
 import { buildSuggestionRow, buildSuggestionContent, storeSuggestions } from './suggestionButtons';
 import { getWorkspacePaths } from './configHelper';
+import { t } from './i18n';
 import type { ActionRowBuilder, ButtonBuilder, EmbedBuilder } from 'discord.js';
 
 // ---------------------------------------------------------------------------
@@ -52,7 +53,7 @@ export function processResponseContent(response: string, responsePath: string, p
     const { suggestions, cleanContent } = parseSuggestions(memoryCleanContent);
 
     // 成功通知（重複タイトル防止）
-    const prefix = plan.discord_templates.run_success_prefix || '✅ 実行完了';
+    const prefix = plan.discord_templates.run_success_prefix || t('response.successDefault');
     const prefixCore = prefix.replace(/[\s*]/g, '').replace(/^[^\p{L}\p{N}]+/u, '');
     const contentStart = cleanContent.substring(0, 100).replace(/[\s*]/g, '').replace(/^[^\p{L}\p{N}]+/u, '');
     const isDuplicate = prefixCore.length > 0 && contentStart.startsWith(prefixCore);
@@ -116,11 +117,11 @@ export async function sendFileReferences(
                     } else {
                         let skipMsg: string;
                         if (result.reason === 'too_large') {
-                            skipMsg = `⚠️ ファイルが大きすぎるため送信をスキップしました（${result.sizeMB}MB / 上限25MB）: \`${result.fileName || ref.path}\``;
+                            skipMsg = t('response.file.tooLarge', result.sizeMB || '?', result.fileName || ref.path);
                         } else if (result.reason === 'not_found') {
-                            skipMsg = `⚠️ ファイルが見つからないため送信をスキップしました: \`${ref.path}\``;
+                            skipMsg = t('response.file.notFound', ref.path);
                         } else {
-                            skipMsg = `⚠️ ファイルの送信に失敗しました: \`${result.fileName || ref.path}\``;
+                            skipMsg = t('response.file.sendFailed', result.fileName || ref.path);
                         }
                         await safeNotify(notifyChannel, skipMsg, EmbedColor.Warning);
                         logDebug(`ResponseHandler: file send skipped (${result.reason}): ${ref.path}`);

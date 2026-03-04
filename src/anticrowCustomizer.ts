@@ -7,6 +7,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { logDebug, logWarn, logError } from './logger';
+import { t } from './i18n';
 
 // -------------------------------------------------------------------------
 // Constants
@@ -56,7 +57,7 @@ export function updateAnticrowMd(
         if (contentBytes > MAX_FILE_SIZE_BYTES) {
             return {
                 success: false,
-                error: `カスタマイズファイルのサイズ上限（${MAX_FILE_SIZE_BYTES / 1024}KB）を超えています。内容を短縮してください。`,
+                error: t('customizer.sizeExceeded', MAX_FILE_SIZE_BYTES / 1024),
             };
         }
 
@@ -83,7 +84,7 @@ export function updateAnticrowMd(
             if (Buffer.byteLength(finalContent, 'utf-8') > MAX_FILE_SIZE_BYTES) {
                 return {
                     success: false,
-                    error: `マージ後のサイズが上限（${MAX_FILE_SIZE_BYTES / 1024}KB）を超えてしまいます。上書きモードを使用するか、内容を短縮してください。`,
+                    error: t('customizer.mergeSizeExceeded', MAX_FILE_SIZE_BYTES / 1024),
                 };
             }
         } else {
@@ -99,7 +100,7 @@ export function updateAnticrowMd(
         logError('anticrowCustomizer: failed to update customization file', e);
         return {
             success: false,
-            error: 'カスタマイズファイルの更新に失敗しました。',
+            error: t('customizer.updateFailed'),
         };
     }
 }
@@ -140,7 +141,7 @@ export function updateSection(
         logError(`anticrowCustomizer: failed to update section "${sectionName}"`, e);
         return {
             success: false,
-            error: 'セクションの更新に失敗しました。',
+            error: t('customizer.sectionUpdateFailed'),
         };
     }
 }

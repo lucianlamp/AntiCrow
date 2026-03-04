@@ -12,6 +12,7 @@ import {
 
 import { logDebug } from './logger';
 import { buildEmbed, EmbedColor } from './embedHelper';
+import { t } from './i18n';
 import { buildScheduleListEmbed, buildDeleteConfirmEmbed } from './scheduleButtons';
 import { BridgeContext } from './bridgeContext';
 import { getTimezone } from './configHelper';
@@ -41,31 +42,31 @@ export async function handleScheduleButton(
     if (customId === 'sched_new') {
         const modal = new ModalBuilder()
             .setCustomId('sched_modal_new')
-            .setTitle('スケジュール新規作成');
+            .setTitle(t('btnSched.newTitle'));
 
         const promptInput = new TextInputBuilder()
             .setCustomId('sched_prompt')
-            .setLabel('実行内容（プロンプト）')
+            .setLabel(t('btnSched.promptLabel'))
             .setStyle(TextInputStyle.Paragraph)
             .setRequired(true)
             .setMaxLength(2000)
-            .setPlaceholder('例: 今日のタスクをまとめてレポートしてください。変数: {{date}}, {{env:XXX}}');
+            .setPlaceholder(t('btnSched.promptPlaceholder'));
 
         const cronInput = new TextInputBuilder()
             .setCustomId('sched_cron_text')
-            .setLabel('実行スケジュール（自然文 or cron式）')
+            .setLabel(t('btnSched.cronLabel'))
             .setStyle(TextInputStyle.Short)
             .setRequired(true)
             .setMaxLength(100)
-            .setPlaceholder('例: 毎日9時 / 平日の18時 / 3時間おき / 0 9 * * *');
+            .setPlaceholder(t('btnSched.cronPlaceholder'));
 
         const summaryInput = new TextInputBuilder()
             .setCustomId('sched_summary')
-            .setLabel('スケジュール名（省略可）')
+            .setLabel(t('btnSched.nameLabel'))
             .setStyle(TextInputStyle.Short)
             .setRequired(false)
             .setMaxLength(60)
-            .setPlaceholder('例: 日次レポート');
+            .setPlaceholder(t('btnSched.namePlaceholder'));
 
         modal.addComponents(
             new ActionRowBuilder<TextInputBuilder>().addComponents(promptInput) as any,
@@ -81,7 +82,7 @@ export async function handleScheduleButton(
         const planId = customId.replace('sched_toggle_', '');
         const plan = ctx.planStore!.get(planId);
         if (!plan) {
-            await interaction.reply({ embeds: [buildEmbed(`⚠️ 計画 \`${planId}\` が見つかりません。`, EmbedColor.Warning)] });
+            await interaction.reply({ embeds: [buildEmbed(t('btnSched.planNotFound', planId), EmbedColor.Warning)] });
             return true;
         }
 
@@ -127,7 +128,7 @@ export async function handleScheduleButton(
         const planId = customId.replace('sched_delete_', '');
         const plan = ctx.planStore!.get(planId);
         if (!plan) {
-            await interaction.reply({ embeds: [buildEmbed(`⚠️ 計画 \`${planId}\` が見つかりません。`, EmbedColor.Warning)] });
+            await interaction.reply({ embeds: [buildEmbed(t('btnSched.planNotFound', planId), EmbedColor.Warning)] });
             return true;
         }
 
@@ -167,13 +168,13 @@ export async function handleScheduleButton(
         const planId = customId.replace('sched_run_', '');
         const plan = ctx.planStore!.get(planId);
         if (!plan) {
-            await interaction.reply({ embeds: [buildEmbed(`⚠️ 計画 \`${planId}\` が見つかりません。`, EmbedColor.Warning)] });
+            await interaction.reply({ embeds: [buildEmbed(t('btnSched.planNotFound', planId), EmbedColor.Warning)] });
             return true;
         }
 
         const summary = plan.human_summary || plan.prompt.substring(0, 60);
         await interaction.reply({
-            embeds: [buildEmbed(`▶️ スケジュール「${summary}」を即時実行します...`, EmbedColor.Info)],
+            embeds: [buildEmbed(t('btnSched.runImmediate', summary), EmbedColor.Info)],
         });
 
         // 変数展開
@@ -203,17 +204,17 @@ export async function handleScheduleButton(
         const planId = customId.replace('sched_edit_', '');
         const plan = ctx.planStore!.get(planId);
         if (!plan) {
-            await interaction.reply({ embeds: [buildEmbed(`⚠️ 計画 \`${planId}\` が見つかりません。`, EmbedColor.Warning)] });
+            await interaction.reply({ embeds: [buildEmbed(t('btnSched.planNotFound', planId), EmbedColor.Warning)] });
             return true;
         }
 
         const modal = new ModalBuilder()
             .setCustomId(`sched_modal_edit_${planId}`)
-            .setTitle('スケジュール編集');
+            .setTitle(t('btnSched.editTitle'));
 
         const promptInput = new TextInputBuilder()
             .setCustomId('sched_edit_prompt')
-            .setLabel('実行内容（プロンプト）')
+            .setLabel(t('btnSched.promptLabel'))
             .setStyle(TextInputStyle.Paragraph)
             .setRequired(true)
             .setMaxLength(2000)
@@ -221,16 +222,16 @@ export async function handleScheduleButton(
 
         const cronInput = new TextInputBuilder()
             .setCustomId('sched_edit_cron_text')
-            .setLabel('実行スケジュール（自然文 or cron式）')
+            .setLabel(t('btnSched.cronLabel'))
             .setStyle(TextInputStyle.Short)
             .setRequired(true)
             .setMaxLength(100)
             .setValue(plan.cron || '')
-            .setPlaceholder('例: 毎日9時 / 平日の18時 / 0 9 * * *');
+            .setPlaceholder(t('btnSched.cronPlaceholderEdit'));
 
         const summaryInput = new TextInputBuilder()
             .setCustomId('sched_edit_summary')
-            .setLabel('スケジュール名（省略可）')
+            .setLabel(t('btnSched.nameLabel'))
             .setStyle(TextInputStyle.Short)
             .setRequired(false)
             .setMaxLength(60)
