@@ -36,7 +36,7 @@ import { openHistoryAndGetSections, selectConversation, closePopup, type Convers
 import { BridgeContext } from './bridgeContext';
 import { resolveWorkspaceFromChannel } from './discordChannels';
 
-import { getTimezone, isUserAllowed, getWorkspacePaths } from './configHelper';
+import { getTimezone, isUserAllowed } from './configHelper';
 import { handleWorkspaceButton, handleWorkspaceModalSubmit, getRunningWsNames } from './workspaceHandler';
 import { fetchQuota } from './quotaProvider';
 import { handleManageSlash } from './adminHandler';
@@ -93,6 +93,7 @@ function debouncedRename(ctx: BridgeContext, channelId: string, newName: string)
  */
 function resolveRepoRootFromInteraction(
     interaction: { channel: unknown },
+    cdpPool?: import('./cdpPool').CdpPool | null,
 ): { repoRoot: string | undefined; wsName: string | null } {
     const channel = interaction.channel;
     let wsName: string | null = null;
@@ -100,7 +101,7 @@ function resolveRepoRootFromInteraction(
         wsName = resolveWorkspaceFromChannel(channel as import('discord.js').TextChannel);
     }
     if (wsName) {
-        const wsPaths = getWorkspacePaths();
+        const wsPaths = cdpPool?.getResolvedWorkspacePaths() ?? {};
         if (wsPaths[wsName]) {
             return { repoRoot: wsPaths[wsName], wsName };
         }
@@ -822,7 +823,7 @@ export async function handleButtonInteraction(
         // ----- チームモード関連ボタン -----
         if (customId.startsWith('team_')) {
             const teamAction = customId.replace('team_', '');
-            const { repoRoot } = resolveRepoRootFromInteraction(interaction);
+            const { repoRoot } = resolveRepoRootFromInteraction(interaction, ctx.cdpPool);
             if (!repoRoot) {
                 await interaction.reply({ embeds: [buildEmbed('⚠️ ワークスペースが検出されません。', EmbedColor.Warning)] });
                 return;

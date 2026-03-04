@@ -33,7 +33,7 @@ import { loadTeamConfig, saveTeamConfig } from './teamConfig';
 import { BridgeContext } from './bridgeContext';
 import { resetProcessingFlag, getMessageQueueStatus, cancelPlanGeneration, enqueueMessage, clearWaitingMessages } from './messageHandler';
 import type { ProcessingPhase } from './messageHandler';
-import { getTimezone, getWorkspacePaths } from './configHelper';
+import { getTimezone } from './configHelper';
 import { DiscordBot } from './discordBot';
 import { getRunningWsNames, buildWorkspaceListEmbed } from './workspaceHandler';
 import { fetchQuota } from './quotaProvider';
@@ -915,7 +915,7 @@ async function handleTeam(
     const wsName = channel ? DiscordBot.resolveWorkspaceFromChannel(channel) : null;
     let repoRoot: string | undefined;
     if (wsName) {
-        const wsPaths = getWorkspacePaths();
+        const wsPaths = ctx.cdpPool?.getResolvedWorkspacePaths() ?? {};
         if (wsPaths[wsName]) {
             repoRoot = wsPaths[wsName];
         }

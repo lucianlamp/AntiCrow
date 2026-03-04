@@ -732,7 +732,7 @@ async function dispatchPlan(
                     // maxAgents に従ってグループ化（WS別のrepoRootを使用）
                     const teamRepoRoot = (() => {
                         if (wsNameFromCategory) {
-                            const wsPaths = getWorkspacePaths();
+                            const wsPaths = ctx.cdpPool?.getResolvedWorkspacePaths() ?? {};
                             if (wsPaths[wsNameFromCategory]) { return wsPaths[wsNameFromCategory]; }
                         }
                         return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
@@ -972,7 +972,7 @@ export async function handleDiscordMessage(
     // ワークスペースパスの解決: Discordカテゴリー → ワークスペースパス設定 → フォールバック
     const resolvedRepoRoot = (() => {
         if (wsNameFromCategory) {
-            const wsPaths = getWorkspacePaths();
+            const wsPaths = ctx.cdpPool?.getResolvedWorkspacePaths() ?? {};
             if (wsPaths[wsNameFromCategory]) {
                 return wsPaths[wsNameFromCategory];
             }
@@ -1031,7 +1031,7 @@ export async function handleDiscordMessage(
                 logDebug(`handleDiscordMessage: ${downloaded.length} attachment(s) saved`);
             }
         }
-        const resolvedWsPath = wsNameFromCategory ? getWorkspacePaths()[wsNameFromCategory] : undefined;
+        const resolvedWsPath = wsNameFromCategory ? (ctx.cdpPool?.getResolvedWorkspacePaths() ?? {})[wsNameFromCategory] : undefined;
 
         // ステータス: Plan 生成中
         currentProcessingStatuses.set(wsKeyForStatus, {
@@ -1214,7 +1214,7 @@ export async function processSuggestionPrompt(
                 messagePreview: promptText.substring(0, 50),
             });
 
-            const wsPaths = getWorkspacePaths();
+            const wsPaths = cdpPool?.getResolvedWorkspacePaths() ?? {};
             const resolvedWsPath = wsNameFromCategory ? wsPaths[wsNameFromCategory] : undefined;
 
             const result = await generatePlan(

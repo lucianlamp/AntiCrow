@@ -610,6 +610,14 @@ export class CdpPool {
     }
 
     /**
+     * ワークスペース名 → フォルダパスの解決済みマッピングを取得する。
+     * WorkspaceStore（自動学習）+ settings.json（手動設定）をマージして返す。
+     */
+    getResolvedWorkspacePaths(): Record<string, string> {
+        return resolveWorkspacePaths(this.workspaceStore);
+    }
+
+    /**
      * プールサイズを取得する。
      */
     get size(): number {
