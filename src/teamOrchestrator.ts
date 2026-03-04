@@ -76,6 +76,8 @@ export class TeamOrchestrator {
     private disposed = false;
     private threadOps: ThreadOps | null = null;
     private worktreePool: WorktreePool;
+    /** 外部からワークスペース名→パスのマッピングを取得するコールバック */
+    private wsPathResolver: (() => Record<string, string>) | null = null;
 
     /** 実行時にワークスペースを動的に切り替えるための repoRoot 解決 */
     private getEffectiveRepoRoot(override?: string): string {
@@ -83,20 +85,39 @@ export class TeamOrchestrator {
     }
 
     /**
+     * 外部ワークスペースパスリゾルバーを設定する。
+     * CdpPool.getResolvedWorkspacePaths() を注入することで、
+     * auto-learned ワークスペースパスを使えるようにする。
+     */
+    setWsPathResolver(resolver: () => Record<string, string>): void {
+        this.wsPathResolver = resolver;
+        logDebug('[TeamOrchestrator] wsPathResolver set');
+    }
+
+    /**
      * ワークスペース名からリポジトリルートパスを解決する。
-     * resolveWorkspacePaths() でワークスペース名→パスの変換を行い、
-     * 対象ワークスペースの正しいリポジトリルートを返す。
+     * 優先順位: wsPathResolver（cdpPool auto-learned）> resolveWorkspacePaths（settings.json）
      * 解決できない場合は undefined を返す（デフォルト repoRoot が使用される）。
      */
     private resolveRepoRootForWorkspace(workspaceName: string): string | undefined {
         try {
+            // 1. 外部リゾルバー（cdpPool.getResolvedWorkspacePaths）を優先
+            if (this.wsPathResolver) {
+                const resolvedPaths = this.wsPathResolver();
+                const resolvedPath = resolvedPaths[workspaceName];
+                if (resolvedPath) {
+                    logDebug(`[TeamOrchestrator] resolveRepoRootForWorkspace: "${workspaceName}" → "${resolvedPath}" (via wsPathResolver)`);
+                    return resolvedPath;
+                }
+            }
+            // 2. settings.json のフォールバック
             const wsPaths = resolveWorkspacePaths();
             const wsPath = wsPaths[workspaceName];
             if (wsPath) {
-                logDebug(`[TeamOrchestrator] resolveRepoRootForWorkspace: "${workspaceName}" → "${wsPath}"`);
+                logDebug(`[TeamOrchestrator] resolveRepoRootForWorkspace: "${workspaceName}" → "${wsPath}" (via settings)`);
                 return wsPath;
             }
-            logDebug(`[TeamOrchestrator] resolveRepoRootForWorkspace: "${workspaceName}" not found in workspace paths, using default`);
+            logDebug(`[TeamOrchestrator] resolveRepoRootForWorkspace: "${workspaceName}" not found in any workspace paths, using default`);
             return undefined;
         } catch (err) {
             logWarn(`[TeamOrchestrator] resolveRepoRootForWorkspace error: ${err}`);
@@ -709,8 +730,7 @@ export class TeamOrchestrator {
                     `\n\n【重要】他のサブエージェントと作業が重複しないよう注意してください。` +
                     `あなたの担当範囲のみを実行し、他のサブエージェントの担当範囲には手を出さないでください。` +
                     `同じファイルの同じ箇所を修正しないでください。` +
-                    (otherTasksSummary ? `\n\n【他のサブエージェントの担当】\n${otherTasksSummary}` : '') +
-                    `\n\n進捗は progress_path に定期的に書き込み、完了したら response_path に結果を書き込んでください。`,
+                    (otherTasksSummary ? `\n\n【他のサブエージェントの担当】\n${otherTasksSummary}` : ''),
                 agentIndex,
                 task: tasks[i],
                 response_path: path.join(ipcDir, `team_${requestId}_agent${agentIndex}_response.md`),
@@ -719,6 +739,18 @@ export class TeamOrchestrator {
                 timestamp: Date.now(),
                 requestId,
                 totalAgents: tasks.length,
+                output: {
+                    method: 'write_to_file',
+                    response_format: 'Markdown',
+                    overwrite: true,
+                    constraint: `すべての作業が完了したら response_path に結果を Markdown 形式で1回だけ書き込むこと。途中経過や確認事項は書き込まないこと。書き込んだ時点でレスポンス完了と見なされる。結果には何をしたか・変更内容・影響範囲・テスト結果・注意点を具体的かつ詳細に記述すること。`,
+                },
+                progress_instruction: `進捗は progress_path に JSON で定期的に書き込むこと（write_to_file, Overwrite: true）。フォーマット: {"status": "現在のステータス", "detail": "詳細", "percent": 50}`,
+                execution_rules: [
+                    'このタスクは既に計画済みです。計画の生成や承認は不要で、直ちに実行に移ってください',
+                    'plan_generation タスクを生成しないでください。実行（execution）のみを行ってください',
+                    'task フィールドに記載されたタスクを実行してください',
+                ],
             };
 
             // 指令ファイルを書き込む
@@ -822,19 +854,11 @@ export class TeamOrchestrator {
                 this.startMonitor(handle.name, threadId || channelId, config, threadId, instruction.agentIndex);
 
                 // サブエージェントにプロンプト送信:
-                // 「以下のファイルを view_file ツールで読み取って指示を実行してください」方式
+                // 通常モードと同じ「ファイル読み取り方式」— 短い指示のみ送信
                 const instructionPath = path.join(ipcDir, `team_${instruction.requestId}_agent${instruction.agentIndex}_instruction.json`);
                 const subagentPrompt =
-                    `あなたはサブエージェント${instruction.agentIndex}です。\n\n` +
-                    `以下のファイルを view_file ツールで読み込み、その指示に従ってください。\n` +
-                    `ファイルパス: ${instructionPath}\n\n` +
-                    `重要:\n` +
-                    `- このタスクは既に計画済みです。計画の生成や承認は不要で、直ちに実行に移ってください\n` +
-                    `- plan_generation タスクを生成しないでください。実行（execution）のみを行ってください\n` +
-                    `- 指令ファイルの task フィールドに記載されたタスクを実行してください\n` +
-                    `- 進捗は progress_path に定期的に JSON で書き込んでください（write_to_file, Overwrite: true）\n` +
-                    `- 完了したら response_path に結果を Markdown で書き込んでください（write_to_file）\n` +
-                    `- response_path に書き込んだ時点で完了と見なされます`;
+                    `以下のファイルを view_file ツールで読み込み、その指示に従ってください。` +
+                    `ファイルパス: ${instructionPath}`;
 
                 await handle.sendPrompt(subagentPrompt);
 

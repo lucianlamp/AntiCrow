@@ -138,23 +138,29 @@ export class SubagentHandle {
                     logDebug(`[SubagentHandle] worktree ディレクトリ作成: ${worktreeDir}`);
                 }
 
-                // ブランチがなければ作成
+                // git worktree add -b で一括作成（ブランチ作成 + worktree 追加を原子的に実行）
+                // 従来の2段階方式（git branch → git worktree add）は、git branch が
+                // 黙って失敗するとブランチなしで worktree add を実行してしまう問題があった
                 try {
-                    execSync(`git branch ${this.branch}`, {
+                    execSync(`git worktree add -b ${this.branch} "${this.worktreePath}" HEAD`, {
                         cwd: this.repoRoot,
                         stdio: 'pipe',
                     });
-                } catch {
-                    // ブランチが既に存在する場合は無視
-                    logDebug(`[SubagentHandle] ブランチ ${this.branch} は既に存在します`);
+                    logDebug(`[SubagentHandle] worktree + ブランチ一括作成完了: ${this.worktreePath}`);
+                } catch (addErr) {
+                    // ブランチが既に存在する場合は -b なしで再試行
+                    const errMsg = String(addErr);
+                    if (errMsg.includes('already exists')) {
+                        logDebug(`[SubagentHandle] ブランチ ${this.branch} は既に存在 — worktree のみ作成`);
+                        execSync(`git worktree add "${this.worktreePath}" ${this.branch}`, {
+                            cwd: this.repoRoot,
+                            stdio: 'pipe',
+                        });
+                        logDebug(`[SubagentHandle] worktree 作成完了（既存ブランチ使用）: ${this.worktreePath}`);
+                    } else {
+                        throw addErr;
+                    }
                 }
-
-                // worktree 作成
-                execSync(`git worktree add "${this.worktreePath}" ${this.branch}`, {
-                    cwd: this.repoRoot,
-                    stdio: 'pipe',
-                });
-                logDebug(`[SubagentHandle] worktree 作成完了: ${this.worktreePath}`);
             } catch (err) {
                 logError(`[SubagentHandle] worktree 作成失敗: ${err}`);
                 this._state = 'FAILED';

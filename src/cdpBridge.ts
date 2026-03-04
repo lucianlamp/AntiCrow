@@ -15,10 +15,19 @@
 // ---------------------------------------------------------------------------
 
 import * as vscode from 'vscode';
-import * as path from 'path';
-import * as net from 'net';
 import { logDebug, logError, logWarn } from './logger';
 import { ClickOptions, ClickResult } from './types';
+import {
+    sendPrompt as doSendPrompt,
+    startNewChat as doStartNewChat,
+    PromptSenderContext,
+} from './cdpPromptSender';
+import {
+    closeWindow as doCloseWindow,
+    minimizeWindow as doMinimizeWindow,
+    findFreePort as doFindFreePort,
+    isPortInUse as doIsPortInUse,
+} from './cdpWindowManager';
 import {
     CdpBridgeOps,
     openHistoryPopup as histOpenPopup,
@@ -85,6 +94,17 @@ export class CdpBridge {
             evaluateInCascade: (expr: string) => this.evaluateInCascade(expr),
             sleep: (ms: number) => this.sleep(ms),
             resetCascadeContext: () => { this.cascadeContextId = null; },
+        };
+    }
+
+    /** cdpPromptSender に渡すコンテキスト */
+    private get promptSenderContext(): PromptSenderContext {
+        return {
+            conn: this.conn,
+            getCascadeContext: () => this.getCascadeContext(),
+            ensureCascadePanel: () => this.ensureCascadePanel(),
+            resetCascadeContext: () => { this.cascadeContextId = null; },
+            sleep: (ms: number) => this.sleep(ms),
         };
     }
 
@@ -502,49 +522,7 @@ export class CdpBridge {
     // -----------------------------------------------------------------------
 
     async startNewChat(): Promise<void> {
-        // 優先: VSCode コマンド（ターゲットウィンドウ内で実行）
-        try {
-            const evalJs = `
-                (async () => {
-                    if (typeof vscode !== 'undefined' && vscode.commands) {
-                        await vscode.commands.executeCommand('antigravity.startNewConversation');
-                        return true;
-                    }
-                    return false;
-                })()
-            `;
-            const executed = await this.conn.evaluate(evalJs);
-            if (executed) {
-                logDebug('CDP: startNewChat — used VSCode command (antigravity.startNewConversation) in target');
-                this.cascadeContextId = null;
-                return;
-            }
-        } catch (e) {
-            logDebug(`CDP: startNewChat — VSCode command failed in target: ${e}`);
-        }
-
-        // フォールバック: CDP でキー注入 (Ctrl+Shift+L)
-        await this.conn.connect();
-
-        await this.conn.send('Input.dispatchKeyEvent', {
-            type: 'keyDown',
-            modifiers: 10,
-            windowsVirtualKeyCode: 76,
-            code: 'KeyL',
-            key: 'L',
-        });
-        await this.sleep(50);
-        await this.conn.send('Input.dispatchKeyEvent', {
-            type: 'keyUp',
-            modifiers: 10,
-            windowsVirtualKeyCode: 76,
-            code: 'KeyL',
-            key: 'L',
-        });
-
-        logDebug('CDP: startNewChat — fell back to Ctrl+Shift+L key injection');
-        await this.sleep(1500);
-        this.cascadeContextId = null;
+        return doStartNewChat(this.promptSenderContext);
     }
 
     /**
@@ -943,184 +921,7 @@ export class CdpBridge {
         return histClose(this.ops);
     }
     async sendPrompt(prompt: string): Promise<void> {
-        for (let attempt = 1; attempt <= 3; attempt++) {
-            try {
-                await this.conn.connect();
-                break;
-            } catch (e) {
-                logWarn(`CDP: connect attempt ${attempt}/3 failed`);
-                if (attempt === 3) { throw e; }
-                await this.sleep(2000 * attempt);
-            }
-        }
-
-        // Cascade パネルの表示を保証
-        try {
-            await this.ensureCascadePanel();
-        } catch (e) {
-            logWarn(`CDP: ensureCascadePanel failed: ${e}`);
-        }
-        const contextId = await this.getCascadeContext();
-
-        // --- (A) テキストボックスの readiness チェック ---
-        // パネルの iframe は存在しても、内部の React コンポーネントが初期化完了していない
-        // 場合がある（特に Antigravity 起動直後）。テキストボックスが contentEditable=true
-        // かつ visible になるまで最大 10 秒ポーリング待機する。
-        const TEXTBOX_READINESS_JS = `
-(function() {
-    function isVisible(el) {
-        if (!el) return false;
-        var style = window.getComputedStyle(el);
-        if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0) return false;
-        if (el.offsetParent === null && style.position !== 'fixed') return false;
-        var rect = el.getBoundingClientRect();
-        return rect.width > 0 && rect.height > 0;
-    }
-    var editors = Array.from(document.querySelectorAll('div[role="textbox"]:not(.xterm-helper-textarea)')).filter(isVisible);
-    var el = editors[editors.length - 1];
-    if (!el) return { ready: false, reason: 'no textbox' };
-    if (el.contentEditable !== 'true') return { ready: false, reason: 'not editable' };
-    return { ready: true };
-})()
-        `.trim();
-
-        const READINESS_MAX_WAIT_MS = 10_000;
-        const READINESS_POLL_MS = 1_000;
-        const readinessDeadline = Date.now() + READINESS_MAX_WAIT_MS;
-        let textboxReady = false;
-        while (Date.now() < readinessDeadline) {
-            try {
-                const readiness = await this.conn.evaluate(TEXTBOX_READINESS_JS, contextId) as { ready: boolean; reason?: string };
-                if (readiness?.ready) {
-                    textboxReady = true;
-                    break;
-                }
-                logDebug(`CDP: sendPrompt — waiting for textbox readiness: ${readiness?.reason || 'unknown'}`);
-            } catch (e) {
-                logDebug(`CDP: sendPrompt — readiness check failed: ${e instanceof Error ? e.message : e}`);
-            }
-            await this.sleep(READINESS_POLL_MS);
-        }
-        if (!textboxReady) {
-            logWarn('CDP: sendPrompt — textbox readiness timeout, proceeding anyway');
-        }
-
-        // NOTE: document.execCommand は W3C で非推奨（deprecated）だが、
-        // Electron の Chromium エンジンでは当面動作する。
-        // 将来的に InputEvent / beforeinput ベースの入力方式に移行を検討すること。
-        const setInputJs = `
-  (function() {
-    function isVisible(el) {
-        if (!el) return false;
-        const style = window.getComputedStyle(el);
-        if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0) return false;
-        if (el.offsetParent === null && style.position !== 'fixed') return false;
-        const rect = el.getBoundingClientRect();
-        return rect.width > 0 && rect.height > 0;
-    }
-
-    const editors = Array.from(document.querySelectorAll('div[role="textbox"]:not(.xterm-helper-textarea)')).filter(isVisible);
-    const el = editors.at(-1);
-
-    if (!el) {
-      return { success: false, error: 'No visible chat input found' };
-    }
-    el.focus();
-    const sel = window.getSelection();
-    const range = document.createRange();
-    range.selectNodeContents(el);
-    sel.removeAllRanges();
-    sel.addRange(range);
-    
-    // Convert prompt to multiple lines and insert
-    const text = ${JSON.stringify(prompt)};
-    
-    let inserted = false;
-    try {
-        inserted = document.execCommand('insertText', false, text);
-    } catch (e) {}
-
-    if (!inserted) {
-        el.textContent = text;
-        try {
-            el.dispatchEvent(new InputEvent('beforeinput', { bubbles: true, inputType: 'insertText', data: text }));
-            el.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: text }));
-        } catch (e) {
-            el.dispatchEvent(new Event('input', { bubbles: true }));
-        }
-    }
-    el.dispatchEvent(new Event('input', { bubbles: true }));
-    el.dispatchEvent(new Event('change', { bubbles: true }));
-
-    return { success: true };
-  })()
-`;
-
-        const inputResult = await this.conn.evaluate(setInputJs, contextId) as {
-            success: boolean;
-            error?: string;
-        };
-        if (!inputResult?.success) {
-            throw new CascadePanelError(`Failed to find chat input: ${inputResult?.error}`);
-        }
-        logDebug('CDP: input set via div[role="textbox"]');
-
-        // --- (B) テキスト挿入後の検証 ---
-        // insertText が成功しても React の state に反映されていない場合がある。
-        // textContent を確認し、空の場合はリトライする（最大3回）。
-        const VERIFY_JS = `
-(function() {
-    var editors = Array.from(document.querySelectorAll('div[role="textbox"]:not(.xterm-helper-textarea)'));
-    var el = editors[editors.length - 1];
-    return { hasContent: el && (el.textContent || '').trim().length > 0, length: (el && el.textContent || '').length };
-})()
-        `.trim();
-
-        for (let verify = 0; verify < 3; verify++) {
-            await this.sleep(300);
-            try {
-                const verifyResult = await this.conn.evaluate(VERIFY_JS, contextId) as { hasContent: boolean; length: number };
-                if (verifyResult?.hasContent) {
-                    logDebug(`CDP: sendPrompt — text verification OK (length=${verifyResult.length}, attempt=${verify + 1})`);
-                    break;
-                }
-                logWarn(`CDP: sendPrompt — text verification failed (attempt ${verify + 1}/3, length=${verifyResult?.length || 0}), retrying insert`);
-                // リトライ: 再挿入
-                await this.conn.evaluate(setInputJs, contextId);
-            } catch (e) {
-                logDebug(`CDP: sendPrompt — verify failed: ${e instanceof Error ? e.message : e}`);
-            }
-        }
-
-        await this.sleep(500);
-
-        const submitJs = `
-  (function() {
-    function isVisible(el) {
-        if (!el) return false;
-        const style = window.getComputedStyle(el);
-        if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0) return false;
-        if (el.offsetParent === null && style.position !== 'fixed') return false;
-        const rect = el.getBoundingClientRect();
-        return rect.width > 0 && rect.height > 0;
-    }
-
-    const editors = Array.from(document.querySelectorAll('div[role="textbox"]:not(.xterm-helper-textarea)')).filter(isVisible);
-    const el = editors.at(-1);
-    
-    if (!el) { return { success: false }; }
-    const opts = {
-      key: 'Enter', code: 'Enter', keyCode: 13, which: 13,
-      bubbles: true, cancelable: true
-    };
-    el.dispatchEvent(new KeyboardEvent('keydown', opts));
-    el.dispatchEvent(new KeyboardEvent('keypress', opts));
-    el.dispatchEvent(new KeyboardEvent('keyup', opts));
-    return { success: true };
-  })()
-`;
-        await this.conn.evaluate(submitJs, contextId);
-        logDebug('CDP: prompt submitted');
+        return doSendPrompt(this.promptSenderContext, prompt);
     }
 
     // -----------------------------------------------------------------------
@@ -1136,42 +937,12 @@ export class CdpBridge {
      * 全ポートを並列に TCP チェックし、最初の空きポートを返す。
      */
     private async findFreePort(): Promise<number> {
-        const results = await Promise.allSettled(
-            this.ports.map(async (port) => ({
-                port,
-                inUse: await this.isPortInUse(port),
-            })),
-        );
-        for (const result of results) {
-            if (result.status === 'fulfilled' && !result.value.inUse) {
-                logDebug(`CDP: found free port ${result.value.port} for launch`);
-                return result.value.port;
-            }
-        }
-        // 全ポートが使用中の場合はデフォルトの最初のポートで試行
-        logWarn(`CDP: all ports in range are in use, falling back to ${this.ports[0]}`);
-        return this.ports[0];
+        return doFindFreePort(this.ports);
     }
 
     /** ポートが使用中かどうかを TCP 接続でチェックする */
     private isPortInUse(port: number): Promise<boolean> {
-        return new Promise(resolve => {
-            const socket = new net.Socket();
-            socket.setTimeout(300);
-            socket.once('connect', () => {
-                socket.destroy();
-                resolve(true);  // 接続成功 = 使用中
-            });
-            socket.once('error', () => {
-                socket.destroy();
-                resolve(false); // 接続失敗 = 空き
-            });
-            socket.once('timeout', () => {
-                socket.destroy();
-                resolve(false); // タイムアウト = 空き
-            });
-            socket.connect(port, '127.0.0.1');
-        });
+        return doIsPortInUse(port);
     }
 
     // -----------------------------------------------------------------------
@@ -1189,257 +960,11 @@ export class CdpBridge {
      * @returns true: ウィンドウを閉じた, false: ターゲットが見つからない or 失敗
      */
     async closeWindow(workspaceName: string): Promise<boolean> {
-        logDebug(`[closeWindow] ワークスペース "${workspaceName}" のウィンドウを閉じます`);
-
-        try {
-            // 1. 全ターゲットを取得
-            const instances = await discoverInstances(this.ports);
-            if (instances.length === 0) {
-                logWarn('[closeWindow] ターゲットが見つかりませんでした');
-                return false;
-            }
-
-            // 2. ワークスペース名でマッチング（matchesSubagent と同等の4戦略）
-            let targetInstance: DiscoveredInstance | undefined;
-            for (const inst of instances) {
-                const wsName = extractWorkspaceName(inst.title);
-                const matches =
-                    wsName === workspaceName ||
-                    inst.title.includes(workspaceName) ||
-                    inst.title.includes(path.basename(workspaceName));
-                if (matches) {
-                    targetInstance = inst;
-                    logDebug(`[closeWindow] マッチ: wsName="${wsName}", title="${inst.title.substring(0, 80)}"`);
-                    break;
-                }
-            }
-
-            if (!targetInstance) {
-                logWarn(`[closeWindow] ワークスペース "${workspaceName}" のターゲットが見つかりませんでした`);
-                logDebug(`[closeWindow] 利用可能なターゲット: ${instances.map(i => `"${extractWorkspaceName(i.title) || i.title}"`).join(', ')}`);
-                return false;
-            }
-
-            // 3. メインウィンドウ（現在接続中）を閉じないようガード
-            const currentWsName = this.conn ? extractWorkspaceName(this.conn.getActiveTargetTitle() ?? '') : null;
-            if (currentWsName === workspaceName) {
-                logWarn(`[closeWindow] ワークスペース "${workspaceName}" はメインウィンドウです。閉じません`);
-                return false;
-            }
-
-            logDebug(`[closeWindow] ターゲット発見: "${targetInstance.title}" (${targetInstance.wsUrl})`);
-
-            // 4. 一時的な CdpConnection を作成して接続
-            const tempConn = new CdpConnection(this.ports);
-            try {
-                await tempConn.connectToUrl(targetInstance.wsUrl);
-                logDebug('[closeWindow] 一時接続に成功');
-
-                // 5a. window.close() でウィンドウを閉じる（第一優先）
-                // E2Eテスト結果: window.close() は Renderer に直接命令するため確実に動作。
-                // process.exit(0) は Extension Host のみ終了し、Renderer window は残る。
-                let closed = false;
-                try {
-                    const evalJs = `
-                        (async () => {
-                            try {
-                                window.close();
-                                return { success: true, method: 'window.close' };
-                            } catch (e) {
-                                return { success: false, error: String(e) };
-                            }
-                        })()
-                    `;
-                    const result = await tempConn.evaluate(evalJs);
-                    logDebug(`[closeWindow] window.close() 結果: ${JSON.stringify(result)}`);
-                    closed = true;
-                } catch (err) {
-                    logDebug(`[closeWindow] window.close() 失敗: ${err}`);
-                }
-
-                // 5b. フォールバック: process.exit(0)
-                // Extension Host を終了させる。ウィンドウ自体は残る場合があるが、
-                // 後続の確認ステップで残存を検知する。
-                if (!closed) {
-                    try {
-                        await tempConn.evaluate('process.exit(0)');
-                        logDebug('[closeWindow] process.exit(0) で終了');
-                        closed = true;
-                    } catch {
-                        // process.exit() は接続切断を引き起こすため、エラーは想定内
-                        logDebug('[closeWindow] process.exit(0) 実行（接続切断は想定内）');
-                        closed = true;
-                    }
-                }
-
-                // 5c. フォールバック: Browser.close CDP コマンド
-                if (!closed) {
-                    try {
-                        await tempConn.send('Browser.close', {});
-                        logDebug('[closeWindow] Browser.close で終了');
-                        closed = true;
-                    } catch (err) {
-                        logDebug(`[closeWindow] Browser.close 失敗: ${err}`);
-                    }
-                }
-
-                // 6. ウィンドウが閉じてファイルロックが解放されるのを待つ
-                await new Promise(resolve => setTimeout(resolve, 5000));
-
-                // 7. ウィンドウが本当に閉じたか確認
-                try {
-                    const remainingInstances = await discoverInstances(this.ports);
-                    const stillExists = remainingInstances.some(inst => {
-                        const wsName = extractWorkspaceName(inst.title);
-                        return wsName === workspaceName ||
-                            inst.title.includes(workspaceName);
-                    });
-                    if (stillExists) {
-                        logWarn(`[closeWindow] ワークスペース "${workspaceName}" のウィンドウがまだ存在しています`);
-                        return false;
-                    }
-                } catch {
-                    // 確認失敗は無視（ウィンドウは閉じている可能性が高い）
-                }
-
-                logDebug(`[closeWindow] ワークスペース "${workspaceName}" のウィンドウを閉じました`);
-                return true;
-            } finally {
-                // 一時接続を確実にクリーンアップ
-                try {
-                    tempConn.fullDisconnect();
-                } catch {
-                    // disconnect エラーは無視
-                }
-            }
-        } catch (err) {
-            logError(`[closeWindow] エラー: ${err}`);
-            return false;
-        }
+        return doCloseWindow(this.conn, this.ports, workspaceName);
     }
 
-    /**
-     * サブエージェントのウィンドウを最小化する。
-     *
-     * CDP の Browser.getWindowForTarget → Browser.setWindowBounds を使用。
-     * 一時的な CdpConnection を作成して実行するため、現在の接続には影響しない。
-     * ベストエフォート：失敗しても例外をスローしない。
-     *
-     * @param workspaceName 最小化したいウィンドウのワークスペース名
-     * @returns true: 最小化成功, false: 失敗
-     */
     async minimizeWindow(workspaceName: string): Promise<boolean> {
-        logDebug(`[minimizeWindow] ワークスペース "${workspaceName}" のウィンドウを最小化します`);
-
-        try {
-            // 1. 全ターゲットを取得
-            const instances = await discoverInstances(this.ports);
-            if (instances.length === 0) {
-                logWarn('[minimizeWindow] ターゲットが見つかりませんでした');
-                return false;
-            }
-
-            // 2. ワークスペース名でマッチング
-            let targetInstance: DiscoveredInstance | undefined;
-            for (const inst of instances) {
-                const wsName = extractWorkspaceName(inst.title);
-                if (wsName === workspaceName) {
-                    targetInstance = inst;
-                    break;
-                }
-            }
-
-            if (!targetInstance) {
-                logWarn(`[minimizeWindow] ワークスペース "${workspaceName}" のターゲットが見つかりませんでした`);
-                return false;
-            }
-
-            logDebug(`[minimizeWindow] ターゲット発見: "${targetInstance.title}" (${targetInstance.wsUrl})`);
-
-            // 3. 一時的な CdpConnection を作成して接続
-            const tempConn = new CdpConnection(this.ports);
-            try {
-                await tempConn.connectToUrl(targetInstance.wsUrl);
-                logDebug('[minimizeWindow] 一時接続に成功');
-
-                // 4. Browser.getWindowForTarget でウィンドウIDを取得
-                let windowId: number | undefined;
-                try {
-                    const windowResult = await tempConn.send('Browser.getWindowForTarget', {
-                        targetId: targetInstance.id,
-                    }) as { windowId?: number; bounds?: unknown };
-                    windowId = windowResult?.windowId;
-                    logDebug(`[minimizeWindow] windowId=${windowId}`);
-                } catch (err) {
-                    logDebug(`[minimizeWindow] Browser.getWindowForTarget 失敗: ${err}`);
-                }
-
-                if (windowId !== undefined) {
-                    // 5a. Browser.setWindowBounds で最小化
-                    try {
-                        await tempConn.send('Browser.setWindowBounds', {
-                            windowId,
-                            bounds: { windowState: 'minimized' },
-                        });
-                        logDebug(`[minimizeWindow] ワークスペース "${workspaceName}" のウィンドウを最小化しました (CDP)`);
-                        return true;
-                    } catch (err) {
-                        logDebug(`[minimizeWindow] Browser.setWindowBounds 失敗: ${err}`);
-                    }
-                }
-
-                // 5b. フォールバック: Electron の BrowserWindow API を使用
-                const evalJs = `
-                    (function() {
-                        try {
-                            // Electron の BrowserWindow.getFocusedWindow() or getAllWindows()
-                            var electron = require('electron');
-                            if (electron && electron.remote) {
-                                var win = electron.remote.getCurrentWindow();
-                                if (win) {
-                                    win.minimize();
-                                    return { success: true, method: 'electron.remote' };
-                                }
-                            }
-                        } catch(e) {}
-                        try {
-                            // process.mainModule 経由
-                            var mainModule = process.mainModule || require.main;
-                            if (mainModule) {
-                                var BrowserWindow = mainModule.require('electron').BrowserWindow;
-                                var wins = BrowserWindow.getAllWindows();
-                                if (wins && wins.length > 0) {
-                                    wins[0].minimize();
-                                    return { success: true, method: 'BrowserWindow.getAllWindows' };
-                                }
-                            }
-                        } catch(e2) {}
-                        return { success: false, error: 'No minimize method available' };
-                    })()
-                `;
-
-                const result = await tempConn.evaluate(evalJs);
-                const resultObj = result as { success?: boolean; method?: string; error?: string } | null;
-                logDebug(`[minimizeWindow] フォールバック結果: ${JSON.stringify(result)}`);
-
-                if (resultObj?.success) {
-                    logDebug(`[minimizeWindow] ワークスペース "${workspaceName}" のウィンドウを最小化しました (${resultObj.method})`);
-                    return true;
-                }
-
-                logWarn(`[minimizeWindow] ワークスペース "${workspaceName}" のウィンドウを最小化できませんでした`);
-                return false;
-            } finally {
-                try {
-                    tempConn.fullDisconnect();
-                } catch {
-                    // disconnect エラーは無視
-                }
-            }
-        } catch (err) {
-            logWarn(`[minimizeWindow] エラー: ${err}`);
-            return false;
-        }
+        return doMinimizeWindow(this.ports, workspaceName);
     }
 }
 

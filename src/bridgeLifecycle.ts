@@ -295,6 +295,10 @@ async function promoteToBotOwner(
                 sendTyping: (threadId) =>
                     bot.sendTypingToThread(threadId),
             });
+            // ワークスペースパスリゾルバーを注入（auto-learned パスを使えるようにする）
+            if (ctx.cdpPool) {
+                ctx.teamOrchestrator.setWsPathResolver(() => ctx.cdpPool!.getResolvedWorkspacePaths());
+            }
         }
     }
 
@@ -579,6 +583,10 @@ async function startBridgeInternal(
                 sendTyping: (threadId) =>
                     bot.sendTypingToThread(threadId),
             });
+            // ワークスペースパスリゾルバーを注入（auto-learned パスを使えるようにする）
+            if (ctx.cdpPool) {
+                ctx.teamOrchestrator.setWsPathResolver(() => ctx.cdpPool!.getResolvedWorkspacePaths());
+            }
             logInfo('Bridge: TeamOrchestrator initialized with ThreadOps');
         }
     }

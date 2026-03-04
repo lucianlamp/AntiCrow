@@ -1,0 +1,204 @@
+// ---------------------------------------------------------------------------
+// executorResponseHandler.ts — レスポンス処理モジュール
+// ---------------------------------------------------------------------------
+// Executor から分離。レスポンス受信後のメモリ抽出、提案パース、
+// ファイル参照送信、成功通知の構築を担当。
+// ---------------------------------------------------------------------------
+
+import { Plan, PlanExecution } from './types';
+import { FileIpc } from './fileIpc';
+import { PlanStore } from './planStore';
+import { extractMemoryTags, appendToGlobalMemory, appendToWorkspaceMemory, stripMemoryTags } from './memoryStore';
+import { logDebug, logError } from './logger';
+import { buildEmbed, EmbedColor } from './embedHelper';
+import { parseSuggestions, SuggestionItem } from './suggestionParser';
+import { buildSuggestionRow, buildSuggestionContent, storeSuggestions } from './suggestionButtons';
+import { getWorkspacePaths } from './configHelper';
+import type { ActionRowBuilder, ButtonBuilder, EmbedBuilder } from 'discord.js';
+
+// ---------------------------------------------------------------------------
+// 型定義（Executor から re-export される）
+// ---------------------------------------------------------------------------
+export type NotifyFunc = (channelId: string, message: string, color?: number) => Promise<void>;
+export type SendTypingFunc = (channelId: string) => Promise<void>;
+export type PostSuggestionsFunc = (channelId: string, components: ActionRowBuilder<ButtonBuilder>[], embed?: EmbedBuilder) => Promise<void>;
+export type SendFileResult = { sent: boolean; reason?: 'not_found' | 'too_large' | 'channel_error'; sizeMB?: string; fileName?: string };
+export type SendFileFunc = (channelId: string, filePath: string, comment?: string) => Promise<SendFileResult>;
+
+// ---------------------------------------------------------------------------
+// レスポンスコンテンツ処理
+// ---------------------------------------------------------------------------
+
+export interface ProcessedResponse {
+    /** クリーンなコンテンツ（メモリタグ・提案タグ除去済み） */
+    cleanContent: string;
+    /** 提案リスト */
+    suggestions: SuggestionItem[];
+
+    /** 送信用テキスト（prefix 付き） */
+    resultMsg: string;
+}
+
+/** レスポンスコンテンツを処理してクリーンなメッセージを生成 */
+export function processResponseContent(response: string, responsePath: string, plan: Plan): ProcessedResponse {
+    // Markdown レスポンスはそのまま Discord に送信（JSON の場合はフォールバック展開）
+    const isMarkdown = responsePath.endsWith('.md');
+    const content = isMarkdown ? response.trim() : FileIpc.extractResult(response);
+
+    // MEMORY タグを除去
+    const memoryCleanContent = stripMemoryTags(content);
+
+    // 提案タグを抽出してクリーンコンテンツを取得
+    const { suggestions, cleanContent } = parseSuggestions(memoryCleanContent);
+
+    // 成功通知（重複タイトル防止）
+    const prefix = plan.discord_templates.run_success_prefix || '✅ 実行完了';
+    const prefixCore = prefix.replace(/[\s*]/g, '').replace(/^[^\p{L}\p{N}]+/u, '');
+    const contentStart = cleanContent.substring(0, 100).replace(/[\s*]/g, '').replace(/^[^\p{L}\p{N}]+/u, '');
+    const isDuplicate = prefixCore.length > 0 && contentStart.startsWith(prefixCore);
+    const resultMsg = isDuplicate ? cleanContent : `${prefix}\n${cleanContent}`;
+
+    return { cleanContent, suggestions, resultMsg };
+}
+
+// ---------------------------------------------------------------------------
+// メモリ抽出・書き込み
+// ---------------------------------------------------------------------------
+
+/** レスポンスからメモリタグを抽出して MEMORY.md に書き込み */
+export function extractAndSaveMemory(response: string, responsePath: string, plan: Plan): void {
+    const isMarkdown = responsePath.endsWith('.md');
+    const content = isMarkdown ? response.trim() : FileIpc.extractResult(response);
+
+    try {
+        const memoryEntries = extractMemoryTags(content);
+        if (memoryEntries.length > 0) {
+            const wsPaths = getWorkspacePaths();
+            const wsPath = plan.workspace_name ? wsPaths[plan.workspace_name] : undefined;
+            for (const entry of memoryEntries) {
+                if (entry.scope === 'global') {
+                    appendToGlobalMemory(entry.content);
+                    logDebug(`ResponseHandler: auto-recorded global memory (${entry.content.length} chars)`);
+                } else if (entry.scope === 'workspace' && wsPath) {
+                    appendToWorkspaceMemory(wsPath, entry.content);
+                    logDebug(`ResponseHandler: auto-recorded workspace memory (${entry.content.length} chars)`);
+                }
+            }
+            logDebug(`ResponseHandler: extracted ${memoryEntries.length} memory entries from response`);
+        }
+    } catch (e) {
+        logDebug(`ResponseHandler: memory extraction failed: ${e instanceof Error ? e.message : e}`);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ファイル参照送信
+// ---------------------------------------------------------------------------
+
+/** レスポンス内のファイル参照を抽出して Discord に送信し、送信済み参照を除去 */
+export async function sendFileReferences(
+    resultMsg: string,
+    notifyChannel: string,
+    sendFile: SendFileFunc,
+    safeNotify: (channelId: string, message: string, color?: number) => Promise<void>,
+): Promise<string> {
+    try {
+        const { extractFileReferences, stripFileReferences } = await import('./fileExtractor');
+        const fileRefs = extractFileReferences(resultMsg);
+        if (fileRefs.length > 0) {
+            const sentPaths = new Set<string>();
+            for (const ref of fileRefs) {
+                try {
+                    const result = await sendFile(notifyChannel, ref.path, ref.label ? `📎 ${ref.label}` : undefined);
+                    if (result.sent) {
+                        sentPaths.add(ref.path);
+                        logDebug(`ResponseHandler: sent file ${ref.path} to channel ${notifyChannel}`);
+                    } else {
+                        let skipMsg: string;
+                        if (result.reason === 'too_large') {
+                            skipMsg = `⚠️ ファイルが大きすぎるため送信をスキップしました（${result.sizeMB}MB / 上限25MB）: \`${result.fileName || ref.path}\``;
+                        } else if (result.reason === 'not_found') {
+                            skipMsg = `⚠️ ファイルが見つからないため送信をスキップしました: \`${ref.path}\``;
+                        } else {
+                            skipMsg = `⚠️ ファイルの送信に失敗しました: \`${result.fileName || ref.path}\``;
+                        }
+                        await safeNotify(notifyChannel, skipMsg, EmbedColor.Warning);
+                        logDebug(`ResponseHandler: file send skipped (${result.reason}): ${ref.path}`);
+                    }
+                } catch (e) {
+                    logDebug(`ResponseHandler: file send error for ${ref.path}: ${e instanceof Error ? e.message : e}`);
+                }
+            }
+            if (sentPaths.size > 0) {
+                const stripped = stripFileReferences(resultMsg, sentPaths);
+                logDebug(`ResponseHandler: stripped ${sentPaths.size} file references from response text`);
+                return stripped;
+            }
+        }
+    } catch (e) {
+        logDebug(`ResponseHandler: file extraction failed: ${e instanceof Error ? e.message : e}`);
+    }
+    return resultMsg;
+}
+
+// ---------------------------------------------------------------------------
+// 提案ボタン送信
+// ---------------------------------------------------------------------------
+
+/** 提案ボタンを Discord に送信 */
+export async function sendSuggestionButtons(
+    suggestions: SuggestionItem[],
+    notifyChannel: string,
+    postSuggestions: PostSuggestionsFunc,
+): Promise<void> {
+    if (suggestions.length === 0) { return; }
+    try {
+        const row = buildSuggestionRow(suggestions);
+        if (row) {
+            storeSuggestions(notifyChannel, suggestions);
+            const suggestionText = buildSuggestionContent(suggestions);
+            const suggestionEmbed = buildEmbed(suggestionText, EmbedColor.Suggest);
+            await postSuggestions(notifyChannel, [row], suggestionEmbed);
+            logDebug(`ResponseHandler: sent ${suggestions.length} suggestion buttons to channel ${notifyChannel}`);
+        }
+    } catch (e) {
+        logDebug(`ResponseHandler: failed to send suggestion buttons: ${e instanceof Error ? e.message : e}`);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 実行履歴記録
+// ---------------------------------------------------------------------------
+
+/** 実行履歴を PlanStore に記録（定期実行 Plan のみ） */
+export function recordExecution(
+    planStore: PlanStore,
+    plan: Plan,
+    success: boolean,
+    durationMs: number,
+    resultPreview: string,
+): void {
+    // 即時実行 Plan は PlanStore に存在しないのでスキップ
+    if (!planStore.get(plan.plan_id)) {
+        logDebug(`ResponseHandler: skipping execution record for plan ${plan.plan_id} (not in PlanStore)`);
+        return;
+    }
+    try {
+        const execution: PlanExecution = {
+            executed_at: new Date().toISOString(),
+            success,
+            duration_ms: durationMs,
+            result_preview: resultPreview.substring(0, 200),
+        };
+        const existingExecutions = plan.executions || [];
+        const executions = [execution, ...existingExecutions].slice(0, 10); // 直近10件
+        planStore.update(plan.plan_id, {
+            last_executed_at: execution.executed_at,
+            execution_count: (plan.execution_count || 0) + 1,
+            executions,
+        });
+        logDebug(`ResponseHandler: recorded execution for plan ${plan.plan_id} (success=${success}, ${durationMs}ms)`);
+    } catch (e) {
+        logError('ResponseHandler: failed to record execution', e);
+    }
+}

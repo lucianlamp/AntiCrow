@@ -236,15 +236,15 @@ describe('チームモード E2E テスト', () => {
     // テスト4: cancelPlanGeneration のチーム中止
     // =========================================================================
     describe('テスト4: cancelPlanGeneration チーム中止', () => {
-        it('currentTeamAbortController が messageHandler.ts に宣言されている', async () => {
-            const msgHandlerPath = path.join(__dirname, '..', 'messageHandler.ts');
-            const content = fs.readFileSync(msgHandlerPath, 'utf-8');
+        it('currentTeamAbortController が messageQueue.ts に宣言されている', async () => {
+            const queuePath = path.join(__dirname, '..', 'messageQueue.ts');
+            const content = fs.readFileSync(queuePath, 'utf-8');
             expect(content).toContain('let currentTeamAbortController');
         });
 
         it('cancelPlanGeneration に チーム用 abort が含まれている', async () => {
-            const msgHandlerPath = path.join(__dirname, '..', 'messageHandler.ts');
-            const content = fs.readFileSync(msgHandlerPath, 'utf-8');
+            const queuePath = path.join(__dirname, '..', 'messageQueue.ts');
+            const content = fs.readFileSync(queuePath, 'utf-8');
             expect(content).toContain('currentTeamAbortController.abort()');
         });
     });

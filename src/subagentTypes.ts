@@ -143,6 +143,17 @@ export interface TeamInstruction {
     requestId: string;
     /** 総サブエージェント数 */
     totalAgents: number;
+    /** レスポンス出力方法の指示 */
+    output?: {
+        method: string;
+        response_format: string;
+        overwrite: boolean;
+        constraint: string;
+    };
+    /** 進捗報告の指示 */
+    progress_instruction?: string;
+    /** 実行ルール */
+    execution_rules?: string[];
 }
 
 /**
