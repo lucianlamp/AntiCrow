@@ -90,8 +90,8 @@
         },
         "antiCrow.responseTimeoutMs": {
           "type": "number",
-          "default": 1800000,
-          "description": "最後の進捗更新からのアイドルタイムアウト（ミリ秒）。進捗報告がある限りリセットされます。デフォルト30分。"
+          "default": 0,
+          "description": "最後の進捗更新からのアイドルタイムアウト（ミリ秒）。0 = 無制限。進捗報告がある限りリセットされます。"
         },
         "antiCrow.autoStart": {
           "type": "boolean",
@@ -114,22 +114,7 @@
         "antiCrow.autoAccept": {
           "type": "boolean",
           "default": false,
-          "description": "自動承認（Run / Allow / Continue 等）を有効にする。ステータスバーのボタンでもトグル可能です。"
-        },
-        "antiCrow.commandBlacklist": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "default": [
-            "rm",
-            "rm -rf",
-            "del",
-            "rmdir",
-            "format",
-            "mkfs"
-          ],
-          "description": "自動承認しないコマンドのブラックリスト。コマンド行の先頭に一致した場合、自動承認をスキップします。"
+          "markdownDescription": "自動承認（Run / Allow / Continue 等）を有効にする。ステータスバーのボタンでもトグル可能です。\n\n⚠️ **注意:** 有効にすると、危険なコマンド（`rm -rf`, `format` 等）も含め全ての確認ダイアログが自動承認されます。**信頼できる環境でのみ有効化してください。**"
         },
         "antiCrow.maxRetries": {
           "type": "number",

@@ -533,312 +533,241 @@ export async function autoApprove(
     let totalClicked = 0;
     logDebug('CDP: autoApprove — tick');
 
-    // ブラックリスト取得
-    const blacklist: string[] = vscode.workspace.getConfiguration('antiCrow')
-        .get<string[]>('commandBlacklist') ?? [];
-    const blacklistLower = blacklist.map(b => b.toLowerCase().trim());
 
-    // ブラックリストチェック: ダイアログに表示されているコマンドがブラックリストに該当するか確認
-    if (blacklistLower.length > 0) {
-        try {
-            const checkBlacklistScript = `
-(function() {
-    var BLACKLIST = ${JSON.stringify(blacklistLower)};
-
-    function findAllInTree(root, predicate) {
-        if (!root) return [];
-        var matches = [];
-        var ownerDoc = root.ownerDocument || root;
-        if (root.nodeType === 1 && predicate(root)) matches.push(root);
-        var walker = (ownerDoc.createTreeWalker || document.createTreeWalker).call(ownerDoc, root, 1, null, false);
-        var el;
-        while ((el = walker.nextNode())) {
-            if (predicate(el)) matches.push(el);
-            if (el.shadowRoot) {
-                matches = matches.concat(findAllInTree(el.shadowRoot, predicate));
-            }
+// =================================================================
+// 第1層: VSCode コマンドによる自動承認（メインフレームで実行）
+// Antigravity の Electron ウィンドウ内で vscode.commands.executeCommand を呼ぶ。
+// CDP evaluate はターゲットウィンドウ内で実行されるため、
+// 複数ワークスペースでもクロスWS誤爆しない。
+// =================================================================
+for (const cmd of APPROVE_COMMANDS) {
+    try {
+        const evalJs = `
+    (async () => {
+        if (typeof vscode !== 'undefined' && vscode.commands) {
+            await vscode.commands.executeCommand('${cmd}');
+            return true;
         }
-        return matches;
-    }
-
-    // "Run command?" ダイアログ内のコマンドテキストを探す
-    // コマンドは通常 <code> や pre 要素内、または monospace フォントのテキストとして表示される
-    var codeElements = findAllInTree(document, function(el) {
-        var tag = el.tagName;
-        return tag === 'CODE' || tag === 'PRE' || tag === 'SPAN';
-    });
-
-    for (var i = 0; i < codeElements.length; i++) {
-        var cmdText = (codeElements[i].textContent || '').trim().toLowerCase();
-        if (cmdText.length === 0 || cmdText.length > 500) continue;
-
-        // コマンド行の先頭トークンでマッチング
-        var tokens = cmdText.split(/\\s+/);
-        var firstToken = tokens[0] || '';
-
-        for (var b = 0; b < BLACKLIST.length; b++) {
-            var blEntry = BLACKLIST[b];
-            var blTokens = blEntry.split(/\\s+/);
-            // 先頭から blTokens の数だけ一致するかチェック
-            var match = true;
-            for (var t = 0; t < blTokens.length; t++) {
-                if (t >= tokens.length || tokens[t] !== blTokens[t]) {
-                    match = false;
-                    break;
-                }
-            }
-            if (match) {
-                return { blocked: true, command: cmdText.substring(0, 80), rule: blEntry };
-            }
-        }
-    }
-    return { blocked: false };
-})()
-            `.trim();
-
-            const result = await ops.conn.evaluate(checkBlacklistScript) as { blocked: boolean; command?: string; rule?: string } | null;
-            if (result?.blocked) {
-                logInfo(`CDP: autoApprove — BLOCKED by blacklist: command="${result.command}", rule="${result.rule}"`);
-                return { clicked: 0 };
-            }
-        } catch (e) {
-            logDebug(`CDP: autoApprove — blacklist check failed: ${e instanceof Error ? e.message : e}`);
-        }
-    }
-
-    // =================================================================
-    // 第1層: VSCode コマンドによる自動承認（メインフレームで実行）
-    // Antigravity の Electron ウィンドウ内で vscode.commands.executeCommand を呼ぶ。
-    // CDP evaluate はターゲットウィンドウ内で実行されるため、
-    // 複数ワークスペースでもクロスWS誤爆しない。
-    // =================================================================
-    for (const cmd of APPROVE_COMMANDS) {
-        try {
-            const evalJs = `
-                (async () => {
-                    if (typeof vscode !== 'undefined' && vscode.commands) {
-                        await vscode.commands.executeCommand('${cmd}');
-                        return true;
-                    }
-                    return false;
-                })()
-            `;
-            const executed = await ops.conn.evaluate(evalJs);
-            if (executed) {
-                logInfo(`CDP: autoApprove — executed VSCode command: ${cmd}`);
-                totalClicked++;
-            }
-        } catch { /* コマンドが存在しない/対象なしは無視 */ }
-    }
-
-    // =================================================================
-    // 第2層: DOM ベースのボタンクリック（フォールバック）
-    // VSCode コマンドでカバーできない UI 要素（Allow ダイアログ等）に対応。
-    // TreeWalker + Shadow DOM 再帰探索で承認系ボタンを検出してクリックする。
-    // =================================================================
-    const DOM_APPROVE_SCRIPT = `
-(function() {
-    var TEXTS = ${JSON.stringify(APPROVE_BUTTON_TEXTS)};
-    var clicked = 0;
-    var clickedTexts = [];
-
-    // getTargetDoc: メインフレームから実行されても cascade iframe 内の document を取得
-    // (CANCEL_BUTTON_JS と同じパターン)
-    function getTargetDoc() {
-        var iframes = document.querySelectorAll('iframe');
-        for (var fi = 0; fi < iframes.length; fi++) {
-            try {
-                if (iframes[fi].src && iframes[fi].src.includes('cascade-panel') && iframes[fi].contentDocument) {
-                    return iframes[fi].contentDocument;
-                }
-            } catch(e) { /* cross-origin は無視 */ }
-        }
-        return document;
-    }
-
-    // 探索対象: cascade iframe があればその中、なければメインフレーム
-    var docs = [];
-    var cascadeDoc = getTargetDoc();
-    docs.push(cascadeDoc);
-    // cascade iframe が見つかった場合はメインフレームも追加（ダイアログが iframe 外にある場合）
-    if (cascadeDoc !== document) {
-        docs.push(document);
-    }
-
-    function findAllInTree(root, predicate) {
-        if (!root) return [];
-        var matches = [];
-        var ownerDoc = root.ownerDocument || root;
-        if (root.nodeType === 1 && predicate(root)) matches.push(root);
-        var walker = (ownerDoc.createTreeWalker || document.createTreeWalker).call(ownerDoc, root, 1, null, false);
-        var el;
-        while ((el = walker.nextNode())) {
-            if (predicate(el)) matches.push(el);
-            if (el.shadowRoot) {
-                matches = matches.concat(findAllInTree(el.shadowRoot, predicate));
-            }
-        }
-        return matches;
-    }
-
-    function isVisible(el) {
-        if (!el) return false;
-        var rect = el.getBoundingClientRect();
-        if (rect.width <= 0 || rect.height <= 0) return false;
-        if (el.offsetParent === null && el.tagName !== 'BODY' && el.tagName !== 'HTML') {
-            try {
-                var style = (el.ownerDocument.defaultView || window).getComputedStyle(el);
-                if (style.position !== 'fixed' && style.position !== 'sticky') return false;
-            } catch(e) { return false; }
-        }
-        return true;
-    }
-
-    function clickEl(el) {
-        try { el.scrollIntoView({ block: 'center', behavior: 'instant' }); } catch(e) {}
-        var rect = el.getBoundingClientRect();
-        var cx = rect.left + rect.width / 2;
-        var cy = rect.top + rect.height / 2;
-        var opts = { bubbles: true, cancelable: true, view: el.ownerDocument.defaultView || window, clientX: cx, clientY: cy };
-        el.dispatchEvent(new MouseEvent('mousedown', opts));
-        el.dispatchEvent(new MouseEvent('mouseup', opts));
-        el.dispatchEvent(new MouseEvent('click', opts));
-        try {
-            el.dispatchEvent(new PointerEvent('pointerdown', opts));
-            el.dispatchEvent(new PointerEvent('pointerup', opts));
-        } catch(e) {}
-    }
-
-    // 短いテキスト（完全一致のみ）と長いテキスト（部分一致OK）を分離
-    var SHORT_TEXTS = ['run', 'ok', 'yes', 'allow', 'accept', 'retry', 'confirm', 'proceed'];
-    var LONG_TEXTS = ['always allow', 'continue', 'always run', 'allow once', 'allow this conversation'];
-
-    function isExcluded(el) {
-        if (el.closest('[id*="statusbar"], [class*="statusbar"]')) return true;
-        if (el.closest('[class*="menubar"], [role="menubar"]')) return true;
-        if (el.closest('[class*="titlebar"]')) return true;
-        if (el.closest('[data-headlessui-state], [role="listbox"], [role="option"], [role="combobox"], [class*="dropdown"], [class*="select-box"], [class*="popover"]')) return true;
-        if (el.tagName === 'DIV' && el.getAttribute('data-tooltip-id')) return true;
-        var label = (el.getAttribute('aria-label') || '').toLowerCase();
-        if (label.indexOf('model') >= 0 || label.indexOf('cascade') >= 0 || label.indexOf('agent mode') >= 0) return true;
         return false;
+    })()
+            `;
+        const executed = await ops.conn.evaluate(evalJs);
+        if (executed) {
+            logInfo(`CDP: autoApprove — executed VSCode command: ${ cmd } `);
+            totalClicked++;
+        }
+    } catch { /* コマンドが存在しない/対象なしは無視 */ }
+}
+
+// =================================================================
+// 第2層: DOM ベースのボタンクリック（フォールバック）
+// VSCode コマンドでカバーできない UI 要素（Allow ダイアログ等）に対応。
+// TreeWalker + Shadow DOM 再帰探索で承認系ボタンを検出してクリックする。
+// =================================================================
+const DOM_APPROVE_SCRIPT = `
+    (function () {
+        var TEXTS = ${ JSON.stringify(APPROVE_BUTTON_TEXTS)
+    };
+var clicked = 0;
+var clickedTexts = [];
+
+// getTargetDoc: メインフレームから実行されても cascade iframe 内の document を取得
+// (CANCEL_BUTTON_JS と同じパターン)
+function getTargetDoc() {
+    var iframes = document.querySelectorAll('iframe');
+    for (var fi = 0; fi < iframes.length; fi++) {
+        try {
+            if (iframes[fi].src && iframes[fi].src.includes('cascade-panel') && iframes[fi].contentDocument) {
+                return iframes[fi].contentDocument;
+            }
+        } catch (e) { /* cross-origin は無視 */ }
     }
+    return document;
+}
 
-    // ショートカットキー修飾を除去する関数（"Run Alt+↵" → "Run"）
-    function cleanText(t) {
-        return t.replace(/\s*(alt|ctrl|shift|cmd|\u2318|\u2325|\u21e7)[+\s]*.{0,3}$/i, '')
-                .replace(/[\u21b5\u23ce\u21a9]/g, '')
-                .replace(/\s+/g, ' ').trim();
+// 探索対象: cascade iframe があればその中、なければメインフレーム
+var docs = [];
+var cascadeDoc = getTargetDoc();
+docs.push(cascadeDoc);
+// cascade iframe が見つかった場合はメインフレームも追加（ダイアログが iframe 外にある場合）
+if (cascadeDoc !== document) {
+    docs.push(document);
+}
+
+function findAllInTree(root, predicate) {
+    if (!root) return [];
+    var matches = [];
+    var ownerDoc = root.ownerDocument || root;
+    if (root.nodeType === 1 && predicate(root)) matches.push(root);
+    var walker = (ownerDoc.createTreeWalker || document.createTreeWalker).call(ownerDoc, root, 1, null, false);
+    var el;
+    while ((el = walker.nextNode())) {
+        if (predicate(el)) matches.push(el);
+        if (el.shadowRoot) {
+            matches = matches.concat(findAllInTree(el.shadowRoot, predicate));
+        }
     }
+    return matches;
+}
 
-    function isClickable(el) {
-        var tag = el.tagName.toLowerCase();
-        return tag === 'button' || tag === 'vscode-button' || tag === 'a' ||
-               el.getAttribute('role') === 'button' ||
-               (tag === 'div' && !el.getAttribute('data-tooltip-id') && (el.getAttribute('aria-label') || el.classList.contains('action-label')));
+function isVisible(el) {
+    if (!el) return false;
+    var rect = el.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return false;
+    if (el.offsetParent === null && el.tagName !== 'BODY' && el.tagName !== 'HTML') {
+        try {
+            var style = (el.ownerDocument.defaultView || window).getComputedStyle(el);
+            if (style.position !== 'fixed' && style.position !== 'sticky') return false;
+        } catch (e) { return false; }
     }
+    return true;
+}
 
-    // 各 document を順に探索（cascade iframe → メインフレーム）
-    for (var di = 0; di < docs.length; di++) {
-        var doc = docs[di];
-        var actionElements = findAllInTree(doc, isClickable);
+function clickEl(el) {
+    try { el.scrollIntoView({ block: 'center', behavior: 'instant' }); } catch (e) { }
+    var rect = el.getBoundingClientRect();
+    var cx = rect.left + rect.width / 2;
+    var cy = rect.top + rect.height / 2;
+    var opts = { bubbles: true, cancelable: true, view: el.ownerDocument.defaultView || window, clientX: cx, clientY: cy };
+    el.dispatchEvent(new MouseEvent('mousedown', opts));
+    el.dispatchEvent(new MouseEvent('mouseup', opts));
+    el.dispatchEvent(new MouseEvent('click', opts));
+    try {
+        el.dispatchEvent(new PointerEvent('pointerdown', opts));
+        el.dispatchEvent(new PointerEvent('pointerup', opts));
+    } catch (e) { }
+}
 
-        for (var i = 0; i < actionElements.length; i++) {
-            var el = actionElements[i];
-            if (!isVisible(el)) continue;
-            if (isExcluded(el)) continue;
+// 短いテキスト（完全一致のみ）と長いテキスト（部分一致OK）を分離
+var SHORT_TEXTS = ['run', 'ok', 'yes', 'allow', 'accept', 'retry', 'confirm', 'proceed'];
+var LONG_TEXTS = ['always allow', 'continue', 'always run', 'allow once', 'allow this conversation'];
 
-            var rawText = cleanText((el.innerText || el.textContent || '')).toLowerCase();
-            var ariaLabel = (el.getAttribute('aria-label') || '').trim().toLowerCase();
+function isExcluded(el) {
+    if (el.closest('[id*="statusbar"], [class*="statusbar"]')) return true;
+    if (el.closest('[class*="menubar"], [role="menubar"]')) return true;
+    if (el.closest('[class*="titlebar"]')) return true;
+    if (el.closest('[data-headlessui-state], [role="listbox"], [role="option"], [role="combobox"], [class*="dropdown"], [class*="select-box"], [class*="popover"]')) return true;
+    if (el.tagName === 'DIV' && el.getAttribute('data-tooltip-id')) return true;
+    var label = (el.getAttribute('aria-label') || '').toLowerCase();
+    if (label.indexOf('model') >= 0 || label.indexOf('cascade') >= 0 || label.indexOf('agent mode') >= 0) return true;
+    return false;
+}
 
-            var isApproveBtn = false;
-            for (var s = 0; s < SHORT_TEXTS.length; s++) {
-                if (rawText === SHORT_TEXTS[s] || ariaLabel === SHORT_TEXTS[s]) {
+// ショートカットキー修飾を除去する関数（"Run Alt+↵" → "Run"）
+function cleanText(t) {
+    return t.replace(/\s*(alt|ctrl|shift|cmd|\u2318|\u2325|\u21e7)[+\s]*.{0,3}$/i, '')
+        .replace(/[\u21b5\u23ce\u21a9]/g, '')
+        .replace(/\s+/g, ' ').trim();
+}
+
+function isClickable(el) {
+    var tag = el.tagName.toLowerCase();
+    return tag === 'button' || tag === 'vscode-button' || tag === 'a' ||
+        el.getAttribute('role') === 'button' ||
+        (tag === 'div' && !el.getAttribute('data-tooltip-id') && (el.getAttribute('aria-label') || el.classList.contains('action-label')));
+}
+
+// 各 document を順に探索（cascade iframe → メインフレーム）
+for (var di = 0; di < docs.length; di++) {
+    var doc = docs[di];
+    var actionElements = findAllInTree(doc, isClickable);
+
+    for (var i = 0; i < actionElements.length; i++) {
+        var el = actionElements[i];
+        if (!isVisible(el)) continue;
+        if (isExcluded(el)) continue;
+
+        var rawText = cleanText((el.innerText || el.textContent || '')).toLowerCase();
+        var ariaLabel = (el.getAttribute('aria-label') || '').trim().toLowerCase();
+
+        var isApproveBtn = false;
+        for (var s = 0; s < SHORT_TEXTS.length; s++) {
+            if (rawText === SHORT_TEXTS[s] || ariaLabel === SHORT_TEXTS[s]) {
+                isApproveBtn = true;
+                break;
+            }
+        }
+        if (!isApproveBtn) {
+            for (var l = 0; l < LONG_TEXTS.length; l++) {
+                if (rawText === LONG_TEXTS[l] || rawText.indexOf(LONG_TEXTS[l]) >= 0 ||
+                    ariaLabel === LONG_TEXTS[l] || ariaLabel.indexOf(LONG_TEXTS[l]) >= 0) {
                     isApproveBtn = true;
                     break;
                 }
             }
-            if (!isApproveBtn) {
-                for (var l = 0; l < LONG_TEXTS.length; l++) {
-                    if (rawText === LONG_TEXTS[l] || rawText.indexOf(LONG_TEXTS[l]) >= 0 ||
-                        ariaLabel === LONG_TEXTS[l] || ariaLabel.indexOf(LONG_TEXTS[l]) >= 0) {
-                        isApproveBtn = true;
-                        break;
-                    }
-                }
-            }
+        }
 
-            if (isApproveBtn) {
-                clickEl(el);
-                clicked++;
-                clickedTexts.push(rawText || ariaLabel);
-            }
+        if (isApproveBtn) {
+            clickEl(el);
+            clicked++;
+            clickedTexts.push(rawText || ariaLabel);
         }
     }
+}
 
-    return { clicked: clicked, clickedTexts: clickedTexts };
-})()
+return { clicked: clicked, clickedTexts: clickedTexts };
+}) ()
 `.trim();
 
-    // cooldown エントリのクリーンアップ（30秒以上前のエントリを削除）
-    const now = Date.now();
-    for (const [key, ts] of clickCooldownMap) {
-        if (now - ts > COOLDOWN_CLEANUP_MS) {
-            clickCooldownMap.delete(key);
+// cooldown エントリのクリーンアップ（30秒以上前のエントリを削除）
+const now = Date.now();
+for (const [key, ts] of clickCooldownMap) {
+    if (now - ts > COOLDOWN_CLEANUP_MS) {
+        clickCooldownMap.delete(key);
+    }
+}
+
+try {
+    // メインフレームで実行（ダイアログは cascade iframe 外にある）
+    const result = await ops.conn.evaluate(DOM_APPROVE_SCRIPT) as { clicked: number; clickedTexts?: string[] } | null;
+    if (result && result.clicked > 0 && result.clickedTexts) {
+        let effectiveClicks = 0;
+        for (const text of result.clickedTexts) {
+            const lastClick = clickCooldownMap.get(text);
+            if (lastClick && now - lastClick < CLICK_COOLDOWN_MS) {
+                logDebug(`CDP: autoApprove — skipped(cooldown): "${text}"`);
+                continue;
+            }
+            clickCooldownMap.set(text, now);
+            effectiveClicks++;
+        }
+        if (effectiveClicks > 0) {
+            logInfo(`CDP: autoApprove DOM fallback — clicked ${ effectiveClicks } approval button(s)`);
+            totalClicked += effectiveClicks;
         }
     }
+} catch (e) {
+    logInfo(`CDP: autoApprove DOM fallback failed — ${ e instanceof Error ? e.message : e } `);
+}
 
-    try {
-        // メインフレームで実行（ダイアログは cascade iframe 外にある）
-        const result = await ops.conn.evaluate(DOM_APPROVE_SCRIPT) as { clicked: number; clickedTexts?: string[] } | null;
-        if (result && result.clicked > 0 && result.clickedTexts) {
-            let effectiveClicks = 0;
-            for (const text of result.clickedTexts) {
-                const lastClick = clickCooldownMap.get(text);
-                if (lastClick && now - lastClick < CLICK_COOLDOWN_MS) {
-                    logDebug(`CDP: autoApprove — skipped (cooldown): "${text}"`);
-                    continue;
-                }
-                clickCooldownMap.set(text, now);
-                effectiveClicks++;
+// cascade iframe 内でも同じスクリプトを実行（iframe 内のダイアログ対応）
+try {
+    const cascadeResult = await ops.evaluateInCascade(DOM_APPROVE_SCRIPT) as { clicked: number; clickedTexts?: string[] } | null;
+    if (cascadeResult && cascadeResult.clicked > 0 && cascadeResult.clickedTexts) {
+        let effectiveClicks = 0;
+        const nowCascade = Date.now();
+        for (const text of cascadeResult.clickedTexts) {
+            const lastClick = clickCooldownMap.get(text);
+            if (lastClick && nowCascade - lastClick < CLICK_COOLDOWN_MS) {
+                logDebug(`CDP: autoApprove(cascade) — skipped(cooldown): "${text}"`);
+                continue;
             }
-            if (effectiveClicks > 0) {
-                logInfo(`CDP: autoApprove DOM fallback — clicked ${effectiveClicks} approval button(s)`);
-                totalClicked += effectiveClicks;
-            }
+            clickCooldownMap.set(text, nowCascade);
+            effectiveClicks++;
         }
-    } catch (e) {
-        logInfo(`CDP: autoApprove DOM fallback failed — ${e instanceof Error ? e.message : e}`);
-    }
-
-    // cascade iframe 内でも同じスクリプトを実行（iframe 内のダイアログ対応）
-    try {
-        const cascadeResult = await ops.evaluateInCascade(DOM_APPROVE_SCRIPT) as { clicked: number; clickedTexts?: string[] } | null;
-        if (cascadeResult && cascadeResult.clicked > 0 && cascadeResult.clickedTexts) {
-            let effectiveClicks = 0;
-            const nowCascade = Date.now();
-            for (const text of cascadeResult.clickedTexts) {
-                const lastClick = clickCooldownMap.get(text);
-                if (lastClick && nowCascade - lastClick < CLICK_COOLDOWN_MS) {
-                    logDebug(`CDP: autoApprove (cascade) — skipped (cooldown): "${text}"`);
-                    continue;
-                }
-                clickCooldownMap.set(text, nowCascade);
-                effectiveClicks++;
-            }
-            if (effectiveClicks > 0) {
-                logInfo(`CDP: autoApprove DOM fallback (cascade) — clicked ${effectiveClicks} approval button(s)`);
-                totalClicked += effectiveClicks;
-            }
+        if (effectiveClicks > 0) {
+            logInfo(`CDP: autoApprove DOM fallback(cascade) — clicked ${ effectiveClicks } approval button(s)`);
+            totalClicked += effectiveClicks;
         }
-    } catch {
-        // cascade iframe がない場合は無視
     }
+} catch {
+    // cascade iframe がない場合は無視
+}
 
-    if (totalClicked > 0) {
-        logInfo(`CDP: autoApprove — total clicked: ${totalClicked}`);
-    }
-    return { clicked: totalClicked };
+if (totalClicked > 0) {
+    logInfo(`CDP: autoApprove — total clicked: ${ totalClicked } `);
+}
+return { clicked: totalClicked };
 }
 
 // -----------------------------------------------------------------------
@@ -857,81 +786,81 @@ export async function isAgentRunning(
     // 以前の一般的な aria-label/title/class ベースの TreeWalker は
     // Antigravity の実際のUI構造（data-tooltip-id, SVG rect）にマッチしなかった。
     const DETECT_SCRIPT = `
-(function() {
-    // getTargetDoc パターン — iframe 内外を透過的に検索
-    function getTargetDoc() {
-        var iframes = document.querySelectorAll('iframe');
-        for (var fi = 0; fi < iframes.length; fi++) {
-            try {
-                if (iframes[fi].src && iframes[fi].src.includes('cascade-panel') && iframes[fi].contentDocument) {
-                    return iframes[fi].contentDocument;
-                }
-            } catch(e) { /* cross-origin */ }
+    (function () {
+        // getTargetDoc パターン — iframe 内外を透過的に検索
+        function getTargetDoc() {
+            var iframes = document.querySelectorAll('iframe');
+            for (var fi = 0; fi < iframes.length; fi++) {
+                try {
+                    if (iframes[fi].src && iframes[fi].src.includes('cascade-panel') && iframes[fi].contentDocument) {
+                        return iframes[fi].contentDocument;
+                    }
+                } catch (e) { /* cross-origin */ }
+            }
+            return document;
         }
-        return document;
-    }
-    var doc = getTargetDoc();
-    var inIframe = doc !== document;
+        var doc = getTargetDoc();
+        var inIframe = doc !== document;
 
-    // 検出1: data-tooltip-id でキャンセルボタンを検出（最も信頼性が高い）
-    var cancelByTooltip = doc.querySelector('[data-tooltip-id="input-send-button-cancel-tooltip"]');
-    if (cancelByTooltip) {
-        return { running: true, matchedBy: 'tooltip-id:cancel', inIframe: inIframe };
-    }
-
-    // 検出2: data-tooltip-id 部分一致（Antigravity アップデート対応）
-    var cancelPartial = doc.querySelector('[data-tooltip-id*="cancel"]');
-    if (cancelPartial) {
-        return { running: true, matchedBy: 'tooltip-id-partial:' + cancelPartial.getAttribute('data-tooltip-id'), inIframe: inIframe };
-    }
-
-    // 検出3: button innerText が Stop / 停止
-    var buttons = doc.querySelectorAll('button');
-    for (var i = 0; i < buttons.length; i++) {
-        var txt = (buttons[i].innerText || '').trim().toLowerCase();
-        if (txt === 'stop' || txt === '停止') {
-            return { running: true, matchedBy: 'button-text:' + txt, inIframe: inIframe };
+        // 検出1: data-tooltip-id でキャンセルボタンを検出（最も信頼性が高い）
+        var cancelByTooltip = doc.querySelector('[data-tooltip-id="input-send-button-cancel-tooltip"]');
+        if (cancelByTooltip) {
+            return { running: true, matchedBy: 'tooltip-id:cancel', inIframe: inIframe };
         }
-    }
 
-    // 検出4: textbox 近辺の SVG rect を持つ要素（ストップアイコン）
-    var textbox = doc.querySelector('div[role="textbox"]');
-    if (textbox) {
-        var container = textbox.closest('form') || textbox.parentElement?.parentElement?.parentElement;
-        if (container) {
-            var CLICKABLE = 'button, div[data-tooltip-id], div[role="button"], div[aria-label], [data-tooltip-id]';
-            var clickables = container.querySelectorAll(CLICKABLE);
-            for (var j = 0; j < clickables.length; j++) {
-                var btn = clickables[j];
-                var tid = btn.getAttribute('data-tooltip-id') || '';
-                if (tid === 'audio-tooltip' || tid === 'input-send-button-send-tooltip') continue;
-                if ((btn.getAttribute('aria-label') || '').toLowerCase().includes('record')) continue;
-                var hasSvgRect = btn.querySelector('svg rect') !== null;
-                var hasSvgStop = btn.querySelector('svg [data-icon="stop"]') !== null;
-                var ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
-                if (hasSvgRect || hasSvgStop || ariaLabel.includes('stop') || ariaLabel.includes('cancel')) {
-                    return { running: true, matchedBy: 'svg-rect:' + (tid || ariaLabel || btn.tagName), inIframe: inIframe };
+        // 検出2: data-tooltip-id 部分一致（Antigravity アップデート対応）
+        var cancelPartial = doc.querySelector('[data-tooltip-id*="cancel"]');
+        if (cancelPartial) {
+            return { running: true, matchedBy: 'tooltip-id-partial:' + cancelPartial.getAttribute('data-tooltip-id'), inIframe: inIframe };
+        }
+
+        // 検出3: button innerText が Stop / 停止
+        var buttons = doc.querySelectorAll('button');
+        for (var i = 0; i < buttons.length; i++) {
+            var txt = (buttons[i].innerText || '').trim().toLowerCase();
+            if (txt === 'stop' || txt === '停止') {
+                return { running: true, matchedBy: 'button-text:' + txt, inIframe: inIframe };
+            }
+        }
+
+        // 検出4: textbox 近辺の SVG rect を持つ要素（ストップアイコン）
+        var textbox = doc.querySelector('div[role="textbox"]');
+        if (textbox) {
+            var container = textbox.closest('form') || textbox.parentElement?.parentElement?.parentElement;
+            if (container) {
+                var CLICKABLE = 'button, div[data-tooltip-id], div[role="button"], div[aria-label], [data-tooltip-id]';
+                var clickables = container.querySelectorAll(CLICKABLE);
+                for (var j = 0; j < clickables.length; j++) {
+                    var btn = clickables[j];
+                    var tid = btn.getAttribute('data-tooltip-id') || '';
+                    if (tid === 'audio-tooltip' || tid === 'input-send-button-send-tooltip') continue;
+                    if ((btn.getAttribute('aria-label') || '').toLowerCase().includes('record')) continue;
+                    var hasSvgRect = btn.querySelector('svg rect') !== null;
+                    var hasSvgStop = btn.querySelector('svg [data-icon="stop"]') !== null;
+                    var ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
+                    if (hasSvgRect || hasSvgStop || ariaLabel.includes('stop') || ariaLabel.includes('cancel')) {
+                        return { running: true, matchedBy: 'svg-rect:' + (tid || ariaLabel || btn.tagName), inIframe: inIframe };
+                    }
                 }
             }
         }
-    }
 
-    // 検出5: aria-label/title ベースのフォールバック
-    var CLICKABLE_ALL = 'button, div[data-tooltip-id], div[role="button"], [data-tooltip-id], [aria-label]';
-    var allClickable = doc.querySelectorAll(CLICKABLE_ALL);
-    for (var k = 0; k < allClickable.length; k++) {
-        var el = allClickable[k];
-        var label = (el.getAttribute('aria-label') || '').toLowerCase();
-        var title = (el.getAttribute('title') || '').toLowerCase();
-        if (label.includes('stop') || label.includes('cancel') || title.includes('stop') || title.includes('cancel')) {
-            var elTid = el.getAttribute('data-tooltip-id') || '';
-            if (elTid === 'audio-tooltip' || elTid === 'input-send-button-send-tooltip') continue;
-            return { running: true, matchedBy: 'aria:' + (label || title), inIframe: inIframe };
+        // 検出5: aria-label/title ベースのフォールバック
+        var CLICKABLE_ALL = 'button, div[data-tooltip-id], div[role="button"], [data-tooltip-id], [aria-label]';
+        var allClickable = doc.querySelectorAll(CLICKABLE_ALL);
+        for (var k = 0; k < allClickable.length; k++) {
+            var el = allClickable[k];
+            var label = (el.getAttribute('aria-label') || '').toLowerCase();
+            var title = (el.getAttribute('title') || '').toLowerCase();
+            if (label.includes('stop') || label.includes('cancel') || title.includes('stop') || title.includes('cancel')) {
+                var elTid = el.getAttribute('data-tooltip-id') || '';
+                if (elTid === 'audio-tooltip' || elTid === 'input-send-button-send-tooltip') continue;
+                return { running: true, matchedBy: 'aria:' + (label || title), inIframe: inIframe };
+            }
         }
-    }
 
-    return { running: false, matchedBy: '', inIframe: inIframe, buttonCount: buttons.length, textboxFound: !!textbox };
-})()
+        return { running: false, matchedBy: '', inIframe: inIframe, buttonCount: buttons.length, textboxFound: !!textbox };
+    })()
 `.trim();
 
     // evaluateInCascade 呼び出し前にコンテキストをリセット（汚染防止）
@@ -941,7 +870,7 @@ export async function isAgentRunning(
         // cascade iframe 内で検出（エージェントチャットパネル）
         const cascadeResult = await ops.evaluateInCascade(DETECT_SCRIPT) as { running: boolean; matchedBy?: string; inIframe?: boolean } | null;
         if (cascadeResult?.running) {
-            logDebug(`CDP: isAgentRunning — detected in cascade (${cascadeResult.matchedBy})`);
+            logDebug(`CDP: isAgentRunning — detected in cascade(${ cascadeResult.matchedBy })`);
             return true;
         }
         // cascade でスクリプト実行成功したが running=false の場合、cascade の getTargetDoc が
@@ -950,7 +879,7 @@ export async function isAgentRunning(
             return false;
         }
     } catch (e) {
-        logDebug(`CDP: isAgentRunning — cascade eval failed: ${e instanceof Error ? e.message : e}`);
+        logDebug(`CDP: isAgentRunning — cascade eval failed: ${ e instanceof Error ? e.message : e } `);
     }
 
     try {
@@ -958,11 +887,11 @@ export async function isAgentRunning(
         // getTargetDoc() により、メインフレームから iframe 内の document にもアクセスする
         const mainResult = await ops.conn.evaluate(DETECT_SCRIPT) as { running: boolean; matchedBy?: string; inIframe?: boolean } | null;
         if (mainResult?.running) {
-            logDebug(`CDP: isAgentRunning — detected in main frame (${mainResult.matchedBy}, inIframe=${mainResult.inIframe})`);
+            logDebug(`CDP: isAgentRunning — detected in main frame(${ mainResult.matchedBy }, inIframe = ${ mainResult.inIframe })`);
             return true;
         }
     } catch (e) {
-        logDebug(`CDP: isAgentRunning — main frame eval failed: ${e instanceof Error ? e.message : e}`);
+        logDebug(`CDP: isAgentRunning — main frame eval failed: ${ e instanceof Error ? e.message : e } `);
     }
 
     return false;
