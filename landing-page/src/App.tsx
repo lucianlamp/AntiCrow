@@ -4,7 +4,7 @@ import { Header } from './components/Header';
 import { Hero } from './components/Hero';
 import { Features } from './components/Features';
 import { HowItWorks } from './components/HowItWorks';
-import { Pricing } from './components/Pricing';
+// import { Pricing } from './components/Pricing';
 import { Security } from './components/Security';
 import { FAQ } from './components/FAQ';
 import { CTA } from './components/CTA';
@@ -22,7 +22,7 @@ function App() {
                 <Hero />
                 <Features />
                 <HowItWorks />
-                <Pricing />
+                {/* <Pricing /> */}
                 <Security />
                 <FAQ />
                 <CTA />

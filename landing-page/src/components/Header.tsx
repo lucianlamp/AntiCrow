@@ -42,9 +42,7 @@ export function Header() {
                         <a href="#how-it-works" className="text-gray-400 hover:text-white transition-colors text-sm font-medium">
                             {t('header.howItWorks')}
                         </a>
-                        <a href="#pricing" className="text-gray-400 hover:text-white transition-colors text-sm font-medium">
-                            {t('header.pricing')}
-                        </a>
+
                         <a href="#faq" className="text-gray-400 hover:text-white transition-colors text-sm font-medium">
                             {t('header.faq')}
                         </a>
@@ -87,9 +85,7 @@ export function Header() {
                         <a href="#how-it-works" onClick={() => setMenuOpen(false)} className="text-gray-400 hover:text-white text-sm font-medium py-2">
                             {t('header.howItWorks')}
                         </a>
-                        <a href="#pricing" onClick={() => setMenuOpen(false)} className="text-gray-400 hover:text-white text-sm font-medium py-2">
-                            {t('header.pricing')}
-                        </a>
+
                         <a href="#faq" onClick={() => setMenuOpen(false)} className="text-gray-400 hover:text-white text-sm font-medium py-2">
                             {t('header.faq')}
                         </a>
