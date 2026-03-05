@@ -1,8 +1,7 @@
-name = "anticrow-landing"
-compatibility_date = "2025-01-01"
-pages_build_output_dir = "dist"
+name = "anticrow"
+compatibility_date = "2024-12-01"
 
 [[d1_databases]]
 binding = "DB"
 database_name = "anticrow-waitlist"
-database_id = "" # wrangler d1 create 後に設定
+database_id = "6816ebe9-cae1-463c-abba-108d7ed7071d"
