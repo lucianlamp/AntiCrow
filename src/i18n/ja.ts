@@ -456,6 +456,11 @@ export const messages = {
   'team.completed': '完了',
   'team.completedMain': '完了しました',
   'team.errorOccurred': 'エラー発生',
+  'team.subagentLabel': 'サブエージェント',
+  'team.taskCompleted': 'タスク完了',
+  'team.helperFollowup': 'サブエージェント{0}の作業が遅れています。以下のタスクの残り作業を手伝ってください: {1}',
+  'team.helperStarted': '🤝 サブエージェント{0}がサブエージェント{1}のタスクを支援開始',
+  'team.helperModeEnabled': '🤝 ヘルパーモード有効: 先に完了したエージェントが他を手伝います',
 
   // -----------------------------------------------------------------------
   // adminHandler.ts — 管理系スラッシュコマンドハンドラ

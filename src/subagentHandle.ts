@@ -26,6 +26,9 @@ import { writePrompt, watchResponse } from './subagentIpc';
 import { CdpBridge } from './cdpBridge';
 import { DiscoveredInstance, discoverInstances, extractWorkspaceName } from './cdpTargets';
 
+/** worktree のライフサイクル状態 */
+export type WorktreeLifecycleState = 'none' | 'created' | 'in_use' | 'cleaning' | 'cleaned';
+
 /**
  * 単一のサブエージェントを管理するハンドル。
  * worktree の作成・ウィンドウの起動・プロンプト送信・レスポンス受信・終了を担当。
@@ -38,6 +41,8 @@ export class SubagentHandle {
     public currentTask?: string;
     /** プールエントリのインデックス（プール使用時のみ） */
     public poolEntryIndex?: number;
+    /** worktree のライフサイクル状態 */
+    public worktreeState: WorktreeLifecycleState = 'none';
 
     private _state: SubagentState = 'IDLE';
     private config: SubagentConfig;
@@ -46,6 +51,8 @@ export class SubagentHandle {
     private repoRoot: string;
     /** プール使用時: worktree 作成・削除をスキップするフラグ */
     private usePool: boolean;
+    /** repoRoot の公開 getter */
+    public getRepoRoot(): string { return this.repoRoot; }
 
     constructor(
         name: string,
@@ -108,6 +115,7 @@ export class SubagentHandle {
 
         // --- CREATING: worktree + ブランチ作成 ---
         this._state = 'CREATING';
+        this.setWorktreeState('created');
         logDebug(`[SubagentHandle] ${this.name}: CREATING (pool=${this.usePool})`);
 
         if (this.usePool) {
@@ -426,21 +434,48 @@ export class SubagentHandle {
 
     /**
      * worktree とブランチのクリーンアップ。
+     * マージ完了後に呼ばれ、物理ディレクトリを確実に削除する。
      */
-    private async cleanupWorktree(): Promise<void> {
+    async cleanupWorktree(): Promise<void> {
+        this.setWorktreeState('cleaning');
+        // Step 1: git worktree remove --force で正規の削除を試みる
         try {
             await execAsync(`git worktree remove "${this.worktreePath}" --force`, {
                 cwd: this.repoRoot,
             });
             logDebug(`[SubagentHandle] worktree 削除完了: ${this.worktreePath}`);
         } catch (err) {
-            logWarn(`[SubagentHandle] worktree 削除失敗: ${err}`);
-            // git worktree prune でゴミを掃除
+            logWarn(`[SubagentHandle] git worktree remove 失敗（フォールバック実行）: ${err}`);
+
+            // Step 2: git worktree prune でゴミ参照を掃除
             try {
                 await execAsync('git worktree prune', { cwd: this.repoRoot });
+                logDebug(`[SubagentHandle] git worktree prune 実行完了`);
             } catch { /* ignore */ }
 
-            // 物理ディレクトリが残っている場合は強制削除
+            // Step 3: .git/worktrees 内のロックファイルを削除（ロックが残ると再削除できない）
+            try {
+                const gitWorktreesDir = path.join(this.repoRoot, '.git', 'worktrees');
+                const wtBaseName = path.basename(this.worktreePath);
+                const lockFile = path.join(gitWorktreesDir, wtBaseName, 'locked');
+                if (fs.existsSync(lockFile)) {
+                    fs.unlinkSync(lockFile);
+                    logDebug(`[SubagentHandle] ロックファイル削除: ${lockFile}`);
+                    // ロック解除後に再度 git worktree remove を試みる
+                    try {
+                        await execAsync(`git worktree remove "${this.worktreePath}" --force`, {
+                            cwd: this.repoRoot,
+                        });
+                        logDebug(`[SubagentHandle] ロック解除後の worktree 削除成功`);
+                    } catch {
+                        // それでも失敗したら物理削除にフォールバック
+                    }
+                }
+            } catch (lockErr) {
+                logDebug(`[SubagentHandle] ロックファイル処理スキップ: ${lockErr}`);
+            }
+
+            // Step 4: 物理ディレクトリが残っている場合は強制削除
             try {
                 if (fs.existsSync(this.worktreePath)) {
                     fs.rmSync(this.worktreePath, { recursive: true, force: true });
@@ -448,6 +483,21 @@ export class SubagentHandle {
                 }
             } catch (rmErr) {
                 logWarn(`[SubagentHandle] worktree ディレクトリ強制削除失敗: ${rmErr}`);
+            }
+
+            // Step 5: 最終 prune で git 内部参照を完全にクリーンアップ
+            try {
+                await execAsync('git worktree prune', { cwd: this.repoRoot });
+            } catch { /* ignore */ }
+        }
+
+        // 物理ディレクトリが残っていないか最終確認
+        if (fs.existsSync(this.worktreePath)) {
+            logWarn(`[SubagentHandle] worktree ディレクトリがまだ残っています（最終強制削除）: ${this.worktreePath}`);
+            try {
+                fs.rmSync(this.worktreePath, { recursive: true, force: true });
+            } catch (finalErr) {
+                logWarn(`[SubagentHandle] 最終強制削除も失敗: ${finalErr}`);
             }
         }
 
@@ -460,6 +510,14 @@ export class SubagentHandle {
         } catch {
             // ブランチが存在しない場合は無視
         }
+        this.setWorktreeState('cleaned');
+    }
+
+    /** worktree ライフサイクル状態を更新し、ログを出力する */
+    private setWorktreeState(newState: WorktreeLifecycleState): void {
+        const oldState = this.worktreeState;
+        this.worktreeState = newState;
+        logDebug(`[SubagentHandle] ${this.name}: worktreeState ${oldState} → ${newState}`);
     }
 
     /**

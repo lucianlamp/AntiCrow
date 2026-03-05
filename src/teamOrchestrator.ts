@@ -9,6 +9,10 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+
+const execAsync = promisify(exec);
 import { logDebug, logError, logInfo, logWarn } from './logger';
 import { t } from './i18n';
 import type { SubagentManager } from './subagentManager';
@@ -720,7 +724,7 @@ export class TeamOrchestrator {
                 return this.orchestrate(task, channelId, undefined, repoRootOverride, workspaceName)
                     .then(result => ({
                         ...result,
-                        agentName: `タスク${taskIdx}: ${result.agentName}`,
+                        agentName: `${t('team.subagentLabel')}${taskIdx}: ${result.agentName}`,
                     }));
             });
 
@@ -779,7 +783,7 @@ export class TeamOrchestrator {
 
             // 他のサブエージェントのタスク概要（重複防止用）
             const otherTasks = tasks
-                .map((t, j) => j !== i ? `サブエージェント${j + 1}: ${t.substring(0, 50)}${t.length > 50 ? '...' : ''}` : null)
+                .map((tk, j) => j !== i ? `${t('team.subagentLabel')}${j + 1}: ${tk.substring(0, 50)}${tk.length > 50 ? '...' : ''}` : null)
                 .filter((x): x is string => x !== null);
 
             const progressPath = path.join(ipcDir, `req_${requestId}_agent${agentIndex}_progress.json`);
@@ -848,8 +852,17 @@ export class TeamOrchestrator {
         const config = loadTeamConfig(this.getEffectiveRepoRoot());
         const startTime = Date.now();
         const ipcDir = this.fileIpc.getIpcDir();
+        const effectiveRepoRoot = this.getEffectiveRepoRoot();
 
-        logInfo(`[TeamOrchestrator] orchestrateTeam: ${instructions.length} agents, workspace=${workspaceName || 'default'}`);
+        logInfo(`[TeamOrchestrator] orchestrateTeam: ${instructions.length} agents, workspace=${workspaceName || 'default'}, useDirectEdit=${config.useDirectEdit}`);
+
+        // --- orphan worktree のクリーンアップ ---
+        await this.cleanupOrphanWorktrees(effectiveRepoRoot);
+
+        // --- 共有タスクリスト生成 ---
+        const taskListPath = this.generateSharedTaskList(
+            ipcDir, instructions, instructions[0]?.requestId || 'unknown',
+        );
 
         // ウィンドウ再利用が有効な場合: アイドルプールから回収を試みる
         if (this.subagentManager.enableWindowReuse) {
@@ -899,10 +912,10 @@ export class TeamOrchestrator {
                 let threadId: string | null = null;
                 if (this.threadOps) {
                     const taskPreview = instruction.task.substring(0, 500) + (instruction.task.length > 500 ? '...' : '');
-                    // スレッド名は「タスクN」
+                    // スレッド名は「サブエージェントN」
                     threadId = await this.threadOps.createThread(
                         channelId,
-                        `タスク${instruction.agentIndex}`,
+                        `${t('team.subagentLabel')}${instruction.agentIndex}`,
                     );
                     if (threadId) {
                         agentThreads.set(instruction.agentIndex, threadId);
@@ -919,9 +932,43 @@ export class TeamOrchestrator {
                 // サブエージェントにプロンプト送信:
                 // 通常モードと同じ「ファイル読み取り方式」— 短い指示のみ送信
                 const instructionPath = path.join(ipcDir, `tmp_exec_anti-crow_req_${instruction.requestId}_agent${instruction.agentIndex}.json`);
-                const subagentPrompt =
+
+                // 直接編集モード: 元リポジトリのパスで作業するよう指示を追加
+                let subagentPrompt =
                     `以下のファイルを view_file ツールで読み込み、その指示に従ってください。` +
                     `ファイルパス: ${instructionPath}`;
+
+                if (config.useDirectEdit) {
+                    const wsRepoRootPath = wsRepoRoot || effectiveRepoRoot;
+                    subagentPrompt += `\n\n` +
+                        `※重要: ファイルの編集・作成・削除はすべて元のリポジトリパス ${wsRepoRootPath} に対して行ってください。` +
+                        `現在開いている worktree ディレクトリ内のファイルは編集しないでください。` +
+                        `ファイルの読み取りも元のリポジトリパスで行ってください。`;
+                }
+
+                // 共有タスクリストの参照指示を追加
+                if (taskListPath) {
+                    const statusDir = path.dirname(taskListPath);
+                    const requestIdMatch = path.basename(taskListPath).match(/team_tasklist_(.+)\.json/);
+                    const taskRequestId = requestIdMatch ? requestIdMatch[1] : '';
+                    const agentStatusFile = path.join(statusDir, `team_status_${taskRequestId}_agent${instruction.agentIndex}.json`);
+
+                    subagentPrompt += `\n\n` +
+                        `📋 共有タスクリスト: ${taskListPath}（読み取り専用）\n` +
+                        `このファイルにはチーム全体のタスク一覧が記載されています。\n` +
+                        `❗ このファイルは直接編集しないでください。代わりに以下の個別ステータスファイルを更新してください。\n` +
+                        `📄 自分のステータスファイル: ${agentStatusFile}\n` +
+                        `- 作業開始時: {"status": "in_progress", "startedAt": ${Date.now()}} を書き込んでください\n` +
+                        `- 作業完了時: {"status": "completed", "completedAt": ${Date.now()}} を書き込んでください\n` +
+                        `- 失敗時: {"status": "failed", "completedAt": ${Date.now()}} を書き込んでください\n`;
+
+                    if (config.enableHelperMode && config.useDirectEdit) {
+                        subagentPrompt +=
+                            `- 自分のタスク完了後: 他のタスクが "pending" のままなら、そのタスクの手伝いを検討してください。` +
+                            `ただし、他エージェントが作業中のファイルは上書きしないでください。` +
+                            `テスト作成・ドキュメント更新・コードレビュー・未着手の関連作業を優先してください。`;
+                    }
+                }
 
                 await handle.sendPrompt(subagentPrompt);
 
@@ -931,7 +978,7 @@ export class TeamOrchestrator {
                 const errMsg = e instanceof Error ? e.message : String(e);
                 logError(`[TeamOrchestrator] Failed to spawn/send agent ${instruction.agentIndex}: ${errMsg}`, e);
                 await this.sendToDiscord(channelId,
-                    `❌ タスク${instruction.agentIndex} の起動に失敗しました: ${errMsg}`);
+                    `❌ ${t('team.subagentLabel')}${instruction.agentIndex} の起動に失敗しました: ${errMsg}`);
             }
         };
 
@@ -973,6 +1020,7 @@ export class TeamOrchestrator {
             config,
             agentThreads,
             agentNames,
+            taskListPath,
             signal,
         );
 
@@ -983,29 +1031,54 @@ export class TeamOrchestrator {
         logInfo(`[TeamOrchestrator] orchestrateTeam completed: ${successCount}/${results.length} succeeded, ${totalDurationMs}ms`);
 
         // --- 全サブエージェントの変更をメインブランチにマージ ---
-        logInfo('[TeamOrchestrator] 全サブエージェントの変更をメインブランチにマージします...');
-        let mergedCount = 0;
-        let conflictCount = 0;
+        if (config.useDirectEdit) {
+            // 直接編集モード: マージ不要（全エージェントが元リポジトリに直接編集済み）
+            logInfo('[TeamOrchestrator] 直接編集モード: マージステップをスキップ');
+            await this.sendToDiscord(channelId,
+                `✅ **直接編集モード**: 全エージェントの変更は元リポジトリに直接反映済み（マージ不要）`);
+        } else {
+            // 従来モード: worktreeの変更をマージ
+            logInfo('[TeamOrchestrator] 全サブエージェントの変更をメインブランチにマージします...');
+            let mergedCount = 0;
+            let conflictCount = 0;
+            for (const [, agentName] of agentNames) {
+                const handle = this.subagentManager.getAgent(agentName);
+                if (handle) {
+                    const mergeResult = await handle.mergeChanges();
+                    if (mergeResult.merged) {
+                        mergedCount++;
+                    } else if (mergeResult.conflicted) {
+                        conflictCount++;
+                        logWarn(`[TeamOrchestrator] サブエージェント "${agentName}" のマージにコンフリクトが発生しました`);
+                    }
+                }
+            }
+            if (mergedCount > 0 || conflictCount > 0) {
+                logInfo(`[TeamOrchestrator] マージ結果: ${mergedCount} 成功, ${conflictCount} コンフリクト`);
+                await this.sendToDiscord(channelId,
+                    `🔀 **マージ結果**: ${mergedCount} サブエージェントの変更をマージ成功` +
+                    (conflictCount > 0 ? `, ${conflictCount} コンフリクト` : ''));
+            }
+        }
+
+        // --- クリーンアップ ---
+        logInfo('[TeamOrchestrator] worktree のクリーンアップを実行します...');
         for (const [, agentName] of agentNames) {
             const handle = this.subagentManager.getAgent(agentName);
             if (handle) {
-                const mergeResult = await handle.mergeChanges();
-                if (mergeResult.merged) {
-                    mergedCount++;
-                } else if (mergeResult.conflicted) {
-                    conflictCount++;
-                    logWarn(`[TeamOrchestrator] サブエージェント "${agentName}" のマージにコンフリクトが発生しました`);
+                try {
+                    await handle.close();
+                    logDebug(`[TeamOrchestrator] サブエージェント "${agentName}" をクローズ（worktree 削除完了）`);
+                } catch (closeErr) {
+                    logWarn(`[TeamOrchestrator] サブエージェント "${agentName}" のクローズに失敗: ${closeErr}`);
                 }
             }
         }
-        if (mergedCount > 0 || conflictCount > 0) {
-            logInfo(`[TeamOrchestrator] マージ結果: ${mergedCount} 成功, ${conflictCount} コンフリクト`);
-            await this.sendToDiscord(channelId,
-                `🔀 **マージ結果**: ${mergedCount} サブエージェントの変更をマージ成功` +
-                (conflictCount > 0 ? `, ${conflictCount} コンフリクト` : ''));
-        }
 
-        // ウィンドウ再利用モード: 完了したウィンドウをアイドルプールに移動（即座に閉じない）
+        // --- 最終検証: 残留 worktree フォルダがあれば強制削除 ---
+        await this.verifyWorktreeCleanup(effectiveRepoRoot, agentNames);
+
+        // ウィンドウ再利用モード
         if (this.subagentManager.enableWindowReuse) {
             for (const [, agentName] of agentNames) {
                 const handle = this.subagentManager.getAgent(agentName);
@@ -1013,7 +1086,6 @@ export class TeamOrchestrator {
                     await this.subagentManager.moveToIdlePool(handle);
                 }
             }
-            // アイドルクリーンアップタイマーを起動（TTL 超過後に自動クリーンアップ）
             this.subagentManager.startIdleCleanup();
             logInfo(`[TeamOrchestrator] ${agentNames.size} 個のウィンドウをアイドルプールに移動`);
         }
@@ -1036,6 +1108,7 @@ export class TeamOrchestrator {
         config: TeamConfig,
         agentThreads: Map<number, string>,
         agentNames: Map<number, string>,
+        taskListPath: string | null,
         signal?: AbortSignal,
     ): Promise<OrchestrationResult[]> {
         const results: OrchestrationResult[] = [];
@@ -1043,6 +1116,20 @@ export class TeamOrchestrator {
 
         // 完了カウンター（並行実行のため各完了時にインクリメント）
         let completedCount = 0;
+
+        // ヘルパーモード用: 完了済みエージェントのインデックスを追跡
+        const completedAgentIndices = new Set<number>();
+        // ヘルパーモード用: ヘルパーとして支援済みのペアを追跡（二重送信防止）
+        const helperPairs = new Set<string>();
+
+        // ヘルパーモード: useDirectEdit が有効な場合のみ動作（worktreeモードではコンフリクトリスクのため無効）
+        const helperModeActive = config.enableHelperMode && config.useDirectEdit;
+        if (helperModeActive) {
+            logInfo(`[TeamOrchestrator] ${t('team.helperModeEnabled')}`);
+            await this.sendToDiscord(channelId, t('team.helperModeEnabled'));
+        } else if (config.enableHelperMode && !config.useDirectEdit) {
+            logInfo('[TeamOrchestrator] ヘルパーモードは直接編集モード（useDirectEdit: true）でのみ有効です。スキップします。');
+        }
 
         // 各サブエージェントのレスポンスを並行して待機
         const promises = instructions.map(async (instruction) => {
@@ -1082,7 +1169,7 @@ export class TeamOrchestrator {
                 // スレッドに完了通知
                 if (threadId && this.threadOps) {
                     await this.threadOps.sendToThread(threadId,
-                        `✅ **タスク完了** (${Math.round(durationMs / 1000)}秒)`);
+                        `✅ **${t('team.taskCompleted')}** (${Math.round(durationMs / 1000)}秒)`);
                 }
 
                 // メインチャンネルに完了通知（スレッドリンク + N/M 表記付き）
@@ -1090,6 +1177,57 @@ export class TeamOrchestrator {
                 if (threadId) {
                     await this.sendToDiscord(channelId,
                         `✅ ${completedCount}/${instructions.length} 完了しました <#${threadId}>`);
+                }
+
+                // 完了済みとしてマーク
+                completedAgentIndices.add(instruction.agentIndex);
+
+                // --- ヘルパーモード: 完了したエージェントが他を手伝う ---
+                if (helperModeActive && completedCount < instructions.length) {
+                    // まだ完了していないエージェントを探す
+                    const pendingInstructions = instructions.filter(
+                        inst => !completedAgentIndices.has(inst.agentIndex)
+                    );
+
+                    if (pendingInstructions.length > 0) {
+                        // 最初の未完了エージェントを手伝う
+                        const targetInstruction = pendingInstructions[0];
+                        const pairKey = `${instruction.agentIndex}->${targetInstruction.agentIndex}`;
+
+                        if (!helperPairs.has(pairKey)) {
+                            helperPairs.add(pairKey);
+
+                            const helperMsg = t('team.helperStarted', String(instruction.agentIndex), String(targetInstruction.agentIndex));
+                            logInfo(`[TeamOrchestrator] ${helperMsg}`);
+                            await this.sendToDiscord(channelId, helperMsg);
+
+                            // 共有タスクリストを更新（helped ステータス）
+                            if (taskListPath) {
+                                this.updateSharedTaskStatus(taskListPath, targetInstruction.agentIndex, 'helped');
+                            }
+
+                            // 完了したエージェントにフォローアッププロンプトを送信
+                            const handle = this.subagentManager.getAgent(agentName);
+                            if (handle) {
+                                try {
+                                    let followupPrompt = t('team.helperFollowup',
+                                        String(targetInstruction.agentIndex),
+                                        targetInstruction.task
+                                    );
+                                    // タスクリスト参照を含める
+                                    if (taskListPath) {
+                                        followupPrompt += `\n\n📋 共有タスクリスト: ${taskListPath}\n` +
+                                            `他エージェントが作業中のファイルは上書きしないでください。` +
+                                            `テスト作成・ドキュメント更新・コードレビュー・未着手の関連作業を優先してください。`;
+                                    }
+                                    await handle.sendPrompt(followupPrompt);
+                                    logInfo(`[TeamOrchestrator] ヘルパープロンプト送信完了: ${agentName} -> タスク${targetInstruction.agentIndex}`);
+                                } catch (helperErr) {
+                                    logWarn(`[TeamOrchestrator] ヘルパープロンプト送信失敗: ${helperErr}`);
+                                }
+                            }
+                        }
+                    }
                 }
 
                 return {
@@ -1114,6 +1252,9 @@ export class TeamOrchestrator {
                     ).catch(() => { });
                 }
 
+                // エラーでも完了としてマーク（ヘルパーの対象にしない）
+                completedAgentIndices.add(instruction.agentIndex);
+
                 return {
                     agentName,
                     success: false,
@@ -1124,7 +1265,23 @@ export class TeamOrchestrator {
             }
         });
 
+        // タスクリストポーリング: ステータス変化を Discord にリアルタイム通知
+        const pollingAbort = new AbortController();
+        let pollingPromise: Promise<void> | null = null;
+        if (taskListPath) {
+            pollingPromise = this.pollTaskListStatus(
+                taskListPath, channelId, pollingAbort.signal,
+            );
+        }
+
         const settled = await Promise.allSettled(promises);
+
+        // ポーリング停止
+        pollingAbort.abort();
+        if (pollingPromise) {
+            await pollingPromise.catch(() => { /* ignore abort */ });
+        }
+
         for (const result of settled) {
             if (result.status === 'fulfilled') {
                 results.push(result.value);
@@ -1219,7 +1376,7 @@ export class TeamOrchestrator {
                 failureCount: results.filter(r => !r.success).length,
                 allSucceeded: results.every(r => r.success),
             },
-            task_summary: instructions.map((inst, i) => `タスク${i + 1}: ${inst.task.substring(0, 80)}`).join('\n'),
+            task_summary: instructions.map((inst, i) => `${t('team.subagentLabel')}${i + 1}: ${inst.task.substring(0, 80)}`).join('\n'),
             reports: allReports,
             // response_path は writeReportInstructionFile の output.response_path でのみ指定する（一本化）
         };
@@ -1229,4 +1386,327 @@ export class TeamOrchestrator {
         return reportPath;
     }
 
+    // -----------------------------------------------------------------------
+    // worktree クリーンアップヘルパー
+    // -----------------------------------------------------------------------
+
+    /**
+     * orphan worktree の検出と自動クリーンアップ。
+     * チームモード開始時に前回の実行で残ったゴミを掃除する。
+     */
+    private async cleanupOrphanWorktrees(repoRoot: string): Promise<void> {
+        const worktreesDir = path.join(repoRoot, '.anticrow', 'worktrees');
+        const gitWorktreesDir = path.join(repoRoot, '.git', 'worktrees');
+
+        let cleanedCount = 0;
+
+        // 1. .anticrow/worktrees/ 内の残留ディレクトリを検出
+        try {
+            if (fs.existsSync(worktreesDir)) {
+                const entries = fs.readdirSync(worktreesDir);
+                for (const entry of entries) {
+                    const entryPath = path.join(worktreesDir, entry);
+                    try {
+                        const stat = fs.statSync(entryPath);
+                        if (stat.isDirectory()) {
+                            logInfo(`[TeamOrchestrator] orphan worktree 検出: ${entryPath}`);
+                            // git worktree remove を試行
+                            try {
+                                await execAsync(`git worktree remove "${entryPath}" --force`, { cwd: repoRoot });
+                            } catch {
+                                // 失敗したら物理削除
+                                fs.rmSync(entryPath, { recursive: true, force: true });
+                            }
+                            cleanedCount++;
+                            logInfo(`[TeamOrchestrator] orphan worktree 削除完了: ${entryPath}`);
+                        }
+                    } catch (e) {
+                        logWarn(`[TeamOrchestrator] orphan worktree 削除失敗: ${entryPath}: ${e}`);
+                    }
+                }
+            }
+        } catch (e) {
+            logDebug(`[TeamOrchestrator] .anticrow/worktrees/ の読み取りスキップ: ${e}`);
+        }
+
+        // 2. .git/worktrees/ 内の不整合エントリを prune
+        try {
+            if (fs.existsSync(gitWorktreesDir)) {
+                await execAsync('git worktree prune', { cwd: repoRoot });
+                logDebug('[TeamOrchestrator] git worktree prune 実行完了');
+            }
+        } catch (e) {
+            logDebug(`[TeamOrchestrator] git worktree prune スキップ: ${e}`);
+        }
+
+        if (cleanedCount > 0) {
+            logInfo(`[TeamOrchestrator] orphan worktree ${cleanedCount} 個をクリーンアップしました`);
+        }
+    }
+
+    /**
+     * 最終検証: すべてのworktreeフォルダが削除されていることを確認。
+     * 残っているものがあれば強制削除する。
+     */
+    private async verifyWorktreeCleanup(
+        repoRoot: string,
+        agentNames: Map<number, string>,
+    ): Promise<void> {
+        const worktreesDir = path.join(repoRoot, '.anticrow', 'worktrees');
+        let remainingCount = 0;
+
+        // 各エージェントのworktreeパスをチェック
+        for (const [, agentName] of agentNames) {
+            const handle = this.subagentManager.getAgent(agentName);
+            if (handle && fs.existsSync(handle.worktreePath)) {
+                logWarn(`[TeamOrchestrator] 最終検証: worktree が残留しています: ${handle.worktreePath}`);
+                try {
+                    fs.rmSync(handle.worktreePath, { recursive: true, force: true });
+                    logInfo(`[TeamOrchestrator] 最終検証: 強制削除完了: ${handle.worktreePath}`);
+                } catch (e) {
+                    logWarn(`[TeamOrchestrator] 最終検証: 強制削除失敗: ${handle.worktreePath}: ${e}`);
+                }
+                remainingCount++;
+            }
+        }
+
+        // worktrees ディレクトリ全体もチェック
+        try {
+            if (fs.existsSync(worktreesDir)) {
+                const remaining = fs.readdirSync(worktreesDir);
+                for (const entry of remaining) {
+                    const entryPath = path.join(worktreesDir, entry);
+                    const stat = fs.statSync(entryPath);
+                    if (stat.isDirectory()) {
+                        logWarn(`[TeamOrchestrator] 最終検証: 未知のworktreeが残留: ${entryPath}`);
+                        try {
+                            fs.rmSync(entryPath, { recursive: true, force: true });
+                            logInfo(`[TeamOrchestrator] 最終検証: 強制削除完了: ${entryPath}`);
+                        } catch (e) {
+                            logWarn(`[TeamOrchestrator] 最終検証: 強制削除失敗: ${entryPath}: ${e}`);
+                        }
+                        remainingCount++;
+                    }
+                }
+            }
+        } catch { /* ignore */ }
+
+        // git worktree prune で最終クリーンアップ
+        try {
+            await execAsync('git worktree prune', { cwd: repoRoot });
+        } catch { /* ignore */ }
+
+        if (remainingCount > 0) {
+            logInfo(`[TeamOrchestrator] 最終検証: ${remainingCount} 個の残留worktreeを強制削除しました`);
+        } else {
+            logDebug('[TeamOrchestrator] 最終検証: worktreeの残留なし ✅');
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // 共有タスクリスト管理
+    // -----------------------------------------------------------------------
+
+    /**
+     * 共有タスクリスト JSON を生成する。
+     * チーム全体のタスク一覧をファイルに書き出し、サブエージェントが読み書きできるようにする。
+     */
+    private generateSharedTaskList(
+        ipcDir: string,
+        instructions: TeamInstruction[],
+        requestId: string,
+    ): string {
+        const taskListPath = path.join(ipcDir, `team_tasklist_${requestId}.json`);
+        const taskList = {
+            requestId,
+            createdAt: Date.now(),
+            tasks: instructions.map(inst => ({
+                agentIndex: inst.agentIndex,
+                task: inst.task.substring(0, 200), // 概要のみ（長すぎ防止）
+                status: 'pending' as string,
+                assignedTo: `anti-crow-subagent-${inst.agentIndex}`,
+                startedAt: null as number | null,
+                completedAt: null as number | null,
+            })),
+        };
+
+        fs.writeFileSync(taskListPath, JSON.stringify(taskList, null, 2), 'utf-8');
+        logInfo(`[TeamOrchestrator] 共有タスクリスト生成: ${taskListPath} (${instructions.length} タスク)`);
+        return taskListPath;
+    }
+
+    /**
+     * 共有タスクリストの特定タスクのステータスを更新する。
+     * orchestrator 側からのステータス更新用（helped など）。
+     */
+    private updateSharedTaskStatus(
+        taskListPath: string,
+        agentIndex: number,
+        status: string,
+    ): void {
+        try {
+            const content = fs.readFileSync(taskListPath, 'utf-8');
+            const taskList = JSON.parse(content);
+            const task = taskList.tasks?.find((t: { agentIndex: number }) => t.agentIndex === agentIndex);
+            if (task) {
+                task.status = status;
+                if (status === 'completed' || status === 'failed' || status === 'helped') {
+                    task.completedAt = Date.now();
+                }
+                if (status === 'in_progress') {
+                    task.startedAt = Date.now();
+                }
+                fs.writeFileSync(taskListPath, JSON.stringify(taskList, null, 2), 'utf-8');
+                logDebug(`[TeamOrchestrator] タスクリスト更新: agent${agentIndex} -> ${status}`);
+            }
+        } catch (e) {
+            logWarn(`[TeamOrchestrator] タスクリスト更新失敗: ${e}`);
+        }
+    }
+
+    /**
+     * 共有タスクリストファイルをポーリングし、ステータス変化を Discord にリアルタイム通知する。
+     * 5秒間隔でファイルを読み込み、前回状態との差分を検出。
+     */
+    private async pollTaskListStatus(
+        taskListPath: string,
+        channelId: string,
+        signal: AbortSignal,
+    ): Promise<void> {
+        const POLL_INTERVAL_MS = 5000;
+        const TERMINAL_STATUSES = new Set(['completed', 'failed', 'helped']);
+        const STATUS_EMOJI: Record<string, string> = {
+            'in_progress': '🔄',
+            'completed': '✅',
+            'failed': '❌',
+            'helped': '🤝',
+        };
+
+        // 前回のステータスマップ（agentIndex -> status）
+        let prevStatuses = new Map<number, string>();
+
+        // 初期状態を読み込み
+        try {
+            const content = fs.readFileSync(taskListPath, 'utf-8');
+            const taskList = JSON.parse(content);
+            for (const task of taskList.tasks || []) {
+                prevStatuses.set(task.agentIndex, task.status);
+            }
+        } catch { /* ignore initial read error */ }
+
+        logInfo(`[TeamOrchestrator] タスクリストポーリング開始: ${taskListPath}`);
+
+        while (!signal.aborted) {
+            // 待機
+            await new Promise<void>((resolve) => {
+                const timer = setTimeout(resolve, POLL_INTERVAL_MS);
+                signal.addEventListener('abort', () => {
+                    clearTimeout(timer);
+                    resolve();
+                }, { once: true });
+            });
+
+            if (signal.aborted) break;
+
+            try {
+                const content = fs.readFileSync(taskListPath, 'utf-8');
+                const taskList = JSON.parse(content);
+                const tasks: Array<{ agentIndex: number; status: string; task: string }> = taskList.tasks || [];
+
+                // 個別ステータスファイルを読み取り、タスクリストに統合
+                const statusDir = path.dirname(taskListPath);
+                const requestIdMatch = path.basename(taskListPath).match(/team_tasklist_(.+)\.json/);
+                const taskRequestId = requestIdMatch ? requestIdMatch[1] : '';
+
+                for (const task of tasks) {
+                    const agentStatusFile = path.join(statusDir, `team_status_${taskRequestId}_agent${task.agentIndex}.json`);
+                    try {
+                        const statusContent = fs.readFileSync(agentStatusFile, 'utf-8');
+                        const agentStatus = JSON.parse(statusContent);
+                        if (agentStatus && typeof agentStatus.status === 'string') {
+                            task.status = agentStatus.status;
+                        }
+                    } catch { /* 個別ファイルがまだ存在しない場合は無視 */ }
+                }
+
+                // ステータス変化を検出
+                const changes: Array<{ agentIndex: number; oldStatus: string; newStatus: string; task: string }> = [];
+                for (const task of tasks) {
+                    const prev = prevStatuses.get(task.agentIndex) || 'pending';
+                    if (task.status !== prev) {
+                        changes.push({
+                            agentIndex: task.agentIndex,
+                            oldStatus: prev,
+                            newStatus: task.status,
+                            task: task.task,
+                        });
+                        prevStatuses.set(task.agentIndex, task.status);
+                    }
+                }
+
+                // 変化があれば Discord に通知
+                if (changes.length > 0) {
+                    for (const change of changes) {
+                        const emoji = STATUS_EMOJI[change.newStatus] || '🔔';
+                        // completed の通知は既存の完了通知と重複するためスキップ
+                        if (change.newStatus === 'completed') continue;
+
+                        let msg = '';
+                        if (change.newStatus === 'in_progress') {
+                            msg = `${emoji} サブエージェント${change.agentIndex} がタスクを開始しました`;
+                        } else if (change.newStatus === 'helped') {
+                            msg = `${emoji} サブエージェント${change.agentIndex} のタスクにヘルプが入りました`;
+                        } else if (change.newStatus === 'failed') {
+                            msg = `${emoji} サブエージェント${change.agentIndex} のタスクが失敗しました`;
+                        } else {
+                            msg = `${emoji} サブエージェント${change.agentIndex}: ${change.oldStatus} → ${change.newStatus}`;
+                        }
+                        await this.sendToDiscord(channelId, msg);
+                    }
+
+                    // 全体進捗サマリーを表示
+                    const summary = this.buildProgressSummary(tasks);
+                    await this.sendToDiscord(channelId, summary);
+                }
+
+                // 全タスクが終了ステータスなら停止
+                const allDone = tasks.every(t => TERMINAL_STATUSES.has(t.status));
+                if (allDone && tasks.length > 0) {
+                    await this.sendToDiscord(channelId, '📋 **全タスク完了済み** ✅');
+                    logInfo('[TeamOrchestrator] タスクリストポーリング: 全タスク完了、停止');
+                    break;
+                }
+
+            } catch (e) {
+                // ファイル読み取りエラーは無視（ファイルが一時的にロックされている可能性）
+                logDebug(`[TeamOrchestrator] タスクリストポーリング: 読み取りエラー: ${e}`);
+            }
+        }
+
+        logInfo('[TeamOrchestrator] タスクリストポーリング終了');
+    }
+
+    /**
+     * タスクリストの全体進捗サマリーを生成する。
+     */
+    private buildProgressSummary(
+        tasks: Array<{ agentIndex: number; status: string }>,
+    ): string {
+        const counts: Record<string, number> = {};
+        for (const task of tasks) {
+            counts[task.status] = (counts[task.status] || 0) + 1;
+        }
+
+        const parts: string[] = [];
+        if (counts['pending']) parts.push(`⬜ pending: ${counts['pending']}`);
+        if (counts['in_progress']) parts.push(`🔄 in_progress: ${counts['in_progress']}`);
+        if (counts['completed']) parts.push(`✅ completed: ${counts['completed']}`);
+        if (counts['helped']) parts.push(`🤝 helped: ${counts['helped']}`);
+        if (counts['failed']) parts.push(`❌ failed: ${counts['failed']}`);
+
+        return `📊 進捗: ${parts.join(' | ')}`;
+    }
+
 }
+
+

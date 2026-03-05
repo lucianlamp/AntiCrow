@@ -28,6 +28,10 @@ export interface TeamConfig {
     autoSpawn: boolean;
     /** 並列タスク分配を有効にするか */
     enableParallel: boolean;
+    /** 先に完了したサブエージェントが他を手伝うヘルパーモード */
+    enableHelperMode: boolean;
+    /** 直接編集モード: worktreeはウィンドウ起動用のみ、ファイル編集は元リポジトリで行う */
+    useDirectEdit: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -41,6 +45,8 @@ const DEFAULT_CONFIG: TeamConfig = {
     monitorIntervalMs: 15_000,    // 15秒
     autoSpawn: true,
     enableParallel: true,
+    enableHelperMode: true,
+    useDirectEdit: true,
 };
 
 const CONFIG_DIR = '.anticrow';
@@ -67,6 +73,8 @@ export function loadTeamConfig(repoRoot: string): TeamConfig {
                 monitorIntervalMs: typeof parsed.monitorIntervalMs === 'number' ? parsed.monitorIntervalMs : DEFAULT_CONFIG.monitorIntervalMs,
                 autoSpawn: typeof parsed.autoSpawn === 'boolean' ? parsed.autoSpawn : DEFAULT_CONFIG.autoSpawn,
                 enableParallel: typeof parsed.enableParallel === 'boolean' ? parsed.enableParallel : DEFAULT_CONFIG.enableParallel,
+                enableHelperMode: typeof parsed.enableHelperMode === 'boolean' ? parsed.enableHelperMode : DEFAULT_CONFIG.enableHelperMode,
+                useDirectEdit: typeof parsed.useDirectEdit === 'boolean' ? parsed.useDirectEdit : DEFAULT_CONFIG.useDirectEdit,
             };
         }
     } catch (e) {

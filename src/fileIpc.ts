@@ -609,6 +609,17 @@ export class FileIpc {
                         continue;
                     }
 
+                    // team_* 系（タスクリスト・個別ステータスファイル）: 60分以上で削除
+                    // チームモード実行中はアクティブなため、十分な猶予を設ける
+                    if (f.startsWith('team_') && ageMs <= 60 * 60 * 1000) {
+                        continue; // 60分以内はスキップ
+                    }
+                    if (f.startsWith('team_') && ageMs > 60 * 60 * 1000) {
+                        await fs.promises.unlink(fp);
+                        logDebug(`FileIpc: cleaned up team file ${f}`);
+                        continue;
+                    }
+
                     // req_*_progress.json: 応答完了後30分で削除
                     if (f.includes('_progress.json') && ageMs > 30 * 60 * 1000) {
                         await fs.promises.unlink(fp);
