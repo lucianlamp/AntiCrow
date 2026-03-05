@@ -42,8 +42,9 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
             'SELECT COUNT(*) as total FROM waitlist'
         ).first<{ total: number }>();
 
-        // 実効的な順位 = 元の順位 - priority_score（紹介ボーナス）
+        // 内部計算で実効順位を算出（ロジックは非公開）
         const effectivePosition = Math.max(1, (user.position as number) - (user.priority_score as number));
+        const points = (user.referral_count as number) * 10;
 
         return new Response(
             JSON.stringify({
@@ -51,8 +52,8 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
                 referralCode: user.referral_code,
                 position: effectivePosition,
                 totalCount: totalCount?.total || 0,
-                referralCount: user.referral_count,
-                priorityScore: user.priority_score,
+                points,
+                pointsLabel: `${points}pt`,
                 emailVerified: user.email_verified === 1,
                 createdAt: user.created_at,
                 referralLink: `https://anticrow.pages.dev?ref=${user.referral_code}`,

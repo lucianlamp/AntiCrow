@@ -19,8 +19,10 @@
                 "referralLabel": "Share to move up:",
                 "copied": "Copied!",
                 "copy": "Copy",
-                "referrals": "{{count}} referral(s)",
-                "boost": "Each referral = 5 spots up!"
+                "points": "{{points}} earned",
+                "boost": "Invite friends to earn points!",
+                "shareX": "Share on 𝕏",
+                "shareText": "Just joined the AntiCrow waitlist! AI coding from Discord 🐦‍⬛"
             },
             "error": "Something went wrong. Please try again."
         }

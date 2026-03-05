@@ -68,7 +68,8 @@ function ImageSlideshow() {
 interface WaitlistResult {
     position: number;
     referralCode: string;
-    referralCount: number;
+    points: number;
+    pointsLabel: string;
 }
 
 export function Hero() {
@@ -100,7 +101,8 @@ export function Hero() {
             setResult({
                 position: data.position,
                 referralCode: data.referralCode,
-                referralCount: data.referralCount ?? 0,
+                points: data.points ?? 0,
+                pointsLabel: data.pointsLabel ?? '0pt',
             });
         } catch {
             setError(t('hero.waitlist.error'));
@@ -191,12 +193,24 @@ export function Hero() {
                             </div>
                             <div className="flex items-center justify-between text-sm">
                                 <span className="text-gray-400">
-                                    {t('hero.waitlist.success.referrals', { count: result.referralCount })}
+                                    {t('hero.waitlist.success.points', { points: result.pointsLabel })}
                                 </span>
                                 <span className="text-purple-400 font-medium">
                                     {t('hero.waitlist.success.boost')}
                                 </span>
                             </div>
+                            {/* X シェアボタン */}
+                            <button
+                                onClick={() => {
+                                    const text = encodeURIComponent(t('hero.waitlist.success.shareText'));
+                                    const url = encodeURIComponent(referralUrl);
+                                    window.open(`https://x.com/intent/tweet?text=${text}&url=${url}`, '_blank');
+                                }}
+                                className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-black hover:bg-gray-900 border border-white/10 hover:border-white/20 text-white font-medium text-sm transition-all"
+                            >
+                                <span className="text-lg">𝕏</span>
+                                {t('hero.waitlist.success.shareX')}
+                            </button>
                         </div>
                     </div>
                 )}

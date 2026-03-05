@@ -56,6 +56,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       // 既に登録済みの場合はステータスを返す
       const totalCount = await DB.prepare('SELECT COUNT(*) as total FROM waitlist').first<{ total: number }>();
       const effectivePosition = Math.max(1, (existing.position as number) - (existing.priority_score as number));
+      const points = (existing.referral_count as number) * 10;
 
       return new Response(
         JSON.stringify({
@@ -65,7 +66,8 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
           referralCode: existing.referral_code,
           position: effectivePosition,
           totalCount: totalCount?.total || 0,
-          referralCount: existing.referral_count,
+          points,
+          pointsLabel: `${points}pt`,
           referralLink: `https://anticrow.pages.dev?ref=${existing.referral_code}`,
         }),
         { status: 200, headers: corsHeaders }
@@ -119,7 +121,8 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         referralCode: newReferralCode,
         position: nextPosition,
         totalCount: nextPosition,
-        referralCount: 0,
+        points: 0,
+        pointsLabel: '0pt',
         referralLink: `https://anticrow.pages.dev?ref=${newReferralCode}`,
       }),
       { status: 201, headers: corsHeaders }

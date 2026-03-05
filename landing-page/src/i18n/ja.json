@@ -19,8 +19,10 @@
                 "referralLabel": "シェアして順位アップ:",
                 "copied": "コピー済み！",
                 "copy": "コピー",
-                "referrals": "紹介 {{count}} 人",
-                "boost": "1紹介で5順位アップ！"
+                "points": "{{points}} 獲得済み",
+                "boost": "友達を招待してポイントゲット！",
+                "shareX": "𝕏 でシェア",
+                "shareText": "AntiCrow のウェイトリストに登録したよ！Discord からAIコーディングができるやつ 🐦‍⬛"
             },
             "error": "エラーが発生しました。もう一度お試しください。"
         }
