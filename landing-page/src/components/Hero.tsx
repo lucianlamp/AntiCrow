@@ -123,7 +123,7 @@ export function Hero() {
     }, [referralUrl]);
 
     return (
-        <section className="relative min-h-screen flex items-center justify-center pt-20 pb-16 px-4 overflow-hidden">
+        <section className="hero-glow relative min-h-screen flex items-center justify-center pt-20 pb-16 px-4 overflow-hidden">
             {/* Background decorations */}
             <div className="absolute inset-0 pointer-events-none">
                 <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-purple-700/10 rounded-full blur-3xl"></div>

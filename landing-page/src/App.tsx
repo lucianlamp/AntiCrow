@@ -12,7 +12,11 @@ import { Footer } from './components/Footer';
 
 function App() {
     return (
-        <div className="min-h-screen">
+        <div className="min-h-screen relative">
+            {/* Floating ambient orbs */}
+            <div className="orb orb-1"></div>
+            <div className="orb orb-2"></div>
+            <div className="orb orb-3"></div>
             <Header />
             <main>
                 <Hero />
