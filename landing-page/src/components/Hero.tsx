@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import confetti from 'canvas-confetti';
 
 // 画像スライド: ここに画像パスを追加すれば自動でスライドショーになる
 const SLIDE_IMAGES: { src: string; alt: string }[] = [
@@ -97,6 +98,11 @@ export function Hero() {
             const data = await res.json();
             setResult({
                 referralCode: data.referralCode,
+            });
+            confetti({
+                particleCount: 100,
+                spread: 70,
+                origin: { y: 0.6 }
             });
         } catch {
             setError(t('hero.waitlist.error'));

@@ -15,10 +15,10 @@
             "submitting": "Joining...",
             "success": {
                 "title": "You're in! 🎉",
-                "referralLabel": "Share to move up:",
+                "referralLabel": "Share to move up in line:",
                 "copied": "Copied!",
                 "copy": "Copy",
-                "shareX": "Share on 𝕏",
+                "shareX": "Share on",
                 "shareText": "Just joined the #AntiCrow waitlist! Connect Antigravity on your PC via Discord and code with AI from the palm of your hand 🐦‍⬛"
             },
             "error": "Something went wrong. Please try again."

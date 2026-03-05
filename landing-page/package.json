@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "devDependencies": {
+    "@types/canvas-confetti": "^1.9.0",
     "typescript": "~5.9.3",
     "vite": "^7.3.1"
   },
@@ -17,6 +18,7 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.4",
+    "canvas-confetti": "^1.9.4",
     "i18next": "^25.8.14",
     "i18next-browser-languagedetector": "^8.2.1",
     "react": "^19.2.4",
