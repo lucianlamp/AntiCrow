@@ -1,0 +1,169 @@
+{
+    "header": {
+        "features": "機能",
+        "howItWorks": "使い方",
+        "pricing": "料金",
+        "faq": "FAQ"
+    },
+    "hero": {
+        "title": "どこからでも AI を操作する",
+        "subtitle": "Discord でメッセージを送る → PC の AI がコーディング → 結果が Discord に届く",
+        "waitlist": {
+            "title": "ウェイトリストに登録",
+            "placeholder": "メールアドレスを入力",
+            "button": "ウェイトリストに参加",
+            "submitting": "登録中...",
+            "success": {
+                "title": "登録完了！🎉",
+                "position": "あなたの順位: #{{position}}",
+                "referralLabel": "シェアして順位アップ:",
+                "copied": "コピー済み！",
+                "copy": "コピー",
+                "referrals": "紹介 {{count}} 人",
+                "boost": "1紹介で5順位アップ！"
+            },
+            "error": "エラーが発生しました。もう一度お試しください。"
+        }
+    },
+    "features": {
+        "title": "機能",
+        "items": [
+            {
+                "icon": "📱",
+                "title": "スマホから遠隔操作",
+                "description": "外出先でも Discord からタスクを依頼できる"
+            },
+            {
+                "icon": "⏰",
+                "title": "定期実行",
+                "description": "cron 式で毎日・毎週の自動タスクを登録"
+            },
+            {
+                "icon": "🤝",
+                "title": "チームモード",
+                "description": "複数 AI が並列でタスクを高速実行（Pro）"
+            },
+            {
+                "icon": "⚡",
+                "title": "自動承認",
+                "description": "遠隔実行中の確認ダイアログを自動クリック（Pro）"
+            },
+            {
+                "icon": "💾",
+                "title": "メモリー",
+                "description": "過去の学びを記憶して次のタスクに活かす"
+            },
+            {
+                "icon": "📂",
+                "title": "複数WS対応",
+                "description": "プロジェクトごとに Discord チャンネルを自動作成"
+            }
+        ]
+    },
+    "howItWorks": {
+        "title": "使い方",
+        "steps": [
+            {
+                "icon": "💬",
+                "title": "メッセージを送る",
+                "description": "Discord に依頼を入力 — スマホ、タブレット、PC どこからでも"
+            },
+            {
+                "icon": "🤖",
+                "title": "AI が実行",
+                "description": "AntiCrow が PC 上の Antigravity にタスクを橋渡し"
+            },
+            {
+                "icon": "✅",
+                "title": "結果を受け取る",
+                "description": "リアルタイムの進捗通知と共に結果が Discord に届く"
+            }
+        ]
+    },
+    "pricing": {
+        "title": "料金",
+        "free": {
+            "name": "Free",
+            "price": "$0",
+            "period": "永久無料",
+            "features": [
+                "1日10回 / 週50回のタスク実行",
+                "定期実行 ✅",
+                "スラッシュコマンド ✅",
+                "テンプレート ✅",
+                "メモリー ✅",
+                "自動承認 ❌",
+                "チームモード ❌"
+            ],
+            "button": "始める"
+        },
+        "pro": {
+            "name": "Pro",
+            "price": "Coming Soon",
+            "period": "",
+            "features": [
+                "タスク実行無制限",
+                "全機能 ✅",
+                "自動承認 ✅",
+                "チームモード ✅",
+                "優先サポート",
+                "14日間無料トライアル"
+            ],
+            "button": "無料トライアル開始"
+        }
+    },
+    "security": {
+        "title": "セキュリティ & プライバシー",
+        "items": [
+            {
+                "icon": "🔒",
+                "title": "ローカル処理",
+                "description": "すべての処理は PC 上で完結。外部サーバーにデータ送信なし。"
+            },
+            {
+                "icon": "🔐",
+                "title": "暗号化保存",
+                "description": "Bot Token は SecretStorage で暗号化保存。"
+            },
+            {
+                "icon": "🛡️",
+                "title": "アクセス制御",
+                "description": "ユーザー ID ベースのアクセス制御。"
+            },
+            {
+                "icon": "📊",
+                "title": "テレメトリなし",
+                "description": "テレメトリ・使用統計の収集なし。"
+            }
+        ]
+    },
+    "faq": {
+        "title": "よくある質問",
+        "items": [
+            {
+                "question": "外出先からも使える？",
+                "answer": "Discord さえ使えればどこからでも。PC がオンラインであれば OK です。"
+            },
+            {
+                "question": "Bot Token は安全？",
+                "answer": "SecretStorage で暗号化保存。設定ファイルに平文記録されません。"
+            },
+            {
+                "question": "複数プロジェクトを同時に管理できる？",
+                "answer": "自動で Discord カテゴリーが作られ、プロジェクトごとに独立管理できます。"
+            },
+            {
+                "question": "Pro トライアルはある？",
+                "answer": "14日間無料でお試し可能です。"
+            }
+        ]
+    },
+    "cta": {
+        "title": "どこからでもコーディングする準備はできた？",
+        "button": "AntiCrow を入手"
+    },
+    "footer": {
+        "madeWith": "Made with ❤️ by LUCIAN",
+        "copyright": "© 2026 AntiCrow by @lucianlamp"
+    }
+}
