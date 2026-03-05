@@ -14,13 +14,10 @@
             "button": "Join Waitlist",
             "submitting": "Joining...",
             "success": {
-                "title": "You're on the list! 🎉",
-                "position": "Your position: #{{position}}",
+                "title": "You're in! 🎉",
                 "referralLabel": "Share to move up:",
                 "copied": "Copied!",
                 "copy": "Copy",
-                "points": "{{points}} earned",
-                "boost": "Invite friends to earn points!",
                 "shareX": "Share on 𝕏",
                 "shareText": "Just joined the AntiCrow waitlist! AI coding from Discord 🐦‍⬛"
             },

@@ -15,12 +15,9 @@
             "submitting": "登録中...",
             "success": {
                 "title": "登録完了！🎉",
-                "position": "あなたの順位: #{{position}}",
                 "referralLabel": "シェアして順位アップ:",
                 "copied": "コピー済み！",
                 "copy": "コピー",
-                "points": "{{points}} 獲得済み",
-                "boost": "友達を招待してポイントゲット！",
                 "shareX": "𝕏 でシェア",
                 "shareText": "AntiCrow のウェイトリストに登録したよ！Discord からAIコーディングができるやつ 🐦‍⬛"
             },

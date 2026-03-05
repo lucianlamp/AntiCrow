@@ -66,10 +66,7 @@ function ImageSlideshow() {
 
 
 interface WaitlistResult {
-    position: number;
     referralCode: string;
-    points: number;
-    pointsLabel: string;
 }
 
 export function Hero() {
@@ -99,10 +96,7 @@ export function Hero() {
 
             const data = await res.json();
             setResult({
-                position: data.position,
                 referralCode: data.referralCode,
-                points: data.points ?? 0,
-                pointsLabel: data.pointsLabel ?? '0pt',
             });
         } catch {
             setError(t('hero.waitlist.error'));
@@ -170,10 +164,7 @@ export function Hero() {
                     </div>
                 ) : (
                     <div className="glass-card p-6 sm:p-8 max-w-md w-full glow-purple">
-                        <h3 className="text-xl font-bold text-white mb-2">{t('hero.waitlist.success.title')}</h3>
-                        <p className="text-3xl font-bold gradient-text mb-4">
-                            {t('hero.waitlist.success.position', { position: result.position })}
-                        </p>
+                        <h3 className="text-xl font-bold text-white mb-4">{t('hero.waitlist.success.title')}</h3>
 
                         <div className="space-y-3">
                             <p className="text-sm text-gray-400">{t('hero.waitlist.success.referralLabel')}</p>
@@ -190,14 +181,6 @@ export function Hero() {
                                 >
                                     {copied ? t('hero.waitlist.success.copied') : t('hero.waitlist.success.copy')}
                                 </button>
-                            </div>
-                            <div className="flex items-center justify-between text-sm">
-                                <span className="text-gray-400">
-                                    {t('hero.waitlist.success.points', { points: result.pointsLabel })}
-                                </span>
-                                <span className="text-purple-400 font-medium">
-                                    {t('hero.waitlist.success.boost')}
-                                </span>
                             </div>
                             {/* X シェアボタン */}
                             <button
