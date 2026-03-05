@@ -165,7 +165,7 @@ export async function generatePlan(
     );
     logDebug('handleDiscordMessage: sending plan prompt via CDP...');
 
-    // AbortController 生成（/cancel でキャンセル可能にする）
+    // AbortController 生成（/stop でキャンセル可能にする）
     const abortController = new AbortController();
     setPlanAbortController(abortController);
 
@@ -254,7 +254,62 @@ export async function generatePlan(
 
     const planOutput = parsePlanJson(planResponse);
     if (!planOutput) {
-        // Plan JSON として解析できなかった
+        // リトライ: JSON パース失敗時に修正指示付きで1回だけ再試行
+        logWarn('handleDiscordMessage: plan JSON parse failed, attempting retry...');
+        try {
+            await channel.send({ embeds: [buildEmbed(t('pipeline.planRetrying'), EmbedColor.Warning)] });
+
+            // リトライ用の新規 requestId / responsePath
+            const { requestId: retryReqId, responsePath: retryResponsePath } = fileIpc.createRequestId();
+            fileIpc.writeRequestMeta(retryReqId, channel.id, DiscordBot.resolveWorkspaceFromChannel(channel) ?? undefined);
+            const retryProgressPath = fileIpc.createProgressPath(retryReqId);
+
+            const retryPrompt =
+                `前回の応答が JSON としてパースできませんでした。` +
+                `出力は必ず JSON 形式の実行計画オブジェクトのみとしてください。` +
+                `Markdown や自然文は書き込まないでください。` +
+                `レスポンスファイルパス: ${retryResponsePath}`;
+
+            await activeCdp.sendPrompt(retryPrompt);
+            logDebug('handleDiscordMessage: retry prompt sent, waiting for response...');
+
+            const retryTypingInterval = setInterval(async () => {
+                try { await channel.sendTyping(); } catch { /* ignore */ }
+            }, 8_000);
+            try { await channel.sendTyping(); } catch { /* ignore */ }
+
+            const responseTimeout = getResponseTimeout();
+            fileIpc.registerActiveRequest(retryReqId);
+            let retryResponse: string;
+            try {
+                retryResponse = await fileIpc.waitForResponse(retryResponsePath, responseTimeout);
+            } finally {
+                fileIpc.unregisterActiveRequest(retryReqId);
+                clearInterval(retryTypingInterval);
+                fileIpc.cleanupProgress(retryProgressPath).catch(() => { });
+                try {
+                    await fs.promises.unlink(retryResponsePath);
+                    const metaPath = retryResponsePath.replace(/_response\.(json|md)$/, '_meta.json');
+                    await fs.promises.unlink(metaPath).catch(() => { });
+                } catch { /* ignore */ }
+            }
+
+            const retryPlanOutput = parsePlanJson(retryResponse);
+            if (retryPlanOutput) {
+                logInfo('handleDiscordMessage: retry succeeded — plan parsed on second attempt');
+                const plan = buildPlan(retryPlanOutput, channel.id, channel.id);
+                if (attachmentPaths && attachmentPaths.length > 0) {
+                    plan.attachment_paths = attachmentPaths;
+                }
+                return { plan, guild: channel.guild };
+            }
+
+            logWarn('handleDiscordMessage: retry also failed — falling back to error/markdown');
+        } catch (retryErr) {
+            logWarn(`handleDiscordMessage: retry attempt failed: ${retryErr instanceof Error ? retryErr.message : retryErr}`);
+        }
+
+        // リトライも失敗: 従来のフォールバック処理
         const trimmed = planResponse.trim();
 
         // 検出1: 壊れた計画JSON（plan_id や prompt を含むが不正形式）
@@ -265,7 +320,6 @@ export async function generatePlan(
         }
 
         // 検出2: plan_generation なのに Markdown 形式で返ってきた場合
-        // （Markdown ヘッダー、太字、箇条書き、絵文字で始まるテキストを検出）
         const looksLikeMarkdown = /^(?:#|\*\*|[-•]|[✅❌🔧📋📸💡⚠️🎉])/.test(trimmed);
         if (looksLikeMarkdown) {
             logWarn(`handleDiscordMessage: plan_generation response appears to be Markdown instead of JSON (${trimmed.substring(0, 80)}...)`);
@@ -276,7 +330,6 @@ export async function generatePlan(
 
         const formatted = FileIpc.extractResult(planResponse);
         const content = formatted !== planResponse ? formatted : planResponse;
-        // normalizeHeadings + splitForEmbeds で長文分割 Embed 送信
         const normalized = normalizeHeadings(content);
         const embedGroups = splitForEmbeds(normalized);
         for (const group of embedGroups) {

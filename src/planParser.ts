@@ -8,6 +8,36 @@ import { logWarn, logDebug } from './logger';
 import { getTimezone } from './configHelper';
 
 /**
+ * 生の文字列から JSON としてパース可能な文字列に修復する。
+ * - BOM 除去
+ * - 多重コードブロック囲みの除去（```json が複数重なっている場合）
+ * - // コメントの除去
+ * - trailing comma の除去（},] や ,} ,] パターン）
+ * - JSON 以外のテキストが前後に付いている場合、最初の { から最後の } までを抽出
+ */
+function cleanRawJson(raw: string): string {
+    // BOM 除去
+    let s = raw.replace(/^\uFEFF/, '');
+
+    // 多重コードブロック囲みの除去（繰り返し適用）
+    while (/^```(?:json)?\s*/i.test(s) && /\s*```\s*$/i.test(s)) {
+        s = s.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
+    }
+
+    // // コメント除去（文字列リテラル内は除外するシンプルなアプローチ）
+    // 文字列の外にある行コメントのみ除去
+    s = s.replace(/(?<!["\w])\/\/[^\n]*/g, '');
+
+    // /* */ ブロックコメント除去
+    s = s.replace(/\/\*[\s\S]*?\*\//g, '');
+
+    // trailing comma 除去（,] や ,} パターン）
+    s = s.replace(/,\s*([\]}])/g, '$1');
+
+    return s.trim();
+}
+
+/**
  * Plan が返した JSON/YAML 文字列をパースし、バリデーションする。
  * JSON パース失敗時は YAML パースにフォールバックする。
  * Zod は依存を増やすので手動バリデーション（計画スキーマは固定なので十分）。
@@ -15,24 +45,36 @@ import { getTimezone } from './configHelper';
 export function parsePlanJson(raw: string): PlanOutput | null {
     let obj: unknown;
     try {
-        // Plan が ```json ... ``` で囲って返す可能性に備える
-        const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+        const cleaned = cleanRawJson(raw);
         obj = JSON.parse(cleaned);
     } catch {
-        // JSON パース失敗 → YAML としてパースを試行
+        // JSON 部分の自動抽出を試行（前後にテキストが付いている場合）
         try {
-            const yamlCleaned = raw.replace(/^```(?:ya?ml)?\s*/i, '').replace(/\s*```$/i, '').trim();
-            obj = parseYaml(yamlCleaned);
-            if (typeof obj === 'object' && obj !== null) {
-                logDebug('planParser: JSON parse failed, YAML parse succeeded');
+            const firstBrace = raw.indexOf('{');
+            const lastBrace = raw.lastIndexOf('}');
+            if (firstBrace !== -1 && lastBrace > firstBrace) {
+                const extracted = raw.substring(firstBrace, lastBrace + 1);
+                const cleanedExtracted = cleanRawJson(extracted);
+                obj = JSON.parse(cleanedExtracted);
+                logDebug('planParser: JSON extracted from surrounding text');
             } else {
-                // YAML パース成功だがオブジェクトでない（文字列や数値など）
-                logWarn('planParser: YAML parsed but result is not an object');
-                return null;
+                throw new Error('No JSON object found');
             }
         } catch {
-            logWarn('planParser: both JSON and YAML parse failed');
-            return null;
+            // JSON パース失敗 → YAML としてパースを試行
+            try {
+                const yamlCleaned = raw.replace(/^```(?:ya?ml)?\s*/i, '').replace(/\s*```$/i, '').trim();
+                obj = parseYaml(yamlCleaned);
+                if (typeof obj === 'object' && obj !== null) {
+                    logDebug('planParser: JSON parse failed, YAML parse succeeded');
+                } else {
+                    logWarn('planParser: YAML parsed but result is not an object');
+                    return null;
+                }
+            } catch {
+                logWarn('planParser: all parse attempts failed (JSON clean, JSON extract, YAML)');
+                return null;
+            }
         }
     }
 

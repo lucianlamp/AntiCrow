@@ -25,6 +25,9 @@ import { getCurrentMode } from './cdpModes';
 import { AUTO_PROMPT } from './suggestionButtons';
 import { loadTeamConfig } from './teamConfig';
 import { FileIpc } from './fileIpc';
+import { getLicenseGate } from './extension';
+import { FREE_DAILY_TASK_LIMIT, FREE_WEEKLY_TASK_LIMIT } from './licensing/licenseGate';
+import { t } from './i18n';
 
 // 委譲先モジュール
 import {
@@ -128,6 +131,12 @@ export async function handleDiscordMessage(
     if (resolvedRepoRoot) {
         const teamConfig = loadTeamConfig(resolvedRepoRoot);
         if (teamConfig.enabled && ctx.teamOrchestrator) {
+            // チームモードの Pro 限定チェック
+            const gate = getLicenseGate();
+            if (gate && !gate.isFeatureAllowed('teamMode')) {
+                await channel.send({ embeds: [buildEmbed(t('team.proRequired'), EmbedColor.Warning)] });
+                return;
+            }
             isTeamMode = true;
             logDebug(`handleDiscordMessage: Team mode enabled for workspace "${wsNameFromCategory || 'local'}" (repoRoot=${resolvedRepoRoot}) — main agent will orchestrate`);
         }
@@ -256,10 +265,24 @@ export async function handleDiscordMessage(
             logDebug(`handleDiscordMessage: Team mode — augmented prompt with subagent instructions`);
         }
 
+        // タスク制限チェック（Free プラン用）
+        const taskGate = getLicenseGate();
+        if (taskGate && !taskGate.canExecuteTask()) {
+            const exceeded = taskGate.getExceededLimit();
+            const msg = exceeded === 'daily'
+                ? t('pipeline.taskLimitReached', String(FREE_DAILY_TASK_LIMIT))
+                : t('pipeline.weeklyLimitReached', String(FREE_WEEKLY_TASK_LIMIT));
+            await channel.send({ embeds: [buildEmbed(msg, EmbedColor.Warning)] });
+            return;
+        }
+
         // ステータス: ディスパッチ中
         setProcessingStatus(wsKeyForStatus, {
             wsKey: wsKeyForStatus, phase: 'dispatching', startTime: Date.now(), messagePreview: msgPreview,
         });
+
+        // タスクカウントをインクリメント
+        if (taskGate) { await taskGate.incrementTaskCount(); }
 
         // 即時実行 or 定期登録
         await dispatchPlan(ctx, plan, channel, activeCdp, wsNameFromCategory, guild, isTeamMode);
@@ -267,7 +290,7 @@ export async function handleDiscordMessage(
     } catch (e) {
         const errMsg = e instanceof Error ? e.message : String(e);
         if (errMsg.includes('aborted')) {
-            logDebug(`handleDiscordMessage: aborted (expected via /cancel)`);
+            logDebug(`handleDiscordMessage: aborted (expected via /stop)`);
         } else {
             logError('handleDiscordMessage failed', e);
             await channel.send({ embeds: [buildEmbed(`❌ エラー: ${sanitizeErrorForDiscord(errMsg)}`, EmbedColor.Error)] });
@@ -406,11 +429,25 @@ export async function processSuggestionPrompt(
                 applyChoiceSelection(plan, confirmResult.selectedChoices);
             }
 
+            // タスク制限チェック（Free プラン用）
+            const taskGate = getLicenseGate();
+            if (taskGate && !taskGate.canExecuteTask()) {
+                const exceeded = taskGate.getExceededLimit();
+                const msg = exceeded === 'daily'
+                    ? t('pipeline.taskLimitReached', String(FREE_DAILY_TASK_LIMIT))
+                    : t('pipeline.weeklyLimitReached', String(FREE_WEEKLY_TASK_LIMIT));
+                await channel.send({ embeds: [buildEmbed(msg, EmbedColor.Warning)] });
+                return;
+            }
+
             // ディスパッチ
             setProcessingStatus(wsKey, {
                 wsKey, phase: 'dispatching', startTime: Date.now(),
                 messagePreview: promptText.substring(0, 50),
             });
+
+            // タスクカウントをインクリメント
+            if (taskGate) { await taskGate.incrementTaskCount(); }
 
             await dispatchPlan(ctx, plan, channel, activeCdp, wsNameFromCategory ?? undefined, guild);
         } catch (e) {

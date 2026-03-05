@@ -350,7 +350,7 @@ export const messages = {
   // --- slashCommands.ts ---
   'command.status.desc': 'Show Bot, connection, and queue status',
   'command.schedules.desc': 'Show scheduled task list and management panel',
-  'command.cancel.desc': 'Cancel the running task',
+  'command.stop.desc': 'Stop the running task',
   'command.newchat.desc': 'Start a new chat session in Antigravity',
   'command.workspace.desc': 'Show detected Antigravity workspaces',
   'command.queue.desc': 'Show message queue and execution queue details',
@@ -363,7 +363,7 @@ export const messages = {
   'command.pro.desc': 'Pro license management, purchase, and key input',
   'command.screenshot.desc': 'Take a screenshot of the current screen',
   'command.soul.desc': 'Edit SOUL.md (customization settings)',
-  'command.subagent.desc': 'Subagent management',
+
   'command.team.desc': 'Agent team mode management',
 
   // --- slashButtonMisc.ts ---
@@ -467,7 +467,7 @@ export const messages = {
   'admin.schedules.notInit': '⚠️ PlanStore is not initialized.',
 
   // --- handleCancel ---
-  'admin.cancel.cannotResolve': '⚠️ Cannot determine target workspace.\n\nCurrently {0} workspaces are connected:\n{1}\n\nPlease send `/cancel` from a channel under the category of the workspace you want to cancel.',
+  'admin.stop.cannotResolve': '⚠️ Cannot determine target workspace.\n\nCurrently {0} workspaces are connected:\n{1}\n\nPlease send `/stop` from a channel under the category of the workspace you want to stop.',
   'admin.cancel.cdpNotConnected': 'CDP not connected',
   'admin.cancel.error': 'Error: {0}',
   'admin.cancel.targetWs': 'Target WS: {0}',
@@ -539,7 +539,7 @@ export const messages = {
   'admin.help.title': '📖 **AntiCrow Help**',
   'admin.help.commandsTitle': '**Commands**',
   'admin.help.cmdStatus': '`/status` — Show Bot, connection, and queue status',
-  'admin.help.cmdCancel': '`/cancel` — Cancel running task',
+  'admin.help.cmdStop': '`/stop` — Stop running task',
   'admin.help.cmdQueue': '`/queue` — Show execution queue details',
   'admin.help.cmdSchedules': '`/schedules` — Show scheduled tasks',
   'admin.help.cmdNewchat': '`/newchat` — Open a new chat in Antigravity',
@@ -549,12 +549,16 @@ export const messages = {
   'admin.help.cmdWorkspace': '`/workspace` — Show workspace list',
   'admin.help.cmdTemplates': '`/templates` — Show/manage templates',
   'admin.help.cmdPro': '`/pro` — Pro license management, purchase, and key input',
+  'admin.help.cmdTeam': '`/team` — Team mode management & subagent operations',
+  'admin.help.cmdScreenshot': '`/screenshot` — Take a screenshot of current screen',
+  'admin.help.cmdSoul': '`/soul` — Edit SOUL.md (customization settings)',
+  'admin.help.cmdSuggest': '`/suggest` — Generate next action suggestions',
   'admin.help.cmdHelp': '`/help` — Show this help',
   'admin.help.tipsTitle': '**Tips**',
   'admin.help.tip1': '💡 Send 1 message = 1 task for better accuracy',
   'admin.help.tip2': '📎 You can attach images or text files with your instructions',
   'admin.help.tip3': '⏱️ Additional messages during processing are auto-queued',
-  'admin.help.tip4': '⏹️ Use `/cancel` to stop a running task',
+  'admin.help.tip4': '⏹️ Use `/stop` to stop a running task',
 
   // --- handlePro ---
   'admin.pro.title': '💎 **AntiCrow Pro**',
@@ -836,6 +840,7 @@ export const messages = {
   'pipeline.checkAttachments': '(Please check the attached files)',
   'pipeline.planGenerating': '✅ Message delivered. Generating plan...',
   'pipeline.processing': 'Processing...',
+  'pipeline.planRetrying': '🔄 JSON parse failed, retrying...',
   'pipeline.planJsonError': '❌ Failed to generate plan (JSON format error). Please try again.',
   'pipeline.rejected': '❌ Rejected.',
   'pipeline.agentDelegated': '🤖 **Executing next action based on agent judgment**',
@@ -850,6 +855,10 @@ export const messages = {
   'pipeline.teamError': '❌ Team mode execution error: {0}',
   'pipeline.normalMode': '📋 Executing with main agent (not eligible for team mode)',
   'pipeline.scheduled': '📅 Scheduled execution registered: `{0}` ({1})\nResults will be notified in {2} channel.',
+  'pipeline.taskLimitReached': '⚠️ Daily task limit reached (Free: {0} tasks/day). Upgrade to Pro for unlimited usage.',
+  'pipeline.weeklyLimitReached': '⚠️ Weekly task limit reached (Free: {0} tasks/week). Upgrade to Pro for unlimited usage.',
+  'team.proRequired': '⚠️ Team mode is a Pro-only feature.',
+  'bridge.trialRemaining': 'Pro Trial: {0} days remaining',
 
   // -----------------------------------------------------------------------
   // messageQueue.ts

@@ -33,7 +33,7 @@ export function getCdpPorts(_storagePath?: string): number[] {
     return [port];
 }
 
-/** CDP レスポンスタイムアウト（ms）のデフォルト値。0 = 無制限（stale recovery + /cancel がセーフネット） */
+/** CDP レスポンスタイムアウト（ms）のデフォルト値。0 = 無制限（stale recovery + /stop がセーフネット） */
 export const DEFAULT_RESPONSE_TIMEOUT_MS = 0;
 
 /** タイムゾーンのデフォルト値 */

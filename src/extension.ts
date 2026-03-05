@@ -104,16 +104,7 @@ export async function activate(context: vscode.ExtensionContext) {
     const log = initLogger();
     logInfo('Extension activating...');
 
-    // --- Temporary command dump for investigation ---
-    try {
-        const cmds = await vscode.commands.getCommands(true);
-        const dumpPath = 'c:\\Users\\ysk41\\dev\\anti-crow\\scripts\\vscode_commands_dump.json';
-        fs.writeFileSync(dumpPath, JSON.stringify(cmds, null, 2), 'utf-8');
-        logDebug(`CDP: Dumped ${cmds.length} commands to ${dumpPath}`);
-    } catch (e) {
-        logDebug(`CDP: Failed to dump commands: ${e}`);
-    }
-    // ----------------------------------------------
+
 
     // StatusBar
     ctx.statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
@@ -137,6 +128,7 @@ export async function activate(context: vscode.ExtensionContext) {
     licenseChecker = new LicenseChecker();
     licenseChecker.setGlobalState(context.globalState);
     licenseGate = new LicenseGate(licenseChecker);
+    licenseGate.setGlobalState(context.globalState);
     // ライセンス変更時にステータスバーを再描画（LicenseStatusBar を廃止し統合）
     licenseChecker.onChange(() => {
         // updateStatusBar は bridgeLifecycle から import するが、
@@ -294,30 +286,6 @@ export async function activate(context: vscode.ExtensionContext) {
     );
 
 
-    // -----------------------------------------------------------------
-    // コマンド: Dump Antigravity Commands (診断用)
-    // -----------------------------------------------------------------
-    context.subscriptions.push(
-        vscode.commands.registerCommand('anti-crow.dumpCommands', async () => {
-            const allCommands = await vscode.commands.getCommands(true);
-            const agCmds = allCommands.filter(c => c.startsWith('antigravity.')).sort();
-
-            const output = [
-                `=== Antigravity Commands (${agCmds.length} found, total: ${allCommands.length}) ===`,
-                `Time: ${new Date().toISOString()}`,
-                '',
-                ...agCmds,
-            ].join('\n');
-
-            logDebug(`DumpCommands:\n${output}`);
-
-            const doc = await vscode.workspace.openTextDocument({
-                content: output,
-                language: 'text',
-            });
-            await vscode.window.showTextDocument(doc);
-        })
-    );
 
     // -----------------------------------------------------------------
     // コマンド: Create Desktop Shortcut

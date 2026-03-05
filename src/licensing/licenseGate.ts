@@ -14,10 +14,10 @@ import { logInfo } from '../logger';
 // -----------------------------------------------------------------------
 
 /** 1日のタスク実行上限（Free プラン） */
-export const FREE_DAILY_TASK_LIMIT = 20;
+export const FREE_DAILY_TASK_LIMIT = 10;
 
 /** 週のタスク実行上限（Free プラン） */
-export const FREE_WEEKLY_TASK_LIMIT = 100;
+export const FREE_WEEKLY_TASK_LIMIT = 50;
 
 /** 機能制限レベル */
 export type GateLevel = 'pro' | 'free';
@@ -28,6 +28,7 @@ export type GateLevel = 'pro' | 'free';
  */
 export const PRO_ONLY_FEATURES: ReadonlySet<string> = new Set([
     'autoAccept',   // 自動承認（UIダイアログ自動クリック）
+    'teamMode',     // チームモード（複数サブエージェント並行実行）
     // suggestions は Free でも利用可能
 ]);
 
@@ -47,9 +48,15 @@ export const PURCHASE_URL_LIFETIME = process.env.PURCHASE_URL_LIFETIME || PURCHA
 export class LicenseGate {
     private checker: LicenseChecker;
     private developerOverride: boolean = false;
+    private globalState: { get: (key: string) => unknown; update: (key: string, value: unknown) => Thenable<void> } | null = null;
 
     constructor(checker: LicenseChecker) {
         this.checker = checker;
+    }
+
+    /** globalState を設定（タスクカウンター永続化用） */
+    setGlobalState(state: { get: (key: string) => unknown; update: (key: string, value: unknown) => Thenable<void> }): void {
+        this.globalState = state;
     }
 
     /**
@@ -89,12 +96,84 @@ export class LicenseGate {
     }
 
     /**
-     * タスク実行が可能か（Free: 1日/週の上限あり、Pro: 無制限）
-     * 現在未使用だが、将来のタスク制限実装用に保持。
+     * タスク実行が可能か（Free: 1日/週の上限あり、Pro: 無制限）。
+     * 内部でカウンターを自動取得する。
      */
-    canExecuteTask(dailyCount: number, weeklyCount: number): boolean {
+    canExecuteTask(): boolean {
         if (this.isPro()) return true;
-        return dailyCount < FREE_DAILY_TASK_LIMIT && weeklyCount < FREE_WEEKLY_TASK_LIMIT;
+        const counts = this.getTaskCounts();
+        return counts.daily < FREE_DAILY_TASK_LIMIT && counts.weekly < FREE_WEEKLY_TASK_LIMIT;
+    }
+
+    /**
+     * 日次/週次どちらの上限に達しているかを返す。
+     * 'daily' | 'weekly' | null
+     */
+    getExceededLimit(): 'daily' | 'weekly' | null {
+        if (this.isPro()) return null;
+        const counts = this.getTaskCounts();
+        if (counts.daily >= FREE_DAILY_TASK_LIMIT) return 'daily';
+        if (counts.weekly >= FREE_WEEKLY_TASK_LIMIT) return 'weekly';
+        return null;
+    }
+
+    /**
+     * タスク実行カウントを +1 する。
+     * canExecuteTask() が true の場合にのみ呼ぶこと。
+     */
+    async incrementTaskCount(): Promise<void> {
+        if (!this.globalState) return;
+        const counts = this.getTaskCounts();
+        counts.daily++;
+        counts.weekly++;
+        await this.globalState.update('antiCrow.taskCounts', {
+            daily: counts.daily,
+            weekly: counts.weekly,
+            dailyDate: this.getTodayJST(),
+            weekStart: this.getWeekStartJST(),
+        });
+    }
+
+    /**
+     * 現在の日次/週次カウントを取得（リセット判定含む）。
+     */
+    getTaskCounts(): { daily: number; weekly: number } {
+        if (!this.globalState) return { daily: 0, weekly: 0 };
+        const raw = this.globalState.get('antiCrow.taskCounts') as {
+            daily?: number;
+            weekly?: number;
+            dailyDate?: string;
+            weekStart?: string;
+        } | undefined;
+
+        if (!raw) return { daily: 0, weekly: 0 };
+
+        const todayJST = this.getTodayJST();
+        const weekStartJST = this.getWeekStartJST();
+
+        // 日次リセット: JST の日付が変わったらリセット
+        const daily = raw.dailyDate === todayJST ? (raw.daily ?? 0) : 0;
+        // 週次リセット: JST の月曜日が変わったらリセット
+        const weekly = raw.weekStart === weekStartJST ? (raw.weekly ?? 0) : 0;
+
+        return { daily, weekly };
+    }
+
+    /** JST の今日の日付を YYYY-MM-DD で返す */
+    private getTodayJST(): string {
+        const now = new Date();
+        const jst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+        return jst.toISOString().split('T')[0];
+    }
+
+    /** JST の今週月曜日の日付を YYYY-MM-DD で返す */
+    private getWeekStartJST(): string {
+        const now = new Date();
+        const jst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+        const day = jst.getUTCDay(); // 0=Sun, 1=Mon, ...
+        const diff = day === 0 ? 6 : day - 1; // 月曜からの差分
+        jst.setUTCDate(jst.getUTCDate() - diff);
+        return jst.toISOString().split('T')[0];
     }
 
     /** ワークスペース追加が可能か（Free/Pro ともに無制限） */
@@ -113,3 +192,4 @@ export class LicenseGate {
         return PURCHASE_URL;
     }
 }
+

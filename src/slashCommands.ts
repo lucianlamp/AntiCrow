@@ -20,8 +20,8 @@ export const slashCommandDefinitions = [
         .setDescription(t('command.schedules.desc')),
 
     new SlashCommandBuilder()
-        .setName('cancel')
-        .setDescription(t('command.cancel.desc')),
+        .setName('stop')
+        .setDescription(t('command.stop.desc')),
 
     new SlashCommandBuilder()
         .setName('newchat')
@@ -71,12 +71,7 @@ export const slashCommandDefinitions = [
         .setName('soul')
         .setDescription(t('command.soul.desc')),
 
-    new SlashCommandBuilder()
-        .setName('subagent')
-        .setDescription(t('command.subagent.desc')),
-
-
-    // /team — エージェントチームモード管理
+    // /team — エージェントチームモード・サブエージェント管理
     new SlashCommandBuilder()
         .setName('team')
         .setDescription(t('command.team.desc')),

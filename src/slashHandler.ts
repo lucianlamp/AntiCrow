@@ -39,7 +39,7 @@ import { handleScheduleButton } from './slashButtonSchedule';
 import { handleModelButton } from './slashButtonModel';
 import { handleModeButton } from './slashButtonMode';
 import { handleHistoryButton } from './slashButtonHistory';
-import { handleTeamButton, handleSubagentButton } from './slashButtonTeam';
+import { handleTeamButton } from './slashButtonTeam';
 import { handleMiscButton } from './slashButtonMisc';
 
 // モーダルハンドラ
@@ -138,7 +138,6 @@ export async function handleButtonInteraction(
         if (await handleHistoryButton(ctx, interaction, customId)) { return; }
         if (await handleMiscButton(ctx, interaction, customId)) { return; }
         if (await handleTeamButton(ctx, interaction, customId)) { return; }
-        if (await handleSubagentButton(ctx, interaction, customId)) { return; }
 
         logWarn(`ButtonHandler: unknown customId: ${customId}`);
         await interaction.reply({ embeds: [buildEmbed(t('slash.unknownButton', customId), EmbedColor.Warning)] });

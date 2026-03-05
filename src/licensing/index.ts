@@ -7,4 +7,3 @@ export type { LicenseStatus, LicenseType, LicenseReason, LicenseCache, LicenseCh
 export { LicenseGate, FREE_DAILY_TASK_LIMIT, FREE_WEEKLY_TASK_LIMIT, PRO_ONLY_FEATURES, PURCHASE_URL, PURCHASE_URL_MONTHLY, PURCHASE_URL_LIFETIME } from './licenseGate';
 export type { GateLevel } from './licenseGate';
 export { registerLicenseCommands } from './licenseCommands';
-export { openLicenseWebview, getWebviewHtml } from './licenseWebview';

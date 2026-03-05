@@ -82,7 +82,12 @@ export async function handleTeamButton(
     interaction: ButtonInteraction,
     customId: string,
 ): Promise<boolean> {
-    if (!customId.startsWith('team_')) { return false; }
+    if (!customId.startsWith('team_') && !customId.startsWith('subagent_')) { return false; }
+
+    // subagent_ プレフィックスのボタンはサブエージェント処理に委譲
+    if (customId.startsWith('subagent_')) {
+        return handleSubagentButton(ctx, interaction, customId);
+    }
 
     const teamAction = customId.replace('team_', '');
     const { repoRoot } = resolveRepoRootFromInteraction(interaction, ctx.cdpPool);

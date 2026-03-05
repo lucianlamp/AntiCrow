@@ -44,7 +44,7 @@ export interface ProcessingStatus {
 const currentProcessingStatuses = new Map<string, ProcessingStatus>();
 
 // ---------------------------------------------------------------------------
-// Plan 生成キャンセル機構（/cancel 用）
+// Plan 生成キャンセル機構（/stop 用）
 // ---------------------------------------------------------------------------
 
 /** Plan 生成中の AbortController（キャンセル可能にする） */
@@ -169,7 +169,7 @@ export function resetProcessingFlag(wsKey?: string): void {
 }
 
 /**
- * Plan 生成をキャンセルする（/cancel コマンド用）。
+ * Plan 生成をキャンセルする（/stop コマンド用）。
  * wsKey を指定すると対象ワークスペースのキュー状態のみクリア、
  * AbortController / typing / progress interval は全体に影響する（ワークスペース単位の分離は不可）。
  * wsKey 省略時は従来通り全クリア。

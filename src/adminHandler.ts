@@ -2,7 +2,7 @@
 // adminHandler.ts — 管理系スラッシュコマンドハンドラ
 // ---------------------------------------------------------------------------
 // 責務:
-//   /status, /schedules, /cancel, /newchat, /workspace, /queue,
+//   /status, /schedules, /stop, /newchat, /workspace, /queue,
 //   /templates, /model, /mode, /suggest, /pro, /team コマンドの処理
 // ---------------------------------------------------------------------------
 import * as vscode from 'vscode';
@@ -194,7 +194,7 @@ async function handleCancel(ctx: BridgeContext, interaction: ChatInputCommandInt
                 logWarn(`handleCancel: cannot resolve target workspace (pool has ${wsNames.length} workspaces: ${wsNames.join(', ')})`);
                 await interaction.reply({
                     embeds: [buildEmbed(
-                        t('admin.cancel.cannotResolve', String(wsNames.length), wsNames.map(n => `- ${n}`).join('\n')),
+                        t('admin.stop.cannotResolve', String(wsNames.length), wsNames.map(n => `- ${n}`).join('\n')),
                         EmbedColor.Warning,
                     )],
                 });
@@ -216,12 +216,12 @@ async function handleCancel(ctx: BridgeContext, interaction: ChatInputCommandInt
             poolRunning = ctx.executorPool?.isRunning(wsKey) || false;
             if (execRunning) { executor?.forceStop(); }
             ctx.executorPool?.forceStop(wsKey);
-            logDebug(`handleCancel: /cancel executed — workspace "${wsKey}" stopped`);
+            logDebug(`handleCancel: /stop executed — workspace "${wsKey}" stopped`);
         } else {
             // プールが空または未初期化: デフォルト executor のみ停止（後方互換）
             execRunning = executor?.isRunning() || false;
             if (execRunning) { executor?.forceStop(); }
-            logDebug('handleCancel: /cancel executed — default executor stopped (no pool entries)');
+            logDebug('handleCancel: /stop executed — default executor stopped (no pool entries)');
         }
 
         let cancelResult = t('admin.cancel.cdpNotConnected');
@@ -256,7 +256,7 @@ async function handleCancel(ctx: BridgeContext, interaction: ChatInputCommandInt
         await interaction.reply({ embeds: [buildEmbed(replyMsg, EmbedColor.Success)] });
     } catch (e) {
         const errMsg = e instanceof Error ? e.message : String(e);
-        logError('handleCancel: /cancel failed', e);
+        logError('handleCancel: /stop failed', e);
         await interaction.reply({ embeds: [buildEmbed(t('admin.cancel.failed', errMsg), EmbedColor.Error)] });
     }
 }
@@ -591,7 +591,7 @@ async function handleHelp(_ctx: BridgeContext, interaction: ChatInputCommandInte
         '',
         t('admin.help.commandsTitle'),
         t('admin.help.cmdStatus'),
-        t('admin.help.cmdCancel'),
+        t('admin.help.cmdStop'),
         t('admin.help.cmdQueue'),
         t('admin.help.cmdSchedules'),
         t('admin.help.cmdNewchat'),
@@ -601,6 +601,10 @@ async function handleHelp(_ctx: BridgeContext, interaction: ChatInputCommandInte
         t('admin.help.cmdWorkspace'),
         t('admin.help.cmdTemplates'),
         t('admin.help.cmdPro'),
+        t('admin.help.cmdTeam'),
+        t('admin.help.cmdScreenshot'),
+        t('admin.help.cmdSoul'),
+        t('admin.help.cmdSuggest'),
         t('admin.help.cmdHelp'),
         '',
         t('admin.help.tipsTitle'),
@@ -792,58 +796,7 @@ async function handleSoul(
     await interaction.showModal(modal);
 }
 
-// ---------------------------------------------------------------------------
-// /subagent — サブエージェント管理
-// ---------------------------------------------------------------------------
 
-async function handleSubagent(
-    ctx: BridgeContext,
-    interaction: ChatInputCommandInteraction,
-): Promise<void> {
-    const mgr = ctx.subagentManager;
-
-    try {
-        const agents = mgr?.list() ?? [];
-
-        // パネル構築
-        let desc = t('admin.subagent.title');
-        if (agents.length === 0) {
-            desc += t('admin.subagent.empty');
-        } else {
-            desc += t('admin.subagent.running', String(agents.length));
-            desc += agents.map((a: { name: string; state: string }) =>
-                `  • \`${a.name}\` — ${a.state}`
-            ).join('\n');
-        }
-
-        const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-            new ButtonBuilder()
-                .setCustomId('subagent_spawn')
-                .setLabel(t('admin.subagent.launchLabel'))
-                .setStyle(ButtonStyle.Success),
-            new ButtonBuilder()
-                .setCustomId('subagent_list')
-                .setLabel(t('admin.subagent.listLabel'))
-                .setStyle(ButtonStyle.Primary),
-            new ButtonBuilder()
-                .setCustomId('subagent_killall')
-                .setLabel(t('admin.subagent.stopAllLabel'))
-                .setStyle(agents.length > 0 ? ButtonStyle.Danger : ButtonStyle.Secondary)
-                .setDisabled(agents.length === 0),
-        );
-
-        await interaction.reply({
-            embeds: [buildEmbed(desc, EmbedColor.Info)],
-            components: [row] as any,
-        });
-    } catch (e) {
-        const errMsg = e instanceof Error ? e.message : String(e);
-        logError('handleSubagent failed', e);
-        await interaction.reply({
-            embeds: [buildEmbed(t('admin.subagent.error', errMsg), EmbedColor.Error)],
-        });
-    }
-}
 
 // ---------------------------------------------------------------------------
 // /team — エージェントチームモード管理
@@ -868,7 +821,8 @@ function buildTeamPanel(
         config.enabled ? EmbedColor.Success : EmbedColor.Info,
     );
 
-    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    // チームモード操作ボタン行
+    const teamRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder()
             .setCustomId('team_on')
             .setLabel(t('admin.team.onLabel'))
@@ -887,7 +841,24 @@ function buildTeamPanel(
             .setStyle(ButtonStyle.Secondary),
     );
 
-    return { embeds: [embed], components: [row] };
+    // サブエージェント管理ボタン行
+    const subagentRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder()
+            .setCustomId('subagent_spawn')
+            .setLabel(t('admin.subagent.launchLabel'))
+            .setStyle(ButtonStyle.Success),
+        new ButtonBuilder()
+            .setCustomId('subagent_list')
+            .setLabel(t('admin.subagent.listLabel'))
+            .setStyle(ButtonStyle.Primary),
+        new ButtonBuilder()
+            .setCustomId('subagent_killall')
+            .setLabel(t('admin.subagent.stopAllLabel'))
+            .setStyle(agentCount > 0 ? ButtonStyle.Danger : ButtonStyle.Secondary)
+            .setDisabled(agentCount === 0),
+    );
+
+    return { embeds: [embed], components: [teamRow, subagentRow] };
 }
 
 async function handleTeam(
@@ -945,7 +916,7 @@ async function handleTeam(
 const COMMAND_HANDLERS: Record<string, CommandHandler> = {
     status: handleStatus,
     schedules: handleSchedules,
-    cancel: handleCancel,
+    stop: handleCancel,
     newchat: handleNewchat,
     workspace: handleWorkspaces,
     queue: handleQueue,
@@ -958,7 +929,6 @@ const COMMAND_HANDLERS: Record<string, CommandHandler> = {
     pro: handlePro,
     screenshot: handleScreenshot,
     soul: handleSoul,
-    subagent: handleSubagent,
     team: handleTeam,
 };
 

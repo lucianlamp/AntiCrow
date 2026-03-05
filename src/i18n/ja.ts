@@ -359,7 +359,7 @@ export const messages = {
   // -----------------------------------------------------------------------
   'command.status.desc': 'Bot・接続・キュー状態を一覧表示',
   'command.schedules.desc': '定期実行の一覧・管理パネルを表示',
-  'command.cancel.desc': '実行中のタスクをキャンセル',
+  'command.stop.desc': '実行中のタスクを停止',
   'command.newchat.desc': 'Antigravity で新しいチャットセッションを開始',
   'command.workspace.desc': '検出された Antigravity ワークスペース一覧を表示',
   'command.queue.desc': 'メッセージ処理キュー・実行キューの詳細を表示',
@@ -372,7 +372,7 @@ export const messages = {
   'command.pro.desc': 'Pro ライセンスの管理・購入・キー入力',
   'command.screenshot.desc': '現在の画面のスクリーンショットを取得します',
   'command.soul.desc': 'SOUL.md（カスタマイズ設定）を編集します',
-  'command.subagent.desc': 'サブエージェント管理',
+
   'command.team.desc': 'エージェントチームモードの管理',
 
   // -----------------------------------------------------------------------
@@ -486,7 +486,7 @@ export const messages = {
   'admin.schedules.notInit': '⚠️ PlanStore が初期化されていません。',
 
   // --- handleCancel ---
-  'admin.cancel.cannotResolve': '⚠️ 対象ワークスペースを特定できません。\n\n現在 {0} 個のワークスペースが接続中です:\n{1}\n\nキャンセルしたいワークスペースのカテゴリー配下のチャンネルから `/cancel` を送信してください。',
+  'admin.stop.cannotResolve': '⚠️ 対象ワークスペースを特定できません。\n\n現在 {0} 個のワークスペースが接続中です:\n{1}\n\n停止したいワークスペースのカテゴリー配下のチャンネルから `/stop` を送信してください。',
   'admin.cancel.cdpNotConnected': 'CDP未接続',
   'admin.cancel.error': 'エラー: {0}',
   'admin.cancel.targetWs': '対象WS: {0}',
@@ -558,7 +558,7 @@ export const messages = {
   'admin.help.title': '📖 **AntiCrow ヘルプ**',
   'admin.help.commandsTitle': '**コマンド一覧**',
   'admin.help.cmdStatus': '`/status` — Bot・接続・キュー状態を表示',
-  'admin.help.cmdCancel': '`/cancel` — 実行中のタスクをキャンセル',
+  'admin.help.cmdStop': '`/stop` — 実行中のタスクを停止',
   'admin.help.cmdQueue': '`/queue` — 実行キューの詳細を表示',
   'admin.help.cmdSchedules': '`/schedules` — 定期実行の一覧・管理',
   'admin.help.cmdNewchat': '`/newchat` — Antigravity で新しいチャットを開く',
@@ -568,12 +568,16 @@ export const messages = {
   'admin.help.cmdWorkspace': '`/workspace` — ワークスペース一覧を表示',
   'admin.help.cmdTemplates': '`/templates` — テンプレート一覧・管理',
   'admin.help.cmdPro': '`/pro` — Pro ライセンス管理・購入・キー入力',
+  'admin.help.cmdTeam': '`/team` — チームモード管理・サブエージェント操作',
+  'admin.help.cmdScreenshot': '`/screenshot` — 画面のスクリーンショットを取得',
+  'admin.help.cmdSoul': '`/soul` — SOUL.md（カスタマイズ設定）を編集',
+  'admin.help.cmdSuggest': '`/suggest` — 次のアクション提案を生成',
   'admin.help.cmdHelp': '`/help` — このヘルプを表示',
   'admin.help.tipsTitle': '**使い方のコツ**',
   'admin.help.tip1': '💡 1メッセージ = 1タスクで送信すると精度が上がります',
   'admin.help.tip2': '📎 画像やテキストファイルを添付して指示できます',
   'admin.help.tip3': '⏱️ 処理中に追加メッセージを送ると自動でキューに追加されます',
-  'admin.help.tip4': '⏹️ タスクをやめたい時は `/cancel` を使ってください',
+  'admin.help.tip4': '⏹️ タスクをやめたい時は `/stop` を使ってください',
 
   // --- handlePro ---
   'admin.pro.title': '💎 **AntiCrow Pro**',
@@ -871,6 +875,7 @@ export const messages = {
   'pipeline.checkAttachments': '（添付ファイルを確認してください）',
   'pipeline.planGenerating': '✅ 伝令完了。計画を練っています...',
   'pipeline.processing': '処理中...',
+  'pipeline.planRetrying': '🔄 JSON パースに失敗したため、リトライ中...',
   'pipeline.planJsonError': '❌ 計画の生成に失敗しました（JSONフォーマットエラー）。もう一度指示をお試しください。',
   'pipeline.rejected': '❌ 却下しました。',
   'pipeline.agentDelegated': '🤖 **エージェントの判断で次のアクションを実行します**',
@@ -885,6 +890,10 @@ export const messages = {
   'pipeline.teamError': '❌ チームモード実行エラー: {0}',
   'pipeline.normalMode': '📋 メインエージェントで実行します（チームモード対象外）',
   'pipeline.scheduled': '📅 定期実行を登録しました: `{0}` ({1})\n結果は {2} チャンネルに通知されます。',
+  'pipeline.taskLimitReached': '⚠️ 本日のタスク実行上限に達しました（Free: {0}回/日）。Pro にアップグレードすると無制限に使えます。',
+  'pipeline.weeklyLimitReached': '⚠️ 今週のタスク実行上限に達しました（Free: {0}回/週）。Pro にアップグレードすると無制限に使えます。',
+  'team.proRequired': '⚠️ チームモードは Pro プラン限定機能です。',
+  'bridge.trialRemaining': 'Pro トライアル残り{0}日',
 
   // -----------------------------------------------------------------------
   // messageQueue.ts

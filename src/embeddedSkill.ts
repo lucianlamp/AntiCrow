@@ -1,7 +1,7 @@
 // ---------------------------------------------------------------------------
 // embeddedSkill.ts — AntiCrow エージェントスキルテンプレート
 // ---------------------------------------------------------------------------
-// ワークスペースの .agents/skills/anticrow/SKILL.md に配置するスキル内容を定義。
+// ワークスペースの .agent/skills/anticrow/SKILL.md に配置するスキル内容を定義。
 // bridgeLifecycle.ts の起動時に毎回上書きコピーされる。
 // ---------------------------------------------------------------------------
 
@@ -10,7 +10,7 @@ import * as path from 'path';
 import { logDebug, logInfo, logWarn } from './logger';
 
 /** スキルの配置先ディレクトリ名 */
-const SKILL_DIR = '.agents/skills/anticrow';
+const SKILL_DIR = '.agent/skills/anticrow';
 /** スキルファイル名 */
 const SKILL_FILE = 'SKILL.md';
 
@@ -127,7 +127,7 @@ Discord にリアルタイム通知されます。
 │   ├── team.json      # チームモード設定（enabled, maxAgents 等）
 │   ├── MEMORY.md      # ワークスペース固有の記憶
 │   └── worktrees/     # サブエージェント用 git worktree
-└── .agents/
+└── .agent/
     └── skills/
         └── anticrow/
             └── SKILL.md  # このファイル（自動配置）

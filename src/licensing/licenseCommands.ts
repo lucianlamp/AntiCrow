@@ -5,7 +5,6 @@
 import * as vscode from 'vscode';
 import { LicenseChecker, LicenseType } from './licenseChecker';
 import { PURCHASE_URL } from './licenseGate';
-import { openLicenseWebview } from './licenseWebview';
 import { logDebug, logError } from '../logger';
 import { t } from '../i18n';
 
@@ -41,7 +40,7 @@ export function registerLicenseCommands(
                     );
 
                     if (selection === t('license.info.upgrade')) {
-                        openLicenseWebview(context, checker);
+                        vscode.env.openExternal(vscode.Uri.parse(PURCHASE_URL));
                     } else if (selection === t('license.info.inputKey')) {
                         vscode.commands.executeCommand('anti-crow.setLicenseKey');
                     }
@@ -89,29 +88,9 @@ export function registerLicenseCommands(
                     t('license.info.cancel'),
                 );
                 if (selection === t('license.key.openPurchase')) {
-                    openLicenseWebview(context, checker);
+                    vscode.env.openExternal(vscode.Uri.parse(PURCHASE_URL));
                 }
             }
-        }),
-    );
-
-    // 購入・ライセンス認証 WebView を開く
-    context.subscriptions.push(
-        vscode.commands.registerCommand('anti-crow.licensePurchase', () => {
-            openLicenseWebview(context, checker);
-        }),
-    );
-
-    // ライセンスキー削除（ログアウト）
-    context.subscriptions.push(
-        vscode.commands.registerCommand('anti-crow.licenseLogout', async () => {
-            await context.secrets.delete('license-key');
-            await vscode.workspace.getConfiguration('antiCrow')
-                .update('licenseKey', undefined, vscode.ConfigurationTarget.Global);
-            checker.setLicenseKey('');
-            await checker.check(true);
-            logDebug('License: key removed');
-            vscode.window.showInformationMessage(t('license.logout'));
         }),
     );
 }

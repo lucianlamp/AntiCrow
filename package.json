@@ -50,11 +50,6 @@
         "category": "AntiCrow"
       },
       {
-        "command": "anti-crow.dumpCommands",
-        "title": "Dump Antigravity Commands (Diagnostic)",
-        "category": "AntiCrow"
-      },
-      {
         "command": "anti-crow.licenseInfo",
         "title": "License Info",
         "category": "AntiCrow"
@@ -62,16 +57,6 @@
       {
         "command": "anti-crow.licenseLogin",
         "title": "License Login",
-        "category": "AntiCrow"
-      },
-      {
-        "command": "anti-crow.licensePurchase",
-        "title": "Purchase License",
-        "category": "AntiCrow"
-      },
-      {
-        "command": "anti-crow.licenseLogout",
-        "title": "License Logout",
         "category": "AntiCrow"
       },
       {

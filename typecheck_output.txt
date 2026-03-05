@@ -1,0 +1,4 @@
+src/configHelper.ts(58,17): error TS2323: Cannot redeclare exported variable 'getLanguage'.
+src/configHelper.ts(58,17): error TS2393: Duplicate function implementation.
+src/configHelper.ts(145,17): error TS2323: Cannot redeclare exported variable 'getLanguage'.
+src/configHelper.ts(145,17): error TS2393: Duplicate function implementation.
