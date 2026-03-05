@@ -24,19 +24,14 @@ export function Footer() {
                             GitHub
                         </a>
                         <a
-                            href="https://x.com/lucianlampdefi"
+                            href="https://x.com/lucianlamp"
                             target="_blank"
                             rel="noopener noreferrer"
                             className="hover:text-gray-300 transition-colors"
                         >
                             X (Twitter)
                         </a>
-                        <a href="#" className="hover:text-gray-300 transition-colors">
-                            SECURITY.md
-                        </a>
-                        <a href="#" className="hover:text-gray-300 transition-colors">
-                            PRIVACY.md
-                        </a>
+
                     </div>
                 </div>
 
