@@ -132,7 +132,7 @@ export function Hero() {
                     className="w-32 h-32 sm:w-40 sm:h-40 object-contain drop-shadow-2xl"
                 />
                 {/* Main copy */}
-                <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-extrabold leading-tight tracking-tight">
+                <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-extrabold leading-tight tracking-tight">
                     <span className="gradient-text whitespace-pre-line">{t('hero.title')}</span>
                 </h1>
                 <p className="text-lg sm:text-xl text-gray-400 max-w-2xl">
