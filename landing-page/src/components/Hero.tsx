@@ -1,74 +1,69 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 
-const TYPING_LINES = [
-    { prefix: '💬 Discord', text: ' → "Fix the login bug and add tests"' },
-    { prefix: '🐦‍⬛ AntiCrow', text: ' → Bridging to Antigravity...' },
-    { prefix: '🤖 Antigravity', text: ' → Analyzing codebase...' },
-    { prefix: '✅ Done', text: ' → Bug fixed, 12 tests passing!' },
+// 画像スライド: ここに画像パスを追加すれば自動でスライドショーになる
+const SLIDE_IMAGES: { src: string; alt: string }[] = [
+    // 例: { src: '/slides/screenshot1.png', alt: 'Discord連携の様子' },
+    // 例: { src: '/slides/screenshot2.png', alt: 'コーディング自動化' },
 ];
 
-function TypingAnimation() {
-    const [lineIndex, setLineIndex] = useState(0);
-    const [charIndex, setCharIndex] = useState(0);
-    const [displayedLines, setDisplayedLines] = useState<string[]>([]);
+function ImageSlideshow() {
+    const [currentIndex, setCurrentIndex] = useState(0);
 
     useEffect(() => {
-        if (lineIndex >= TYPING_LINES.length) {
-            const timer = setTimeout(() => {
-                setLineIndex(0);
-                setCharIndex(0);
-                setDisplayedLines([]);
-            }, 3000);
-            return () => clearTimeout(timer);
-        }
+        if (SLIDE_IMAGES.length <= 1) return;
+        const timer = setInterval(() => {
+            setCurrentIndex((prev) => (prev + 1) % SLIDE_IMAGES.length);
+        }, 4000);
+        return () => clearInterval(timer);
+    }, []);
 
-        const currentLine = TYPING_LINES[lineIndex];
-        const fullText = currentLine.prefix + currentLine.text;
-
-        if (charIndex < fullText.length) {
-            const timer = setTimeout(() => {
-                setCharIndex(charIndex + 1);
-            }, 30);
-            return () => clearTimeout(timer);
-        } else {
-            const timer = setTimeout(() => {
-                setDisplayedLines(prev => [...prev, fullText]);
-                setLineIndex(lineIndex + 1);
-                setCharIndex(0);
-            }, 500);
-            return () => clearTimeout(timer);
-        }
-    }, [lineIndex, charIndex]);
-
-    const currentLine = lineIndex < TYPING_LINES.length
-        ? TYPING_LINES[lineIndex].prefix + TYPING_LINES[lineIndex].text
-        : '';
-    const currentText = currentLine.slice(0, charIndex);
+    if (SLIDE_IMAGES.length === 0) {
+        // プレースホルダー: 画像が追加されるまで表示
+        return (
+            <div className="relative max-w-2xl w-full rounded-2xl border border-white/10 bg-dark-900/60 overflow-hidden">
+                <div className="aspect-[16/9] flex items-center justify-center text-gray-500">
+                    <div className="text-center space-y-2">
+                        <div className="text-4xl">🖼️</div>
+                        <p className="text-sm">スクリーンショットが追加される予定</p>
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     return (
-        <div className="bg-dark-900/80 rounded-2xl border border-white/10 p-6 font-mono text-sm max-w-xl w-full">
-            <div className="flex items-center gap-2 mb-4">
-                <div className="w-3 h-3 rounded-full bg-red-500/80"></div>
-                <div className="w-3 h-3 rounded-full bg-yellow-500/80"></div>
-                <div className="w-3 h-3 rounded-full bg-green-500/80"></div>
-                <span className="text-gray-500 ml-2 text-xs">anticrow terminal</span>
+        <div className="relative max-w-2xl w-full rounded-2xl border border-white/10 bg-dark-900/60 overflow-hidden">
+            <div className="aspect-[16/9] relative">
+                {SLIDE_IMAGES.map((img, i) => (
+                    <img
+                        key={i}
+                        src={img.src}
+                        alt={img.alt}
+                        className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-700 ${i === currentIndex ? 'opacity-100' : 'opacity-0'
+                            }`}
+                    />
+                ))}
             </div>
-            {displayedLines.map((line, i) => (
-                <div key={i} className="text-gray-300 mb-1">
-                    <span className="text-purple-400">$ </span>{line}
-                </div>
-            ))}
-            {lineIndex < TYPING_LINES.length && (
-                <div className="text-gray-300">
-                    <span className="text-purple-400">$ </span>
-                    {currentText}
-                    <span className="cursor-blink text-purple-400">▌</span>
+            {/* ドットインジケーター */}
+            {SLIDE_IMAGES.length > 1 && (
+                <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-2">
+                    {SLIDE_IMAGES.map((_, i) => (
+                        <button
+                            key={i}
+                            onClick={() => setCurrentIndex(i)}
+                            className={`w-2 h-2 rounded-full transition-all ${i === currentIndex
+                                ? 'bg-purple-400 w-4'
+                                : 'bg-white/30 hover:bg-white/50'
+                                }`}
+                        />
+                    ))}
                 </div>
             )}
         </div>
     );
 }
+
 
 interface WaitlistResult {
     position: number;
@@ -142,7 +137,7 @@ export function Hero() {
                 />
                 {/* Main copy */}
                 <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-extrabold leading-tight tracking-tight">
-                    <span className="gradient-text">{t('hero.title')}</span>
+                    <span className="gradient-text whitespace-pre-line">{t('hero.title')}</span>
                 </h1>
                 <p className="text-lg sm:text-xl text-gray-400 max-w-2xl">
                     {t('hero.subtitle')}
@@ -206,8 +201,8 @@ export function Hero() {
                     </div>
                 )}
 
-                {/* Typing animation */}
-                <TypingAnimation />
+                {/* Image slideshow */}
+                <ImageSlideshow />
             </div>
         </section>
     );
