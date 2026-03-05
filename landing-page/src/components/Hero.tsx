@@ -134,6 +134,12 @@ export function Hero() {
             </div>
 
             <div className="relative z-10 max-w-6xl mx-auto text-center flex flex-col items-center gap-8">
+                {/* AntiCrow Character */}
+                <img
+                    src="/AntiCrowFullBody.png"
+                    alt="AntiCrow"
+                    className="w-32 h-32 sm:w-40 sm:h-40 object-contain drop-shadow-2xl"
+                />
                 {/* Main copy */}
                 <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-extrabold leading-tight tracking-tight">
                     <span className="gradient-text">{t('hero.title')}</span>

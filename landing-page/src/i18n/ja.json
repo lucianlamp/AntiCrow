@@ -6,7 +6,7 @@
         "faq": "FAQ"
     },
     "hero": {
-        "title": "どこからでも AI を操作する",
+        "title": "Discord と Antigravity を繋ぐ\nあなたの相棒",
         "subtitle": "Discord でメッセージを送る → Antigravity がコーディング → 結果が Discord に届く",
         "waitlist": {
             "title": "ウェイトリストに登録",
@@ -99,8 +99,8 @@
         },
         "pro": {
             "name": "Pro",
-            "price": "Coming Soon",
-            "period": "",
+            "price": "$5/月",
+            "period": "または買い切り $50",
             "features": [
                 "タスク実行無制限",
                 "全機能 ✅",

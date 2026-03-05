@@ -6,7 +6,7 @@
         "faq": "FAQ"
     },
     "hero": {
-        "title": "Control Your AI from Anywhere",
+        "title": "Your Buddy Connecting\nDiscord and Antigravity",
         "subtitle": "Send a message on Discord → Antigravity codes for you → Results delivered back to Discord",
         "waitlist": {
             "title": "Join the Waitlist",
@@ -99,8 +99,8 @@
         },
         "pro": {
             "name": "Pro",
-            "price": "Coming Soon",
-            "period": "",
+            "price": "$5/mo",
+            "period": "or $50 one-time",
             "features": [
                 "Unlimited tasks",
                 "All features ✅",
