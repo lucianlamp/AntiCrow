@@ -1,8 +1,7 @@
 // ---------------------------------------------------------------------------
-// discordReactions.ts — ボタンベース確認 UI
+// discordReactions.ts 窶・繝懊ち繝ｳ繝吶・繧ｹ遒ｺ隱・UI
 // ---------------------------------------------------------------------------
-// リアクション方式を廃止し、discord.js ButtonBuilder / ActionRow を使用。
-// ---------------------------------------------------------------------------
+// 繝ｪ繧｢繧ｯ繧ｷ繝ｧ繝ｳ譁ｹ蠑上ｒ蟒・ｭ｢縺励‥iscord.js ButtonBuilder / ActionRow 繧剃ｽｿ逕ｨ縲・// ---------------------------------------------------------------------------
 
 import {
     Message,
@@ -14,19 +13,15 @@ import {
     ButtonInteraction,
 } from 'discord.js';
 import { logDebug, logError } from './logger';
-import { t } from './i18n';
 
 // -----------------------------------------------------------------------
-// アクティブコレクタ管理（外部からのキャンセル用）
-// -----------------------------------------------------------------------
+// 繧｢繧ｯ繝・ぅ繝悶さ繝ｬ繧ｯ繧ｿ邂｡逅・ｼ亥､夜Κ縺九ｉ縺ｮ繧ｭ繝｣繝ｳ繧ｻ繝ｫ逕ｨ・・// -----------------------------------------------------------------------
 
-/** channelId → アクティブな InteractionCollector（自動却下に使用） */
+/** channelId 竊・繧｢繧ｯ繝・ぅ繝悶↑ InteractionCollector・郁・蜍募唆荳九↓菴ｿ逕ｨ・・*/
 const activeCollectors = new Map<string, InteractionCollector<ButtonInteraction>>();
 
 /**
- * 指定チャンネルのアクティブな確認コレクタをキャンセルする。
- * 新しいメッセージが来たときに呼び出して、前の確認を自動却下する。
- * @returns キャンセルされた場合 true
+ * 謖・ｮ壹メ繝｣繝ｳ繝阪Ν縺ｮ繧｢繧ｯ繝・ぅ繝悶↑遒ｺ隱阪さ繝ｬ繧ｯ繧ｿ繧偵く繝｣繝ｳ繧ｻ繝ｫ縺吶ｋ縲・ * 譁ｰ縺励＞繝｡繝・そ繝ｼ繧ｸ縺梧擂縺溘→縺阪↓蜻ｼ縺ｳ蜃ｺ縺励※縲∝燕縺ｮ遒ｺ隱阪ｒ閾ｪ蜍募唆荳九☆繧九・ * @returns 繧ｭ繝｣繝ｳ繧ｻ繝ｫ縺輔ｌ縺溷ｴ蜷・true
  */
 export function cancelActiveConfirmation(channelId: string): boolean {
     const collector = activeCollectors.get(channelId);
@@ -43,7 +38,7 @@ export function cancelActiveConfirmation(channelId: string): boolean {
 // waitForConfirmation
 // -----------------------------------------------------------------------
 
-/** メッセージにボタン待ちして確認を取る（タイムアウトなし） */
+/** 繝｡繝・そ繝ｼ繧ｸ縺ｫ繝懊ち繝ｳ蠕・■縺励※遒ｺ隱阪ｒ蜿悶ｋ・医ち繧､繝繧｢繧ｦ繝医↑縺暦ｼ・*/
 export async function waitForConfirmation(
     message: Message,
     botUserId: string | undefined,
@@ -54,11 +49,11 @@ export async function waitForConfirmation(
         const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
             new ButtonBuilder()
                 .setCustomId('confirm_approve')
-                .setLabel(t('reactions.approve'))
+                .setLabel('謇ｿ隱・)
                 .setStyle(ButtonStyle.Success),
             new ButtonBuilder()
                 .setCustomId('confirm_reject')
-                .setLabel(t('reactions.reject'))
+                .setLabel('蜊ｴ荳・)
                 .setStyle(ButtonStyle.Danger),
         );
 
@@ -87,8 +82,7 @@ export async function waitForConfirmation(
             activeCollectors.delete(channelId);
             collector.stop('received');
 
-            // ボタンを無効化
-            try {
+            // 繝懊ち繝ｳ繧堤┌蜉ｹ蛹・            try {
                 await i.deferUpdate();
                 await message.edit({ components: disableAllButtons(message) });
             } catch { /* ignore */ }
@@ -97,12 +91,11 @@ export async function waitForConfirmation(
         });
 
         collector.on('end', (_collected, reason) => {
-            logDebug(`waitForConfirmation: collector ended — reason: ${reason}`);
+            logDebug(`waitForConfirmation: collector ended 窶・reason: ${reason}`);
             activeCollectors.delete(channelId);
             if (reason !== 'received') {
-                // ボタンを無効化
-                message.edit({ components: disableAllButtons(message) }).catch(() => { /* ignore */ });
-                resolve(false); // 自動却下またはその他の理由
+                // 繝懊ち繝ｳ繧堤┌蜉ｹ蛹・                message.edit({ components: disableAllButtons(message) }).catch(() => { /* ignore */ });
+                resolve(false); // 閾ｪ蜍募唆荳九∪縺溘・縺昴・莉悶・逅・罰
             }
         });
     });
@@ -112,7 +105,7 @@ export async function waitForConfirmation(
 // waitForChoice
 // -----------------------------------------------------------------------
 
-/** ボタンクリックで選択を待つ（最大3つ + ❌、タイムアウトなし） */
+/** 繝懊ち繝ｳ繧ｯ繝ｪ繝・け縺ｧ驕ｸ謚槭ｒ蠕・▽・域怙螟ｧ3縺､ + 笶後√ち繧､繝繧｢繧ｦ繝医↑縺暦ｼ・*/
 export async function waitForChoice(
     message: Message,
     botUserId: string | undefined,
@@ -134,18 +127,18 @@ export async function waitForChoice(
         buttons.push(
             new ButtonBuilder()
                 .setCustomId('choice_agent')
-                .setLabel(t('reactions.delegateAgent'))
+                .setLabel('繧ｨ繝ｼ繧ｸ繧ｧ繝ｳ繝医↓莉ｻ縺帙ｋ')
                 .setStyle(ButtonStyle.Secondary)
-                .setEmoji('🤖'),
+                .setEmoji('､・),
             new ButtonBuilder()
                 .setCustomId('choice_reject')
-                .setLabel(t('reactions.reject'))
+                .setLabel('蜊ｴ荳・)
                 .setStyle(ButtonStyle.Danger),
         );
 
         const row = new ActionRowBuilder<ButtonBuilder>().addComponents(...buttons);
         await message.edit({ components: [row] });
-        logDebug(`waitForChoice: ${clipped} choice buttons + ❌ added, waiting (no timeout)`);
+        logDebug(`waitForChoice: ${clipped} choice buttons + 笶・added, waiting (no timeout)`);
     } catch (e) {
         logError('waitForChoice: failed to add buttons', e);
         return -1;
@@ -180,7 +173,7 @@ export async function waitForChoice(
             if (i.customId === 'choice_reject') {
                 resolve(-1);
             } else if (i.customId === 'choice_agent') {
-                resolve(0); // エージェント判断
+                resolve(0); // 繧ｨ繝ｼ繧ｸ繧ｧ繝ｳ繝亥愛譁ｭ
             } else {
                 const num = parseInt(i.customId.replace('choice_', ''), 10);
                 resolve(num > 0 ? num : -1);
@@ -188,7 +181,7 @@ export async function waitForChoice(
         });
 
         collector.on('end', (_collected, reason) => {
-            logDebug(`waitForChoice: collector ended — reason: ${reason}`);
+            logDebug(`waitForChoice: collector ended 窶・reason: ${reason}`);
             activeCollectors.delete(channelId);
             if (reason !== 'received') {
                 message.edit({ components: disableAllButtons(message) }).catch(() => { /* ignore */ });
@@ -203,9 +196,7 @@ export async function waitForChoice(
 // -----------------------------------------------------------------------
 
 /**
- * 複数選択待ち: ボタントグルで複数選択 → ☑️ で確定、✅ で全選択、❌ で却下。
- * @returns 選択された番号の配列（1-indexed）。空配列 = 却下/自動却下。[-1] = 全選択。
- */
+ * 隍・焚驕ｸ謚槫ｾ・■: 繝懊ち繝ｳ繝医げ繝ｫ縺ｧ隍・焚驕ｸ謚・竊・笘托ｸ・縺ｧ遒ｺ螳壹≫怛 縺ｧ蜈ｨ驕ｸ謚槭≫搆 縺ｧ蜊ｴ荳九・ * @returns 驕ｸ謚槭＆繧後◆逡ｪ蜿ｷ縺ｮ驟榊・・・-indexed・峨らｩｺ驟榊・ = 蜊ｴ荳・閾ｪ蜍募唆荳九・-1] = 蜈ｨ驕ｸ謚槭・ */
 export async function waitForMultiChoice(
     message: Message,
     botUserId: string | undefined,
@@ -215,7 +206,7 @@ export async function waitForMultiChoice(
     const clipped = Math.min(choiceCount, 3);
     const selected = new Set<number>();
 
-    /** 現在の選択状態に基づいてボタン行を構築 */
+    /** 迴ｾ蝨ｨ縺ｮ驕ｸ謚樒憾諷九↓蝓ｺ縺･縺・※繝懊ち繝ｳ陦後ｒ讒狗ｯ・*/
     function buildRows(): ActionRowBuilder<ButtonBuilder>[] {
         const choiceButtons: ButtonBuilder[] = [];
         for (let i = 0; i < clipped; i++) {
@@ -224,7 +215,7 @@ export async function waitForMultiChoice(
             choiceButtons.push(
                 new ButtonBuilder()
                     .setCustomId(`mchoice_${num}`)
-                    .setLabel(`${numberLabels[i]}${isSelected ? ' ✓' : ''}`)
+                    .setLabel(`${numberLabels[i]}${isSelected ? ' 笨・ : ''}`)
                     .setStyle(isSelected ? ButtonStyle.Primary : ButtonStyle.Secondary),
             );
         }
@@ -233,20 +224,20 @@ export async function waitForMultiChoice(
         const controlRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
             new ButtonBuilder()
                 .setCustomId('mchoice_confirm')
-                .setLabel(t('reactions.confirm'))
+                .setLabel('遒ｺ螳・)
                 .setStyle(ButtonStyle.Success),
             new ButtonBuilder()
                 .setCustomId('mchoice_all')
-                .setLabel(t('reactions.selectAll'))
+                .setLabel('蜈ｨ驕ｸ謚・)
                 .setStyle(ButtonStyle.Primary),
             new ButtonBuilder()
                 .setCustomId('mchoice_agent')
-                .setLabel(t('reactions.delegateAgent'))
+                .setLabel('繧ｨ繝ｼ繧ｸ繧ｧ繝ｳ繝医↓莉ｻ縺帙ｋ')
                 .setStyle(ButtonStyle.Secondary)
-                .setEmoji('🤖'),
+                .setEmoji('､・),
             new ButtonBuilder()
                 .setCustomId('mchoice_reject')
-                .setLabel(t('reactions.reject'))
+                .setLabel('蜊ｴ荳・)
                 .setStyle(ButtonStyle.Danger),
         );
 
@@ -255,7 +246,7 @@ export async function waitForMultiChoice(
 
     try {
         await message.edit({ components: buildRows() });
-        logDebug(`waitForMultiChoice: ${clipped} toggle buttons + ☑️/✅/❌ added (no timeout)`);
+        logDebug(`waitForMultiChoice: ${clipped} toggle buttons + 笘托ｸ・笨・笶・added (no timeout)`);
     } catch (e) {
         logError('waitForMultiChoice: failed to add buttons', e);
         return [];
@@ -313,7 +304,7 @@ export async function waitForMultiChoice(
                     await i.deferUpdate();
                     await message.edit({ components: disableAllButtons(message) });
                 } catch { /* ignore */ }
-                resolve([0]); // エージェント判断
+                resolve([0]); // 繧ｨ繝ｼ繧ｸ繧ｧ繝ｳ繝亥愛譁ｭ
                 return;
             }
 
@@ -329,7 +320,7 @@ export async function waitForMultiChoice(
                 return;
             }
 
-            // 番号ボタン — 選択/解除トグル
+            // 逡ｪ蜿ｷ繝懊ち繝ｳ 窶・驕ｸ謚・隗｣髯､繝医げ繝ｫ
             const num = parseInt(customId.replace('mchoice_', ''), 10);
             if (num > 0) {
                 if (selected.has(num)) {
@@ -340,7 +331,7 @@ export async function waitForMultiChoice(
                     logDebug(`waitForMultiChoice: selected ${num}`);
                 }
 
-                // トグル後のボタン状態を更新
+                // 繝医げ繝ｫ蠕後・繝懊ち繝ｳ迥ｶ諷九ｒ譖ｴ譁ｰ
                 try {
                     await i.deferUpdate();
                     await message.edit({ components: buildRows() });
@@ -349,21 +340,20 @@ export async function waitForMultiChoice(
         });
 
         collector.on('end', (_collected, reason) => {
-            logDebug(`waitForMultiChoice: collector ended — reason: ${reason}`);
+            logDebug(`waitForMultiChoice: collector ended 窶・reason: ${reason}`);
             activeCollectors.delete(channelId);
             if (!['rejected', 'all', 'confirmed', 'agent'].includes(reason || '')) {
                 message.edit({ components: disableAllButtons(message) }).catch(() => { /* ignore */ });
-                resolve([]); // 自動却下
-            }
+                resolve([]); // 閾ｪ蜍募唆荳・            }
         });
     });
 }
 
 // -----------------------------------------------------------------------
-// ユーティリティ
+// 繝ｦ繝ｼ繝・ぅ繝ｪ繝・ぅ
 // -----------------------------------------------------------------------
 
-/** メッセージの既存ボタンをすべて無効化した ActionRow を返す */
+/** 繝｡繝・そ繝ｼ繧ｸ縺ｮ譌｢蟄倥・繧ｿ繝ｳ繧偵☆縺ｹ縺ｦ辟｡蜉ｹ蛹悶＠縺・ActionRow 繧定ｿ斐☆ */
 function disableAllButtons(message: Message): ActionRowBuilder<ButtonBuilder>[] {
     return message.components.map((row) => {
         const newRow = new ActionRowBuilder<ButtonBuilder>();
