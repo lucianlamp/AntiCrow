@@ -441,7 +441,7 @@ export const messages = {
   'team.taskCompleted': 'Task completed',
   'team.helperFollowup': 'Sub-agent {0} is running behind. Please help with the remaining work on this task: {1}',
   'team.helperStarted': '🤝 Sub-agent {0} started assisting Sub-agent {1}',
-  'team.helperModeEnabled': '🤝 Helper mode enabled: agents that finish early will assist others',
+  'team.helperModeEnabled': '🤝 Agents that finish early will assist others',
 
   // -----------------------------------------------------------------------
   // adminHandler.ts — Admin slash command handler

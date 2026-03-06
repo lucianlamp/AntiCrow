@@ -101,7 +101,7 @@ export const DEFAULT_SUBAGENT_CONFIG: SubagentConfig = {
     spawnMaxRetries: 3,
     staggerDelayMs: 2_500,
     idleTtlMs: 300_000,         // 5分
-    enableWindowReuse: true,    // デフォルトで有効
+    enableWindowReuse: false,   // デフォルトで無効（直接編集モードではメリット薄い）
 };
 
 /**

@@ -18,6 +18,7 @@ import { handleTemplateButton } from './templateHandler';
 import { getSuggestion, getAllSuggestions, SUGGEST_AUTO_ID, AUTO_PROMPT } from './suggestionButtons';
 import { processSuggestionPrompt } from './messageHandler';
 import { t } from './i18n';
+import { loadTeamConfig } from './teamConfig';
 
 /**
  * テンプレート・Pro・キュー・提案関連ボタンを処理する。
@@ -141,6 +142,14 @@ export async function handleMiscButton(
         if (suggestions && suggestions.length > 0) {
             const suggestionContext = suggestions.map((s, i) => `${i + 1}. ${s.label}: ${s.prompt}`).join('\n');
             prompt = t('misc.suggest.autoPromptPrefix', suggestionContext, AUTO_PROMPT);
+        }
+        // チームモードが有効な場合、プロンプトにチーム活用の指示を追加
+        const repoRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        if (repoRoot) {
+            const teamConfig = loadTeamConfig(repoRoot);
+            if (teamConfig.enabled) {
+                prompt += `\n\nエージェントチームモードが有効です（最大${teamConfig.maxAgents}エージェント）。タスクを分割して並列実行できる場合は、チームを有効活用してください。`;
+            }
         }
         await interaction.reply({ embeds: [buildEmbed(t('misc.suggest.auto'), EmbedColor.Info)] });
         processSuggestionPrompt(ctx, channelId, prompt, interaction.user.id).catch((e: unknown) => {
