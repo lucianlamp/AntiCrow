@@ -319,21 +319,26 @@ export class SubagentHandle {
             logWarn(`[SubagentHandle] closeWindow 失敗: ${err}`);
         }
 
+        // プロセスが worktree ディレクトリのロックを解放するまで待機
+        // closeWindow() は非同期で、プロセス終了に時間がかかる
+        await this.waitForWorktreeUnlock();
+
         // --- マージ: worktree 削除前にサブエージェントの変更をメインブランチへ ---
         await this.mergeChanges();
 
         // --- CLEANED ---
         if (this.usePool) {
-            // プール使用時: worktree は削除せず、ブランチのみ削除
-            // worktree のリセットは WorktreePool.release() で行われる
+            // プール使用時でもブランチと worktree の両方を削除する。
+            // 直接編集モードでは worktree はウィンドウ起動用のダミーなので close 時に不要。
             try {
                 await execAsync(`git branch -D ${this.branch}`, {
                     cwd: this.repoRoot,
                 });
-                logDebug(`[SubagentHandle] プール使用: ブランチ削除のみ: ${this.branch}`);
+                logDebug(`[SubagentHandle] プール使用: ブランチ削除: ${this.branch}`);
             } catch {
                 logDebug(`[SubagentHandle] ブランチ削除スキップ（存在しない可能性）: ${this.branch}`);
             }
+            await this.cleanupWorktree();
         } else {
             await this.cleanupWorktree();
         }
@@ -433,6 +438,35 @@ export class SubagentHandle {
     }
 
     /**
+     * closeWindow() 後にプロセスが worktree ディレクトリのロックを解放するまで待つ。
+     * Windows ではプロセスがファイルハンドルを保持していると rmSync が EBUSY で失敗する。
+     * 最大 5 秒（500ms × 10 回）ポーリングする。
+     */
+    private async waitForWorktreeUnlock(): Promise<void> {
+        if (!fs.existsSync(this.worktreePath)) return;
+
+        const maxAttempts = 10;
+        const intervalMs = 500;
+
+        for (let i = 0; i < maxAttempts; i++) {
+            try {
+                // テストとして .git ファイルへの書き込みを試みる
+                // ロックされていれば EBUSY/EPERM が発生する
+                const testFile = path.join(this.worktreePath, '.wt_unlock_test');
+                fs.writeFileSync(testFile, 'test', 'utf-8');
+                fs.unlinkSync(testFile);
+                logDebug(`[SubagentHandle] worktree ロック解放確認 (${i + 1}回目): OK`);
+                return;
+            } catch {
+                if (i < maxAttempts - 1) {
+                    await new Promise(r => setTimeout(r, intervalMs));
+                }
+            }
+        }
+        logWarn(`[SubagentHandle] worktree ロック解放待ちタイムアウト（${maxAttempts * intervalMs}ms）。削除を試行します。`);
+    }
+
+    /**
      * worktree とブランチのクリーンアップ。
      * マージ完了後に呼ばれ、物理ディレクトリを確実に削除する。
      */
@@ -475,14 +509,22 @@ export class SubagentHandle {
                 logDebug(`[SubagentHandle] ロックファイル処理スキップ: ${lockErr}`);
             }
 
-            // Step 4: 物理ディレクトリが残っている場合は強制削除
-            try {
-                if (fs.existsSync(this.worktreePath)) {
+            // Step 4: 物理ディレクトリが残っている場合はリトライ付き強制削除
+            // プロセスがまだロックを保持している可能性があるため、リトライする
+            for (let retry = 0; retry < 3; retry++) {
+                try {
+                    if (!fs.existsSync(this.worktreePath)) break;
                     fs.rmSync(this.worktreePath, { recursive: true, force: true });
-                    logDebug(`[SubagentHandle] worktree ディレクトリ強制削除: ${this.worktreePath}`);
+                    logDebug(`[SubagentHandle] worktree ディレクトリ強制削除 (試行${retry + 1}): ${this.worktreePath}`);
+                    break;
+                } catch (rmErr) {
+                    if (retry < 2) {
+                        logDebug(`[SubagentHandle] worktree 削除リトライ (${retry + 1}/3): ${rmErr}`);
+                        await new Promise(r => setTimeout(r, 1000));
+                    } else {
+                        logWarn(`[SubagentHandle] worktree ディレクトリ強制削除失敗 (全リトライ失敗): ${rmErr}`);
+                    }
                 }
-            } catch (rmErr) {
-                logWarn(`[SubagentHandle] worktree ディレクトリ強制削除失敗: ${rmErr}`);
             }
 
             // Step 5: 最終 prune で git 内部参照を完全にクリーンアップ
@@ -491,13 +533,18 @@ export class SubagentHandle {
             } catch { /* ignore */ }
         }
 
-        // 物理ディレクトリが残っていないか最終確認
-        if (fs.existsSync(this.worktreePath)) {
-            logWarn(`[SubagentHandle] worktree ディレクトリがまだ残っています（最終強制削除）: ${this.worktreePath}`);
+        // 物理ディレクトリが残っていないか最終確認（リトライ付き）
+        for (let retry = 0; retry < 3; retry++) {
+            if (!fs.existsSync(this.worktreePath)) break;
+            logWarn(`[SubagentHandle] worktree ディレクトリがまだ残っています（最終強制削除 試行${retry + 1}）: ${this.worktreePath}`);
             try {
                 fs.rmSync(this.worktreePath, { recursive: true, force: true });
             } catch (finalErr) {
-                logWarn(`[SubagentHandle] 最終強制削除も失敗: ${finalErr}`);
+                if (retry < 2) {
+                    await new Promise(r => setTimeout(r, 1000));
+                } else {
+                    logWarn(`[SubagentHandle] 最終強制削除も全リトライ失敗: ${finalErr}`);
+                }
             }
         }
 

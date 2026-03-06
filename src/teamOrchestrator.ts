@@ -963,10 +963,16 @@ export class TeamOrchestrator {
                         `- 失敗時: {"status": "failed", "completedAt": ${Date.now()}} を書き込んでください\n`;
 
                     if (config.enableHelperMode && config.useDirectEdit) {
-                        subagentPrompt +=
-                            `- 自分のタスク完了後: 他のタスクが "pending" のままなら、そのタスクの手伝いを検討してください。` +
-                            `ただし、他エージェントが作業中のファイルは上書きしないでください。` +
-                            `テスト作成・ドキュメント更新・コードレビュー・未着手の関連作業を優先してください。`;
+                        subagentPrompt += `\n\n` +
+                            `🤝 **ヘルプモード（重要）**\n` +
+                            `自分のメインタスクが完了したら、以下の手順で他のタスクを手伝ってください:\n\n` +
+                            `1. 共有タスクリスト（${taskListPath}）を view_file ツールで読み込む\n` +
+                            `2. "status" が "pending" のタスクがあるか確認する\n` +
+                            `3. "pending" のタスクがあれば、そのタスクの "fullTask" フィールドの内容を実行する\n` +
+                            `4. 実行前に自分のステータスファイルに {"status": "helping", "helpingTask": N} を書き込む\n` +
+                            `5. **制約**: 他エージェントが作業中（"in_progress"）のファイルは絶対に上書きしないこと\n` +
+                            `6. **優先順位**: テスト作成 > ドキュメント更新 > コードレビュー > 未着手の関連作業\n` +
+                            `7. 全タスクが "completed" または "in_progress" なら、ヘルプ不要。作業を終了してよい\n`;
                     }
                 }
 
@@ -1034,8 +1040,6 @@ export class TeamOrchestrator {
         if (config.useDirectEdit) {
             // 直接編集モード: マージ不要（全エージェントが元リポジトリに直接編集済み）
             logInfo('[TeamOrchestrator] 直接編集モード: マージステップをスキップ');
-            await this.sendToDiscord(channelId,
-                `✅ **直接編集モード**: 全エージェントの変更は元リポジトリに直接反映済み（マージ不要）`);
         } else {
             // 従来モード: worktreeの変更をマージ
             logInfo('[TeamOrchestrator] 全サブエージェントの変更をメインブランチにマージします...');
@@ -1080,6 +1084,18 @@ export class TeamOrchestrator {
 
         // ウィンドウ再利用モード
         if (this.subagentManager.enableWindowReuse) {
+            // アイドルプール移動前に worktree を確実にクリーンアップ
+            for (const [, agentName] of agentNames) {
+                const handle = this.subagentManager.getAgent(agentName);
+                if (handle && fs.existsSync(handle.worktreePath)) {
+                    try {
+                        await handle.cleanupWorktree();
+                        logDebug(`[TeamOrchestrator] アイドルプール移動前に worktree 削除: ${agentName}`);
+                    } catch (e) {
+                        logWarn(`[TeamOrchestrator] アイドルプール前 worktree 削除失敗: ${agentName}: ${e}`);
+                    }
+                }
+            }
             for (const [, agentName] of agentNames) {
                 const handle = this.subagentManager.getAgent(agentName);
                 if (handle) {
@@ -1169,7 +1185,7 @@ export class TeamOrchestrator {
                 // スレッドに完了通知
                 if (threadId && this.threadOps) {
                     await this.threadOps.sendToThread(threadId,
-                        `✅ **${t('team.taskCompleted')}** (${Math.round(durationMs / 1000)}秒)`);
+                        `✅ **${t('team.taskCompleted')}**`);
                 }
 
                 // メインチャンネルに完了通知（スレッドリンク + N/M 表記付き）
@@ -1479,11 +1495,21 @@ export class TeamOrchestrator {
                     const stat = fs.statSync(entryPath);
                     if (stat.isDirectory()) {
                         logWarn(`[TeamOrchestrator] 最終検証: 未知のworktreeが残留: ${entryPath}`);
-                        try {
-                            fs.rmSync(entryPath, { recursive: true, force: true });
-                            logInfo(`[TeamOrchestrator] 最終検証: 強制削除完了: ${entryPath}`);
-                        } catch (e) {
-                            logWarn(`[TeamOrchestrator] 最終検証: 強制削除失敗: ${entryPath}: ${e}`);
+                        // リトライ付き削除（プロセスがまだロックを保持している可能性）
+                        for (let retry = 0; retry < 3; retry++) {
+                            try {
+                                if (!fs.existsSync(entryPath)) break;
+                                fs.rmSync(entryPath, { recursive: true, force: true });
+                                logInfo(`[TeamOrchestrator] 最終検証: 強制削除完了 (試行${retry + 1}): ${entryPath}`);
+                                break;
+                            } catch (e) {
+                                if (retry < 2) {
+                                    logDebug(`[TeamOrchestrator] 最終検証: 削除リトライ (${retry + 1}/3): ${e}`);
+                                    await new Promise(r => setTimeout(r, 1000));
+                                } else {
+                                    logWarn(`[TeamOrchestrator] 最終検証: 強制削除失敗 (全リトライ失敗): ${entryPath}: ${e}`);
+                                }
+                            }
                         }
                         remainingCount++;
                     }
@@ -1510,6 +1536,7 @@ export class TeamOrchestrator {
     /**
      * 共有タスクリスト JSON を生成する。
      * チーム全体のタスク一覧をファイルに書き出し、サブエージェントが読み書きできるようにする。
+     * ヘルプモード用にフルタスク内容と利用ガイドも含める。
      */
     private generateSharedTaskList(
         ipcDir: string,
@@ -1520,9 +1547,22 @@ export class TeamOrchestrator {
         const taskList = {
             requestId,
             createdAt: Date.now(),
+            _guide: {
+                description: 'チーム全体のタスク一覧。各サブエージェントは自分のタスク完了後にこのファイルを確認し、pendingタスクがあれば手伝う。',
+                statusValues: {
+                    pending: '未着手（手伝い可能）',
+                    in_progress: '作業中（他エージェントが担当中。ファイルを上書きしないこと）',
+                    completed: '完了',
+                    failed: '失敗',
+                    helped: 'オーケストレーターがヘルプを割り当て済み',
+                    helping: '他エージェントがヘルプ中',
+                },
+                howToHelp: '1. statusがpendingのタスクを探す → 2. fullTaskの内容を実行 → 3. 他エージェントのファイルは上書きしない',
+            },
             tasks: instructions.map(inst => ({
                 agentIndex: inst.agentIndex,
-                task: inst.task.substring(0, 200), // 概要のみ（長すぎ防止）
+                taskSummary: inst.task.substring(0, 200) + (inst.task.length > 200 ? '...' : ''),
+                fullTask: inst.task,
                 status: 'pending' as string,
                 assignedTo: `anti-crow-subagent-${inst.agentIndex}`,
                 startedAt: null as number | null,
