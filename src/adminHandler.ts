@@ -38,10 +38,11 @@ import { DiscordBot } from './discordBot';
 import { getRunningWsNames, buildWorkspaceListEmbed } from './workspaceHandler';
 import { fetchQuota } from './quotaProvider';
 import { buildTemplateListPanel } from './templateHandler';
-import { SUGGEST_AUTO_ID } from './suggestionButtons';
+
 import { readAnticrowMd } from './anticrowCustomizer';
 import { t } from './i18n';
 import { loadAutoModeConfig, saveAutoModeConfig, parseAutoModeArgs, formatConfigForDisplay, setConfigStoragePath } from './autoModeConfig';
+import { handleUpdate } from './slashButtonUpdate';
 
 // ---------------------------------------------------------------------------
 // コマンドハンドラ（各コマンドの処理を独立関数に分離）
@@ -607,6 +608,7 @@ async function handleHelp(_ctx: BridgeContext, interaction: ChatInputCommandInte
         t('admin.help.cmdSoul'),
         t('admin.help.cmdSuggest'),
         t('admin.help.cmdAuto'),
+        t('admin.help.cmdUpdate'),
         t('admin.help.cmdHelp'),
         '',
         t('admin.help.tipsTitle'),
@@ -696,16 +698,9 @@ async function handleSuggest(ctx: BridgeContext, interaction: ChatInputCommandIn
         return;
     }
 
-    // スラッシュコマンドの応答（「エージェントに任せる」ボタン付き）
-    const autoButton = new ButtonBuilder()
-        .setCustomId(SUGGEST_AUTO_ID)
-        .setLabel(t('admin.suggest.agentAuto'))
-        .setStyle(ButtonStyle.Secondary)
-        .setEmoji('🤖');
-    const autoRow = new ActionRowBuilder<ButtonBuilder>().addComponents(autoButton);
+    // スラッシュコマンドの応答（提案生成中メッセージ、ボタンなし）
     await interaction.reply({
         embeds: [buildEmbed(t('admin.suggest.generating'), EmbedColor.Info)],
-        components: [autoRow],
     });
 
     // 合成 Message オブジェクトを作成して enqueueMessage に流す
@@ -1096,6 +1091,7 @@ const COMMAND_HANDLERS: Record<string, CommandHandler> = {
     team: handleTeam,
     auto: handleAutoMode,
     'auto-config': handleAutoConfig,
+    update: handleUpdate,
 };
 
 // ---------------------------------------------------------------------------
