@@ -499,6 +499,55 @@ export async function dismissPermissionDialog(
 // -----------------------------------------------------------------------
 
 /**
+ * セーフティチェック結果（autoModeController.ts の SafetyCheckResult と同じ構造）
+ */
+export interface AutoApproveSafetyResult {
+    safe: boolean;
+    reason?: string;
+    severity?: 'block' | 'warn';
+    pattern?: string;
+}
+
+/**
+ * レイヤーC: autoApprove ブラックリスト。
+ * ダイアログテキストに DANGEROUS_PATTERNS がマッチした場合にブロックする。
+ * DANGEROUS_PATTERNS は autoModeController.ts から動的にインポートして再利用する。
+ * autoModeController.ts がまだ存在しない場合はチェックをスキップする。
+ */
+let _dangerousPatterns: Array<{ pattern: RegExp; reason: string; severity: 'block' | 'warn' }> | null = null;
+let _dangerousPatternsLoaded = false;
+
+async function loadDangerousPatterns(): Promise<Array<{ pattern: RegExp; reason: string; severity: 'block' | 'warn' }>> {
+    if (_dangerousPatternsLoaded) { return _dangerousPatterns || []; }
+    try {
+        const { DANGEROUS_PATTERNS } = await import('./autoModeController');
+        _dangerousPatterns = DANGEROUS_PATTERNS;
+        _dangerousPatternsLoaded = true;
+        logDebug('CDP: shouldBlockAutoApprove — loaded DANGEROUS_PATTERNS from autoModeController');
+    } catch {
+        // autoModeController.ts がまだ存在しない場合はスキップ
+        _dangerousPatternsLoaded = true;
+        logDebug('CDP: shouldBlockAutoApprove — autoModeController not found, skipping safety check');
+    }
+    return _dangerousPatterns || [];
+}
+
+/**
+ * autoApprove 前のセーフティチェック（レイヤーC）。
+ * ダイアログテキストに DANGEROUS_PATTERNS がマッチしたらブロックを返す。
+ */
+export async function shouldBlockAutoApprove(dialogText: string): Promise<AutoApproveSafetyResult> {
+    const patterns = await loadDangerousPatterns();
+    for (const { pattern, reason, severity } of patterns) {
+        if (pattern.test(dialogText)) {
+            logInfo(`CDP: shouldBlockAutoApprove — BLOCKED: ${reason} (pattern=${pattern.source})`);
+            return { safe: false, reason, severity, pattern: pattern.source };
+        }
+    }
+    return { safe: true };
+}
+
+/**
  * VSCode コマンドによる自動承認リスト。
  * メインフレームの conn.evaluate 内で vscode.commands.executeCommand を呼び出す。
  * Antigravity の Electron メインウィンドウでは vscode グローバルが利用可能。
@@ -534,15 +583,15 @@ export async function autoApprove(
     logDebug('CDP: autoApprove — tick');
 
 
-// =================================================================
-// 第1層: VSCode コマンドによる自動承認（メインフレームで実行）
-// Antigravity の Electron ウィンドウ内で vscode.commands.executeCommand を呼ぶ。
-// CDP evaluate はターゲットウィンドウ内で実行されるため、
-// 複数ワークスペースでもクロスWS誤爆しない。
-// =================================================================
-for (const cmd of APPROVE_COMMANDS) {
-    try {
-        const evalJs = `
+    // =================================================================
+    // 第1層: VSCode コマンドによる自動承認（メインフレームで実行）
+    // Antigravity の Electron ウィンドウ内で vscode.commands.executeCommand を呼ぶ。
+    // CDP evaluate はターゲットウィンドウ内で実行されるため、
+    // 複数ワークスペースでもクロスWS誤爆しない。
+    // =================================================================
+    for (const cmd of APPROVE_COMMANDS) {
+        try {
+            const evalJs = `
     (async () => {
         if (typeof vscode !== 'undefined' && vscode.commands) {
             await vscode.commands.executeCommand('${cmd}');
@@ -551,23 +600,23 @@ for (const cmd of APPROVE_COMMANDS) {
         return false;
     })()
             `;
-        const executed = await ops.conn.evaluate(evalJs);
-        if (executed) {
-            logInfo(`CDP: autoApprove — executed VSCode command: ${ cmd } `);
-            totalClicked++;
-        }
-    } catch { /* コマンドが存在しない/対象なしは無視 */ }
-}
+            const executed = await ops.conn.evaluate(evalJs);
+            if (executed) {
+                logInfo(`CDP: autoApprove — executed VSCode command: ${cmd} `);
+                totalClicked++;
+            }
+        } catch { /* コマンドが存在しない/対象なしは無視 */ }
+    }
 
-// =================================================================
-// 第2層: DOM ベースのボタンクリック（フォールバック）
-// VSCode コマンドでカバーできない UI 要素（Allow ダイアログ等）に対応。
-// TreeWalker + Shadow DOM 再帰探索で承認系ボタンを検出してクリックする。
-// =================================================================
-const DOM_APPROVE_SCRIPT = `
+    // =================================================================
+    // 第2層: DOM ベースのボタンクリック（フォールバック）
+    // VSCode コマンドでカバーできない UI 要素（Allow ダイアログ等）に対応。
+    // TreeWalker + Shadow DOM 再帰探索で承認系ボタンを検出してクリックする。
+    // =================================================================
+    const DOM_APPROVE_SCRIPT = `
     (function () {
-        var TEXTS = ${ JSON.stringify(APPROVE_BUTTON_TEXTS)
-    };
+        var TEXTS = ${JSON.stringify(APPROVE_BUTTON_TEXTS)
+        };
 var clicked = 0;
 var clickedTexts = [];
 
@@ -709,65 +758,65 @@ return { clicked: clicked, clickedTexts: clickedTexts };
 }) ()
 `.trim();
 
-// cooldown エントリのクリーンアップ（30秒以上前のエントリを削除）
-const now = Date.now();
-for (const [key, ts] of clickCooldownMap) {
-    if (now - ts > COOLDOWN_CLEANUP_MS) {
-        clickCooldownMap.delete(key);
+    // cooldown エントリのクリーンアップ（30秒以上前のエントリを削除）
+    const now = Date.now();
+    for (const [key, ts] of clickCooldownMap) {
+        if (now - ts > COOLDOWN_CLEANUP_MS) {
+            clickCooldownMap.delete(key);
+        }
     }
-}
 
-try {
-    // メインフレームで実行（ダイアログは cascade iframe 外にある）
-    const result = await ops.conn.evaluate(DOM_APPROVE_SCRIPT) as { clicked: number; clickedTexts?: string[] } | null;
-    if (result && result.clicked > 0 && result.clickedTexts) {
-        let effectiveClicks = 0;
-        for (const text of result.clickedTexts) {
-            const lastClick = clickCooldownMap.get(text);
-            if (lastClick && now - lastClick < CLICK_COOLDOWN_MS) {
-                logDebug(`CDP: autoApprove — skipped(cooldown): "${text}"`);
-                continue;
+    try {
+        // メインフレームで実行（ダイアログは cascade iframe 外にある）
+        const result = await ops.conn.evaluate(DOM_APPROVE_SCRIPT) as { clicked: number; clickedTexts?: string[] } | null;
+        if (result && result.clicked > 0 && result.clickedTexts) {
+            let effectiveClicks = 0;
+            for (const text of result.clickedTexts) {
+                const lastClick = clickCooldownMap.get(text);
+                if (lastClick && now - lastClick < CLICK_COOLDOWN_MS) {
+                    logDebug(`CDP: autoApprove — skipped(cooldown): "${text}"`);
+                    continue;
+                }
+                clickCooldownMap.set(text, now);
+                effectiveClicks++;
             }
-            clickCooldownMap.set(text, now);
-            effectiveClicks++;
-        }
-        if (effectiveClicks > 0) {
-            logInfo(`CDP: autoApprove DOM fallback — clicked ${ effectiveClicks } approval button(s)`);
-            totalClicked += effectiveClicks;
-        }
-    }
-} catch (e) {
-    logInfo(`CDP: autoApprove DOM fallback failed — ${ e instanceof Error ? e.message : e } `);
-}
-
-// cascade iframe 内でも同じスクリプトを実行（iframe 内のダイアログ対応）
-try {
-    const cascadeResult = await ops.evaluateInCascade(DOM_APPROVE_SCRIPT) as { clicked: number; clickedTexts?: string[] } | null;
-    if (cascadeResult && cascadeResult.clicked > 0 && cascadeResult.clickedTexts) {
-        let effectiveClicks = 0;
-        const nowCascade = Date.now();
-        for (const text of cascadeResult.clickedTexts) {
-            const lastClick = clickCooldownMap.get(text);
-            if (lastClick && nowCascade - lastClick < CLICK_COOLDOWN_MS) {
-                logDebug(`CDP: autoApprove(cascade) — skipped(cooldown): "${text}"`);
-                continue;
+            if (effectiveClicks > 0) {
+                logInfo(`CDP: autoApprove DOM fallback — clicked ${effectiveClicks} approval button(s)`);
+                totalClicked += effectiveClicks;
             }
-            clickCooldownMap.set(text, nowCascade);
-            effectiveClicks++;
         }
-        if (effectiveClicks > 0) {
-            logInfo(`CDP: autoApprove DOM fallback(cascade) — clicked ${ effectiveClicks } approval button(s)`);
-            totalClicked += effectiveClicks;
-        }
+    } catch (e) {
+        logInfo(`CDP: autoApprove DOM fallback failed — ${e instanceof Error ? e.message : e} `);
     }
-} catch {
-    // cascade iframe がない場合は無視
-}
 
-if (totalClicked > 0) {
-    logInfo(`CDP: autoApprove — total clicked: ${ totalClicked } `);
-}
-return { clicked: totalClicked };
+    // cascade iframe 内でも同じスクリプトを実行（iframe 内のダイアログ対応）
+    try {
+        const cascadeResult = await ops.evaluateInCascade(DOM_APPROVE_SCRIPT) as { clicked: number; clickedTexts?: string[] } | null;
+        if (cascadeResult && cascadeResult.clicked > 0 && cascadeResult.clickedTexts) {
+            let effectiveClicks = 0;
+            const nowCascade = Date.now();
+            for (const text of cascadeResult.clickedTexts) {
+                const lastClick = clickCooldownMap.get(text);
+                if (lastClick && nowCascade - lastClick < CLICK_COOLDOWN_MS) {
+                    logDebug(`CDP: autoApprove(cascade) — skipped(cooldown): "${text}"`);
+                    continue;
+                }
+                clickCooldownMap.set(text, nowCascade);
+                effectiveClicks++;
+            }
+            if (effectiveClicks > 0) {
+                logInfo(`CDP: autoApprove DOM fallback(cascade) — clicked ${effectiveClicks} approval button(s)`);
+                totalClicked += effectiveClicks;
+            }
+        }
+    } catch {
+        // cascade iframe がない場合は無視
+    }
+
+    if (totalClicked > 0) {
+        logInfo(`CDP: autoApprove — total clicked: ${totalClicked} `);
+    }
+    return { clicked: totalClicked };
 }
 
 // -----------------------------------------------------------------------
@@ -870,7 +919,7 @@ export async function isAgentRunning(
         // cascade iframe 内で検出（エージェントチャットパネル）
         const cascadeResult = await ops.evaluateInCascade(DETECT_SCRIPT) as { running: boolean; matchedBy?: string; inIframe?: boolean } | null;
         if (cascadeResult?.running) {
-            logDebug(`CDP: isAgentRunning — detected in cascade(${ cascadeResult.matchedBy })`);
+            logDebug(`CDP: isAgentRunning — detected in cascade(${cascadeResult.matchedBy})`);
             return true;
         }
         // cascade でスクリプト実行成功したが running=false の場合、cascade の getTargetDoc が
@@ -879,7 +928,7 @@ export async function isAgentRunning(
             return false;
         }
     } catch (e) {
-        logDebug(`CDP: isAgentRunning — cascade eval failed: ${ e instanceof Error ? e.message : e } `);
+        logDebug(`CDP: isAgentRunning — cascade eval failed: ${e instanceof Error ? e.message : e} `);
     }
 
     try {
@@ -887,11 +936,11 @@ export async function isAgentRunning(
         // getTargetDoc() により、メインフレームから iframe 内の document にもアクセスする
         const mainResult = await ops.conn.evaluate(DETECT_SCRIPT) as { running: boolean; matchedBy?: string; inIframe?: boolean } | null;
         if (mainResult?.running) {
-            logDebug(`CDP: isAgentRunning — detected in main frame(${ mainResult.matchedBy }, inIframe = ${ mainResult.inIframe })`);
+            logDebug(`CDP: isAgentRunning — detected in main frame(${mainResult.matchedBy}, inIframe = ${mainResult.inIframe})`);
             return true;
         }
     } catch (e) {
-        logDebug(`CDP: isAgentRunning — main frame eval failed: ${ e instanceof Error ? e.message : e } `);
+        logDebug(`CDP: isAgentRunning — main frame eval failed: ${e instanceof Error ? e.message : e} `);
     }
 
     return false;

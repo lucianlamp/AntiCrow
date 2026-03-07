@@ -103,7 +103,15 @@ export class SubagentManager {
         // repoRoot を決定（オーバーライド優先）
         const effectiveRepoRoot = repoRootOverride || this.repoRoot;
 
-        logDebug(`[SubagentManager] サブエージェント "${name}" を起動中... (repoRoot=${effectiveRepoRoot})`);
+        // プール使用条件: プールが初期化済み かつ 対象 repoRoot がプールの repoRoot と一致する場合のみ
+        // 異なるワークスペースの場合はプールをスキップし、対象リポに直接 worktree を作成する
+        const usePool = this.worktreePool?.isInitialized &&
+            path.resolve(effectiveRepoRoot) === path.resolve(this.repoRoot);
+        if (!usePool && repoRootOverride) {
+            logDebug(`[SubagentManager] 異なるワークスペースのためプールをスキップ: pool=${this.repoRoot} → target=${effectiveRepoRoot}`);
+        }
+
+        logDebug(`[SubagentManager] サブエージェント "${name}" を起動中... (repoRoot=${effectiveRepoRoot}, usePool=${!!usePool})`);
 
         const handle = new SubagentHandle(
             name,
@@ -111,7 +119,7 @@ export class SubagentManager {
             this.ipcDir,
             this.cdpBridge,
             this.config,
-            this.worktreePool?.isInitialized ? await this.worktreePool.acquire(name) : undefined,
+            usePool ? await this.worktreePool!.acquire(name) : undefined,
         );
 
         this.agents.set(name, handle);

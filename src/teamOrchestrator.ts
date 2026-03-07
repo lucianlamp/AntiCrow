@@ -1517,6 +1517,42 @@ export class TeamOrchestrator {
             }
         } catch { /* ignore */ }
 
+        // 3. .git/worktrees/ 内のサブエージェント関連エントリを直接削除
+        const gitWorktreesDir = path.join(repoRoot, '.git', 'worktrees');
+        try {
+            if (fs.existsSync(gitWorktreesDir)) {
+                const gitEntries = fs.readdirSync(gitWorktreesDir);
+                for (const entry of gitEntries) {
+                    // サブエージェント関連のエントリのみ対象（安全チェック）
+                    if (!entry.includes('subagent')) continue;
+
+                    const gitEntryPath = path.join(gitWorktreesDir, entry);
+                    try {
+                        const stat = fs.statSync(gitEntryPath);
+                        if (!stat.isDirectory()) continue;
+                    } catch { continue; }
+
+                    logInfo(`[TeamOrchestrator] 最終検証: .git/worktrees/ に残留するサブエージェント参照を削除: ${entry}`);
+                    try {
+                        // まず git worktree remove を試す
+                        await execAsync(`git worktree remove "${entry}" --force`, { cwd: repoRoot });
+                        logInfo(`[TeamOrchestrator] git worktree remove 成功: ${entry}`);
+                    } catch {
+                        // 失敗したら直接削除
+                        try {
+                            fs.rmSync(gitEntryPath, { recursive: true, force: true });
+                            logInfo(`[TeamOrchestrator] .git/worktrees/${entry} を直接削除完了`);
+                        } catch (e2) {
+                            logWarn(`[TeamOrchestrator] .git/worktrees/${entry} の削除失敗: ${e2}`);
+                        }
+                    }
+                    remainingCount++;
+                }
+            }
+        } catch (e) {
+            logDebug(`[TeamOrchestrator] .git/worktrees/ の読み取りスキップ: ${e}`);
+        }
+
         // git worktree prune で最終クリーンアップ
         try {
             await execAsync('git worktree prune', { cwd: repoRoot });

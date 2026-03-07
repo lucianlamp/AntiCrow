@@ -218,6 +218,8 @@ export interface ResponseCallbacks {
     sendEmbeds: (descriptions: string[], color: number) => Promise<void>;
     /** Discord チャンネルに提案ボタンを送信 */
     sendSuggestionButtons: (suggestions: SuggestionItem[]) => Promise<void>;
+    /** オートモード: レスポンス処理完了時のコールバック（SUGGESTIONS + クリーンコンテンツを受け取る） */
+    onAutoModeComplete?: (suggestions: SuggestionItem[], cleanContent: string) => void;
 }
 
 /** 後方互換エイリアス */
@@ -279,6 +281,16 @@ export async function sendProcessedResponse(options: {
             logDebug(`ResponseHandler: sent ${suggestions.length} suggestion buttons (team mode)`);
         } catch (e) {
             logDebug(`ResponseHandler: failed to send suggestion buttons (team mode): ${e instanceof Error ? e.message : e}`);
+        }
+    }
+
+    // 6. オートモードコールバック（SUGGESTIONS + クリーンコンテンツを通知）
+    if (callbacks.onAutoModeComplete) {
+        try {
+            callbacks.onAutoModeComplete(suggestions, cleanContent);
+            logDebug(`ResponseHandler: invoked onAutoModeComplete callback (${suggestions.length} suggestions)`);
+        } catch (e) {
+            logDebug(`ResponseHandler: onAutoModeComplete callback failed: ${e instanceof Error ? e.message : e}`);
         }
     }
 

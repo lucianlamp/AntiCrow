@@ -76,6 +76,22 @@ export const slashCommandDefinitions = [
         .setName('team')
         .setDescription(t('command.team.desc')),
 
+    // /auto — オートモード（AI自律連続実行）
+    new SlashCommandBuilder()
+        .setName('auto')
+        .setDescription(t('command.auto.desc'))
+        .addStringOption(option =>
+            option
+                .setName('prompt')
+                .setDescription(t('command.auto.promptDesc'))
+                .setRequired(false),
+        ),
+
+    // /auto-config — オートモード設定の表示・変更
+    new SlashCommandBuilder()
+        .setName('auto-config')
+        .setDescription(t('command.autoConfig.desc')),
+
 
 ];
 

@@ -19,6 +19,9 @@ export const SUGGEST_BUTTON_PREFIX = 'suggest_';
 /** 「エージェントに任せる」ボタンの固定 customId */
 export const SUGGEST_AUTO_ID = 'suggest_auto';
 
+/** 「オートモードで実行」ボタンの固定 customId（Phase 3: /suggest → /auto 連携） */
+export const SUGGEST_AUTO_MODE_ID = 'suggest_auto_mode';
+
 /** 自律判断ボタン押下時に実行されるプロンプト */
 export const AUTO_PROMPT = '今の状況を見て、次にやるべきことをエージェントの判断で実行してください';
 
@@ -92,6 +95,18 @@ export function buildSuggestionRow(
         .setStyle(ButtonStyle.Secondary)
         .setEmoji('🤖');
     row.addComponents(autoButton);
+
+    // Phase 3: 「🔄 オートモードで実行」ボタンを追加（/suggest → /auto 連携）
+    // Discord ActionRow の上限は5ボタン。提案3 + auto + auto_mode = 5。
+    const currentButtonCount = Math.min(items.length, 3) + 1; // 提案ボタン + autoButton
+    if (currentButtonCount < 5) {
+        const autoModeButton = new ButtonBuilder()
+            .setCustomId(SUGGEST_AUTO_MODE_ID)
+            .setLabel('オートモードで実行')
+            .setStyle(ButtonStyle.Primary)
+            .setEmoji('🔄');
+        row.addComponents(autoModeButton);
+    }
 
     return row;
 }

@@ -457,6 +457,7 @@ export async function dispatchPlan(
     wsNameFromCategory: string | undefined,
     guild: typeof import('discord.js').Guild.prototype | null,
     isTeamMode = false,
+    autoMode = false,
 ): Promise<void> {
     const { bot, fileIpc, planStore, executor, executorPool, scheduler } = ctx;
 
@@ -464,6 +465,19 @@ export async function dispatchPlan(
         const wsNameForImmediate = wsNameFromCategory || activeCdp.getActiveWorkspaceName() || undefined;
         if (wsNameForImmediate) { plan.workspace_name = wsNameForImmediate; }
         plan.notify_channel_id = channel.id;
+
+        // -------------------------------------------------------------------
+        // オートモード: 確認ステップスキップ → 直接実行キューに追加
+        // -------------------------------------------------------------------
+        if (autoMode) {
+            logDebug(`dispatchPlan: Auto mode — skipping confirmation, direct execution (plan=${plan.plan_id})`);
+            if (executorPool) {
+                await executorPool.enqueueImmediate(wsNameForImmediate || '', plan);
+            } else if (executor) {
+                await executor.enqueueImmediate(plan);
+            }
+            return;
+        }
 
         // -------------------------------------------------------------------
         // チームモード: IPC ファイルベースのオーケストレーション

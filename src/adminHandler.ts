@@ -41,6 +41,7 @@ import { buildTemplateListPanel } from './templateHandler';
 import { SUGGEST_AUTO_ID } from './suggestionButtons';
 import { readAnticrowMd } from './anticrowCustomizer';
 import { t } from './i18n';
+import { loadAutoModeConfig, saveAutoModeConfig, parseAutoModeArgs, formatConfigForDisplay, setConfigStoragePath } from './autoModeConfig';
 
 // ---------------------------------------------------------------------------
 // コマンドハンドラ（各コマンドの処理を独立関数に分離）
@@ -605,6 +606,7 @@ async function handleHelp(_ctx: BridgeContext, interaction: ChatInputCommandInte
         t('admin.help.cmdScreenshot'),
         t('admin.help.cmdSoul'),
         t('admin.help.cmdSuggest'),
+        t('admin.help.cmdAuto'),
         t('admin.help.cmdHelp'),
         '',
         t('admin.help.tipsTitle'),
@@ -910,6 +912,168 @@ async function handleTeam(
 }
 
 // ---------------------------------------------------------------------------
+// /auto — オートモード（AI自律連続実行）
+// ---------------------------------------------------------------------------
+
+async function handleAutoMode(
+    ctx: BridgeContext,
+    interaction: ChatInputCommandInteraction,
+): Promise<void> {
+    const channel = interaction.channel as TextChannel | null;
+    if (!channel || !channel.isTextBased()) {
+        await interaction.reply({ embeds: [buildEmbed(t('admin.suggest.textOnly'), EmbedColor.Warning)] });
+        return;
+    }
+
+    // Pro ライセンスチェック
+    const { getLicenseGate } = await import('./extension');
+    const gate = getLicenseGate();
+    if (gate && !gate.isFeatureAllowed('autoMode')) {
+        await interaction.reply({ embeds: [buildEmbed(t('autoMode.proRequired'), EmbedColor.Warning)] });
+        return;
+    }
+
+    // autoModeController をロード
+    try {
+        const autoMode: any = await import('./autoModeController');
+
+        // 既に実行中か確認
+        if (autoMode.isAutoModeActive?.()) {
+            await interaction.reply({ embeds: [buildEmbed(t('autoMode.alreadyRunning'), EmbedColor.Warning)] });
+            return;
+        }
+
+        // --- オプション引数パース ---
+        // globalStoragePath を autoModeConfig に設定
+        if (ctx.globalStoragePath) {
+            setConfigStoragePath(ctx.globalStoragePath);
+        }
+
+        // スラッシュコマンドの prompt オプション取得
+        const rawInput = interaction.options.getString('prompt') || '';
+
+        // 保存済み設定を読み込み
+        const savedConfig = loadAutoModeConfig(channel.id);
+
+        // コマンドオプション（--steps, --confirm, --select, --duration）をパース
+        const { config: cmdConfig, prompt: userPrompt } = parseAutoModeArgs(rawInput);
+
+        // 保存済み設定 → コマンドオプションで上書き
+        const mergedConfig = { ...savedConfig, ...cmdConfig };
+
+        // プロンプトが空の場合のデフォルト
+        const finalPrompt = userPrompt || t('autoMode.defaultPrompt');
+
+        // /auto コマンドの応答: オートモード開始メッセージ + 停止ボタン
+        const durationMin = Math.round(mergedConfig.maxDuration / 60000);
+        await interaction.reply({
+            embeds: [buildEmbed(
+                t('autoMode.started', finalPrompt.substring(0, 100), String(mergedConfig.maxSteps), String(durationMin)),
+                EmbedColor.Success,
+            )],
+            components: [new ActionRowBuilder<ButtonBuilder>().addComponents(
+                new ButtonBuilder()
+                    .setCustomId('automode_stop')
+                    .setLabel(t('autoMode.stopButton'))
+                    .setStyle(ButtonStyle.Danger),
+            )],
+        });
+
+        // autoModeController の startAutoMode を呼ぶ（設定付き）
+        autoMode.startAutoMode?.(channel, channel.id, finalPrompt, mergedConfig).catch((e: unknown) => {
+            logError('handleAutoMode: startAutoMode failed', e);
+        });
+    } catch (e) {
+        logWarn(`handleAutoMode: autoModeController not available yet: ${e instanceof Error ? e.message : e}`);
+        await interaction.reply({
+            embeds: [buildEmbed(
+                '⚠️ オートモードコントローラーがまだ初期化されていません。\nautoModeController.ts のビルドを待ってください。',
+                EmbedColor.Warning,
+            )],
+        });
+    }
+}
+
+// ---------------------------------------------------------------------------
+// /auto-config — オートモード設定の表示・変更
+// ---------------------------------------------------------------------------
+
+async function handleAutoConfig(
+    ctx: BridgeContext,
+    interaction: ChatInputCommandInteraction,
+): Promise<void> {
+    const channel = interaction.channel as TextChannel | null;
+    if (!channel || !channel.isTextBased()) {
+        await interaction.reply({ embeds: [buildEmbed(t('admin.suggest.textOnly'), EmbedColor.Warning)] });
+        return;
+    }
+
+    // globalStoragePath を autoModeConfig に設定
+    if (ctx.globalStoragePath) {
+        setConfigStoragePath(ctx.globalStoragePath);
+    }
+
+    // 現在の設定を読み込み
+    const config = loadAutoModeConfig(channel.id);
+    const displayText = formatConfigForDisplay(config);
+
+    // 設定変更ボタン
+    const confirmRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder()
+            .setCustomId('autoconfig_confirm_auto')
+            .setLabel('⚡ auto')
+            .setStyle(config.confirmMode === 'auto' ? ButtonStyle.Success : ButtonStyle.Secondary),
+        new ButtonBuilder()
+            .setCustomId('autoconfig_confirm_semi')
+            .setLabel('🔄 semi')
+            .setStyle(config.confirmMode === 'semi' ? ButtonStyle.Success : ButtonStyle.Secondary),
+        new ButtonBuilder()
+            .setCustomId('autoconfig_confirm_manual')
+            .setLabel('✋ manual')
+            .setStyle(config.confirmMode === 'manual' ? ButtonStyle.Success : ButtonStyle.Secondary),
+    );
+
+    const selectRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder()
+            .setCustomId('autoconfig_select_auto-delegate')
+            .setLabel('🤖 auto-delegate')
+            .setStyle(config.selectionMode === 'auto-delegate' ? ButtonStyle.Success : ButtonStyle.Secondary),
+        new ButtonBuilder()
+            .setCustomId('autoconfig_select_first')
+            .setLabel('1️⃣ first')
+            .setStyle(config.selectionMode === 'first' ? ButtonStyle.Success : ButtonStyle.Secondary),
+        new ButtonBuilder()
+            .setCustomId('autoconfig_select_ai-select')
+            .setLabel('🧠 ai-select')
+            .setStyle(config.selectionMode === 'ai-select' ? ButtonStyle.Success : ButtonStyle.Secondary),
+    );
+
+    const stepsRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder()
+            .setCustomId('autoconfig_steps_3')
+            .setLabel('3ステップ')
+            .setStyle(config.maxSteps === 3 ? ButtonStyle.Success : ButtonStyle.Secondary),
+        new ButtonBuilder()
+            .setCustomId('autoconfig_steps_5')
+            .setLabel('5ステップ')
+            .setStyle(config.maxSteps === 5 ? ButtonStyle.Success : ButtonStyle.Secondary),
+        new ButtonBuilder()
+            .setCustomId('autoconfig_steps_10')
+            .setLabel('10ステップ')
+            .setStyle(config.maxSteps === 10 ? ButtonStyle.Success : ButtonStyle.Secondary),
+        new ButtonBuilder()
+            .setCustomId('autoconfig_steps_20')
+            .setLabel('20ステップ')
+            .setStyle(config.maxSteps === 20 ? ButtonStyle.Success : ButtonStyle.Secondary),
+    );
+
+    await interaction.reply({
+        embeds: [buildEmbed(displayText, EmbedColor.Info)],
+        components: [confirmRow, selectRow, stepsRow],
+    });
+}
+
+// ---------------------------------------------------------------------------
 // コマンドディスパッチマップ
 // ---------------------------------------------------------------------------
 
@@ -930,6 +1094,8 @@ const COMMAND_HANDLERS: Record<string, CommandHandler> = {
     screenshot: handleScreenshot,
     soul: handleSoul,
     team: handleTeam,
+    auto: handleAutoMode,
+    'auto-config': handleAutoConfig,
 };
 
 // ---------------------------------------------------------------------------

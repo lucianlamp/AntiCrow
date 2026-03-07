@@ -29,6 +29,7 @@ export type GateLevel = 'pro' | 'free';
 export const PRO_ONLY_FEATURES: ReadonlySet<string> = new Set([
     'autoAccept',   // 自動承認（UIダイアログ自動クリック）
     'teamMode',     // チームモード（複数サブエージェント並行実行）
+    'autoMode',     // オートモード（自律連続タスク実行）
     // suggestions は Free でも利用可能
 ]);
 

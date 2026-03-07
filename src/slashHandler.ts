@@ -42,6 +42,10 @@ import { handleHistoryButton } from './slashButtonHistory';
 import { handleTeamButton } from './slashButtonTeam';
 import { handleMiscButton } from './slashButtonMisc';
 
+// autoModeConfig（設定変更ボタン用）
+import { loadAutoModeConfig, saveAutoModeConfig, formatConfigForDisplay, setConfigStoragePath } from './autoModeConfig';
+import type { AutoModeConfig } from './autoModeController';
+
 // モーダルハンドラ
 import { handleModalSubmit as handleModalSubmitImpl } from './slashModalHandlers';
 
@@ -138,6 +142,102 @@ export async function handleButtonInteraction(
         if (await handleHistoryButton(ctx, interaction, customId)) { return; }
         if (await handleMiscButton(ctx, interaction, customId)) { return; }
         if (await handleTeamButton(ctx, interaction, customId)) { return; }
+
+        // ----- オートモード: 確認モード応答ボタン -----
+        if (customId === 'confirm_continue' || customId === 'confirm_stop') {
+            try {
+                const autoMode: any = await import('./autoModeController');
+                if (customId === 'confirm_continue') {
+                    autoMode.handleConfirmResponse?.('continue');
+                    await interaction.reply({ embeds: [buildEmbed(t('autoMode.confirm.continued'), EmbedColor.Success)] });
+                } else {
+                    autoMode.handleConfirmResponse?.('stop');
+                    await interaction.reply({ embeds: [buildEmbed(t('autoMode.confirm.stopped'), EmbedColor.Warning)] });
+                }
+            } catch (e) {
+                logWarn(`handleButtonInteraction: autoModeController not available: ${e instanceof Error ? e.message : e}`);
+                await interaction.reply({ embeds: [buildEmbed(t('autoMode.notRunning'), EmbedColor.Warning)] });
+            }
+            return;
+        }
+
+        // ----- オートモード: /auto-config 設定変更ボタン -----
+        if (customId.startsWith('autoconfig_')) {
+            try {
+                const channel = interaction.channel;
+                if (!channel || !channel.isTextBased()) {
+                    await interaction.reply({ embeds: [buildEmbed(t('slash.error', 'Channel not available'), EmbedColor.Warning)] });
+                    return;
+                }
+
+                // globalStoragePath を設定
+                if (ctx.globalStoragePath) {
+                    setConfigStoragePath(ctx.globalStoragePath);
+                }
+
+                const config = loadAutoModeConfig(channel.id);
+                const updated = { ...config };
+
+                // confirmMode 変更
+                if (customId.startsWith('autoconfig_confirm_')) {
+                    const mode = customId.replace('autoconfig_confirm_', '') as AutoModeConfig['confirmMode'];
+                    if (['auto', 'semi', 'manual'].includes(mode)) {
+                        updated.confirmMode = mode;
+                    }
+                }
+                // selectionMode 変更
+                else if (customId.startsWith('autoconfig_select_')) {
+                    const mode = customId.replace('autoconfig_select_', '') as AutoModeConfig['selectionMode'];
+                    if (['auto-delegate', 'first', 'ai-select'].includes(mode)) {
+                        updated.selectionMode = mode;
+                    }
+                }
+                // maxSteps 変更
+                else if (customId.startsWith('autoconfig_steps_')) {
+                    const steps = parseInt(customId.replace('autoconfig_steps_', ''), 10);
+                    if (!isNaN(steps) && steps >= 1 && steps <= 20) {
+                        updated.maxSteps = steps;
+                    }
+                }
+
+                // 保存
+                saveAutoModeConfig(channel.id, updated);
+
+                // 更新された設定を表示
+                const displayText = formatConfigForDisplay(updated);
+                await interaction.reply({ embeds: [buildEmbed(`✅ 設定を更新しました\n\n${displayText}`, EmbedColor.Success)] });
+            } catch (e) {
+                logError(`handleButtonInteraction: autoconfig failed`, e);
+                await interaction.reply({ embeds: [buildEmbed(t('slash.error', e instanceof Error ? e.message : String(e)), EmbedColor.Error)] });
+            }
+            return;
+        }
+
+        // ----- オートモード関連ボタン -----
+        if (
+            customId === 'safety_approve' ||
+            customId === 'safety_skip' ||
+            customId === 'safety_stop' ||
+            customId === 'automode_stop'
+        ) {
+            try {
+                const autoMode: any = await import('./autoModeController');
+                if (customId === 'safety_approve') {
+                    autoMode.handleSafetyResponse?.('approve');
+                    await interaction.reply({ embeds: [buildEmbed(t('autoMode.safety.approved'), EmbedColor.Success)] });
+                } else if (customId === 'safety_skip') {
+                    autoMode.handleSafetyResponse?.('skip');
+                    await interaction.reply({ embeds: [buildEmbed(t('autoMode.safety.skipped'), EmbedColor.Info)] });
+                } else if (customId === 'safety_stop' || customId === 'automode_stop') {
+                    autoMode.stopAutoMode?.();
+                    await interaction.reply({ embeds: [buildEmbed(t('autoMode.safety.stopped'), EmbedColor.Warning)] });
+                }
+            } catch (e) {
+                logWarn(`handleButtonInteraction: autoModeController not available: ${e instanceof Error ? e.message : e}`);
+                await interaction.reply({ embeds: [buildEmbed(t('autoMode.notRunning'), EmbedColor.Warning)] });
+            }
+            return;
+        }
 
         logWarn(`ButtonHandler: unknown customId: ${customId}`);
         await interaction.reply({ embeds: [buildEmbed(t('slash.unknownButton', customId), EmbedColor.Warning)] });

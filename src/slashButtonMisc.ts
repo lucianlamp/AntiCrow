@@ -15,10 +15,11 @@ import { logError } from './logger';
 import { buildEmbed, EmbedColor } from './embedHelper';
 import { BridgeContext } from './bridgeContext';
 import { handleTemplateButton } from './templateHandler';
-import { getSuggestion, getAllSuggestions, SUGGEST_AUTO_ID, AUTO_PROMPT } from './suggestionButtons';
+import { getSuggestion, getAllSuggestions, SUGGEST_AUTO_ID, SUGGEST_AUTO_MODE_ID, AUTO_PROMPT } from './suggestionButtons';
 import { processSuggestionPrompt } from './messageHandler';
 import { t } from './i18n';
 import { loadTeamConfig } from './teamConfig';
+import { startAutoMode } from './autoModeController';
 
 /**
  * テンプレート・Pro・キュー・提案関連ボタンを処理する。
@@ -130,6 +131,41 @@ export async function handleMiscButton(
         const { clearWaitingMessages } = await import('./messageHandler');
         const count = clearWaitingMessages();
         await interaction.reply({ embeds: [buildEmbed(t('misc.queue.cleared', String(count)), EmbedColor.Success)] });
+        return true;
+    }
+
+    // ----- 「🔄 オートモードで実行」ボタン（Phase 3: /suggest → /auto 連携） -----
+    if (customId === SUGGEST_AUTO_MODE_ID) {
+        const channelId = interaction.channelId;
+        const suggestions = getAllSuggestions(channelId);
+
+        if (!suggestions || suggestions.length === 0) {
+            await interaction.reply({ embeds: [buildEmbed(t('misc.suggest.expired'), EmbedColor.Warning)] });
+            return true;
+        }
+
+        // 全SUGGESTIONSを初期プロンプトとしてオートモード開始
+        const suggestionPrompts = suggestions.map((s, i) => `${i + 1}. ${s.label}: ${s.prompt}`).join('\n');
+        const autoPrompt = `以下の提案をすべて順番に実行してください:\n\n${suggestionPrompts}`;
+
+        const channel = interaction.channel;
+        if (!channel || !('send' in channel)) {
+            await interaction.reply({ embeds: [buildEmbed('チャンネルが見つかりません', EmbedColor.Error)] });
+            return true;
+        }
+
+        await interaction.reply({ embeds: [buildEmbed('🔄 **オートモードを開始します...**\n提案をすべて順番に自動実行します', EmbedColor.Info)] });
+
+        // ワークスペースキーの取得
+        const repoRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        const wsKey = repoRoot || 'default';
+
+        // オートモード開始
+        const prompt = await startAutoMode(channel as any, wsKey, autoPrompt, { maxSteps: suggestions.length + 2 });
+        // プロンプトをパイプラインに投入
+        processSuggestionPrompt(ctx, channelId, prompt, interaction.user.id).catch((e: unknown) => {
+            logError('suggest_auto_mode button: processSuggestionPrompt failed', e);
+        });
         return true;
     }
 
