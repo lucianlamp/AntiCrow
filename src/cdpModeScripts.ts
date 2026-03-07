@@ -133,7 +133,7 @@ export const FIND_MODE_BUTTON = `
                 // アクションボタン除外キーワード
                 var ACTION_EXCLUDE = ['submit', 'cancel', 'stop', '中止', 'send', 'record', 'voice', 'memo'];
                 // モードキーワード（優先検出）
-                var MODE_KW = ['planning', 'fast', 'normal', 'agent', 'ask', 'edit', 'chat'];
+                var MODE_KW = ['planning', 'fast'];
 
                 // 戦略1: モードキーワードを含むボタンを優先
                 for (var mk = 0; mk < allBtns.length; mk++) {
@@ -149,7 +149,9 @@ export const FIND_MODE_BUTTON = `
                     if (modeBtn) break;
                 }
 
-                // 戦略2: アクションボタンを除外した最初のボタン
+                // 戦略2: アクションボタンを除外し、かつモードキーワードに一致するボタン
+                // 注意: 単に「最初のボタン」を拾うと Review 等の無関係なUIテキストを誤検出するため、
+                //       MODE_KW に一致するもののみ採用する
                 if (!modeBtn) {
                     for (var fb = 0; fb < allBtns.length; fb++) {
                         var fbLower = allBtns[fb].text.toLowerCase();
@@ -160,9 +162,18 @@ export const FIND_MODE_BUTTON = `
                                 break;
                             }
                         }
-                        if (!isAction && allBtns[fb].text.length > 1) {
+                        if (isAction) continue;
+                        // モードキーワードに一致するかチェック（一致しないボタンは無視）
+                        var isModeKw = false;
+                        for (var vk = 0; vk < MODE_KW.length; vk++) {
+                            if (fbLower === MODE_KW[vk] || fbLower.indexOf(MODE_KW[vk]) >= 0) {
+                                isModeKw = true;
+                                break;
+                            }
+                        }
+                        if (isModeKw && allBtns[fb].text.length > 1) {
                             modeBtn = allBtns[fb].el;
-                            _findDebug.matchMethod = 'first-non-action';
+                            _findDebug.matchMethod = 'keyword-validated-non-action';
                             _findDebug.found = true;
                             break;
                         }
@@ -178,7 +189,7 @@ export const FIND_MODE_BUTTON = `
     // 戦略B: ドキュメント全体からモード名キーワードでボタンを検索（textbox親探索で見つからなかった場合）
     if (!modeBtn) {
         _findDebug.fallbackUsed = true;
-        var MODE_KW_SEARCH = ['planning', 'fast', 'normal'];
+        var MODE_KW_SEARCH = ['planning', 'fast'];
         var MODEL_EXCLUDE = ['claude', 'gpt', 'gemini', 'sonnet', 'opus', 'haiku', 'o1', 'o3', 'deepseek', 'llama', 'mistral', 'codestral'];
         var allDocBtns = doc.querySelectorAll('button');
         var fallbackCandidates = [];

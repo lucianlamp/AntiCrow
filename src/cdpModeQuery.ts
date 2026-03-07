@@ -13,6 +13,15 @@ import { FIND_MODE_BUTTON } from './cdpModeScripts';
 // getCurrentMode — 現在選択中のモード名を取得
 // -----------------------------------------------------------------------
 
+// 既知のモード名（小文字）。ここに含まれないテキストはモードと見なさない。
+const KNOWN_MODES = ['planning', 'fast'];
+
+/** 取得したテキストが既知のモード名に一致するか検証 */
+function isKnownMode(text: string): boolean {
+    const lower = text.toLowerCase();
+    return KNOWN_MODES.some(m => lower === m || lower.includes(m));
+}
+
 export async function getCurrentMode(
     ops: CdpBridgeOps,
 ): Promise<string | null> {
@@ -37,10 +46,18 @@ export async function getCurrentMode(
         if (result && typeof result === 'object' && 'debug' in result) {
             logDebug(`cdpModes: getCurrentMode cascade debug=${JSON.stringify(result.debug)}`);
             if (typeof result.text === 'string' && result.text.length > 0) {
+                if (!isKnownMode(result.text)) {
+                    logWarn(`cdpModes: getCurrentMode — unexpected mode text "${result.text}" (not in KNOWN_MODES), returning null`);
+                    return null;
+                }
                 logDebug(`cdpModes: getCurrentMode = "${result.text}" (cascade)`);
                 return result.text;
             }
         } else if (typeof result === 'string' && result.length > 0) {
+            if (!isKnownMode(result)) {
+                logWarn(`cdpModes: getCurrentMode — unexpected mode text "${result}" (not in KNOWN_MODES), returning null`);
+                return null;
+            }
             logDebug(`cdpModes: getCurrentMode = "${result}" (cascade/legacy)`);
             return result;
         }
@@ -52,10 +69,18 @@ export async function getCurrentMode(
             if (mainResult && typeof mainResult === 'object' && 'debug' in mainResult) {
                 logDebug(`cdpModes: getCurrentMode main debug=${JSON.stringify(mainResult.debug)}`);
                 if (typeof mainResult.text === 'string' && mainResult.text.length > 0) {
+                    if (!isKnownMode(mainResult.text)) {
+                        logWarn(`cdpModes: getCurrentMode — unexpected mode text "${mainResult.text}" from main frame (not in KNOWN_MODES), returning null`);
+                        return null;
+                    }
                     logDebug(`cdpModes: getCurrentMode = "${mainResult.text}" (main)`);
                     return mainResult.text;
                 }
             } else if (typeof mainResult === 'string' && mainResult.length > 0) {
+                if (!isKnownMode(mainResult)) {
+                    logWarn(`cdpModes: getCurrentMode — unexpected mode text "${mainResult}" from main frame (not in KNOWN_MODES), returning null`);
+                    return null;
+                }
                 logDebug(`cdpModes: getCurrentMode = "${mainResult}" (main/legacy)`);
                 return mainResult;
             }
