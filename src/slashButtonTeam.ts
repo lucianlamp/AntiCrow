@@ -9,7 +9,7 @@ import {
     ButtonStyle,
 } from 'discord.js';
 
-import { logDebug, logError } from './logger';
+
 import { buildEmbed, EmbedColor } from './embedHelper';
 import { t } from './i18n';
 import { loadTeamConfig, saveTeamConfig } from './teamConfig';
@@ -42,36 +42,6 @@ export function buildTeamButtons(config: import('./teamConfig').TeamConfig): Act
     return [row];
 }
 
-// ---------------------------------------------------------------------------
-// サブエージェントボタンパネル構築ヘルパー
-// ---------------------------------------------------------------------------
-
-export function buildSubagentButtons(agents: { name: string; state: string }[]): ActionRowBuilder<ButtonBuilder>[] {
-    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-        new ButtonBuilder()
-            .setCustomId('subagent_spawn')
-            .setLabel(t('btnTeam.spawn'))
-            .setStyle(ButtonStyle.Success),
-        new ButtonBuilder()
-            .setCustomId('subagent_list')
-            .setLabel(t('btnTeam.list'))
-            .setStyle(ButtonStyle.Primary),
-        new ButtonBuilder()
-            .setCustomId('subagent_killall')
-            .setLabel(t('btnTeam.killAll'))
-            .setStyle(agents.length > 0 ? ButtonStyle.Danger : ButtonStyle.Secondary)
-            .setDisabled(agents.length === 0),
-    );
-    return [row];
-}
-
-export function buildSubagentListText(agents: { name: string; state: string }[]): string {
-    if (agents.length === 0) {
-        return t('btnTeam.noAgents');
-    }
-    return t('btnTeam.agentListHeader', String(agents.length))
-        + agents.map(a => `  • \`${a.name}\` — ${a.state}`).join('\n');
-}
 
 /**
  * チーム関連ボタンを処理する。
@@ -82,12 +52,7 @@ export async function handleTeamButton(
     interaction: ButtonInteraction,
     customId: string,
 ): Promise<boolean> {
-    if (!customId.startsWith('team_') && !customId.startsWith('subagent_')) { return false; }
-
-    // subagent_ プレフィックスのボタンはサブエージェント処理に委譲
-    if (customId.startsWith('subagent_')) {
-        return handleSubagentButton(ctx, interaction, customId);
-    }
+    if (!customId.startsWith('team_')) { return false; }
 
     const teamAction = customId.replace('team_', '');
     const { repoRoot } = resolveRepoRootFromInteraction(interaction, ctx.cdpPool);
@@ -149,87 +114,5 @@ export async function handleTeamButton(
         }
         default:
             return false;
-    }
-}
-
-/**
- * サブエージェント関連ボタンを処理する。
- * @returns true: 処理済み, false: 未処理
- */
-export async function handleSubagentButton(
-    ctx: BridgeContext,
-    interaction: ButtonInteraction,
-    customId: string,
-): Promise<boolean> {
-    if (!customId.startsWith('subagent_')) { return false; }
-
-    const subAction = customId.replace('subagent_', '');
-    const mgr = ctx.subagentManager;
-
-    try {
-        switch (subAction) {
-            case 'spawn': {
-                if (!mgr) {
-                    await interaction.update({
-                        embeds: [buildEmbed(t('btnTeam.mgrNotInit'), EmbedColor.Warning)],
-                        components: buildSubagentButtons([]) as any,
-                    });
-                    return true;
-                }
-                await interaction.deferUpdate();
-                const handle = await mgr.spawn();
-                const agents = mgr.list();
-                await interaction.editReply({
-                    embeds: [buildEmbed(
-                        t('btnTeam.spawned', handle.name)
-                        + buildSubagentListText(agents),
-                        EmbedColor.Success,
-                    )],
-                    components: buildSubagentButtons(agents) as any,
-                });
-                return true;
-            }
-            case 'list': {
-                const agents = mgr?.list() ?? [];
-                await interaction.update({
-                    embeds: [buildEmbed(buildSubagentListText(agents), EmbedColor.Info)],
-                    components: buildSubagentButtons(agents) as any,
-                });
-                return true;
-            }
-            case 'killall': {
-                if (!mgr) {
-                    await interaction.update({
-                        embeds: [buildEmbed(t('btnTeam.mgrNotInit'), EmbedColor.Warning)],
-                        components: buildSubagentButtons([]) as any,
-                    });
-                    return true;
-                }
-                await interaction.deferUpdate();
-                await mgr.killAll();
-                await interaction.editReply({
-                    embeds: [buildEmbed(t('btnTeam.allStopped'), EmbedColor.Success)],
-                    components: buildSubagentButtons([]) as any,
-                });
-                return true;
-            }
-            default:
-                return false;
-        }
-    } catch (e) {
-        const errMsg = e instanceof Error ? e.message : String(e);
-        logError(`subagent button: ${subAction} failed`, e);
-        if (interaction.deferred || interaction.replied) {
-            await interaction.editReply({
-                embeds: [buildEmbed(t('btnTeam.opFailed', errMsg), EmbedColor.Error)],
-                components: buildSubagentButtons(mgr?.list() ?? []) as any,
-            }).catch(() => { });
-        } else {
-            await interaction.update({
-                embeds: [buildEmbed(t('btnTeam.opFailed', errMsg), EmbedColor.Error)],
-                components: buildSubagentButtons(mgr?.list() ?? []) as any,
-            });
-        }
-        return true;
     }
 }

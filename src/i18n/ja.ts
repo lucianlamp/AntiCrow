@@ -288,6 +288,7 @@ export const messages = {
   'instruction.execution_rules': [
     'このタスクは既に計画済みです。計画の生成や承認は不要で、直ちに実行に移ってください',
     'plan_generation タスクを生成しないでください',
+    'VSIX インストール（antigravity --install-extension）は実行しないでください。ビルドとパッケージングまでが担当範囲です',
   ],
   'instruction.progress.instruction': '進捗ファイルに JSON で進捗状況を定期的に書き込むこと（write_to_file, Overwrite: true）。' +
     '30秒〜1分おきに percent と status を更新する。',
@@ -755,11 +756,7 @@ export const messages = {
   'btnTeam.teamOff': '🔴 Team OFF',
   'btnTeam.status': 'ステータス',
   'btnTeam.config': '⚙️ 設定',
-  'btnTeam.spawn': '🚀 起動',
-  'btnTeam.list': '📋 一覧',
-  'btnTeam.killAll': '⏹️ 全停止',
-  'btnTeam.noAgents': 'サブエージェントは稼働していません。',
-  'btnTeam.agentListHeader': '🤖 **サブエージェント一覧** ({0})',
+
   'btnTeam.enabled': '🟢 有効',
   'btnTeam.disabled': '🔴 無効',
   'btnTeam.notConnected': '⚠️ Antigravity との接続が確立されていません。',
@@ -772,10 +769,7 @@ export const messages = {
   'btnTeam.minutes': '分',
   'btnTeam.agentList': 'サブエージェント一覧',
   'btnTeam.teamConfig': 'チーム設定',
-  'btnTeam.mgrNotInit': '⚠️ SubagentManager が初期化されていません。',
-  'btnTeam.spawned': '🚀 サブエージェントを起動しました: {0}',
-  'btnTeam.allStopped': '⏹️ 全サブエージェントを停止しました。',
-  'btnTeam.opFailed': '❌ チームモード操作エラー: {0}',
+
 
   // -----------------------------------------------------------------------
   // slashButtonSchedule.ts
@@ -919,6 +913,18 @@ export const messages = {
   'command.auto.desc': 'オートモード — AIが自律的にタスクを連続実行します（Pro限定）',
   'command.auto.promptDesc': 'タスクのプロンプト（例: --steps 10 --confirm semi LPをリニューアルして）',
   'command.autoConfig.desc': 'オートモードの設定を表示・変更します',
+  'command.update.desc': 'Anti-Crow を最新バージョンに更新します',
+
+  // --- アップデート通知 ---
+  'update.checking': '🔍 最新バージョンを確認中...',
+  'update.alreadyLatest': '✅ 現在のバージョン **v{0}** は最新です。',
+  'update.downloading': '📥 新しいバージョンをダウンロード中...',
+  'update.installing': '⚙️ インストール中...',
+  'update.complete': 'アップデート完了！拡張機能ホストが再起動します。',
+  'update.error': '❌ アップデートに失敗しました: {0}',
+
+  // --- ヘルプに update を追加 ---
+  'admin.help.cmdUpdate': '`/update` — 最新版に更新',
 
   // --- オートモード通知 ---
   'autoMode.defaultPrompt': '提案に基づいて次のタスクを自律実行してください',

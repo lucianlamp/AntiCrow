@@ -285,6 +285,7 @@ export const messages = {
   'instruction.execution_rules': [
     'This task is already planned. No plan generation or approval is needed. Proceed with execution immediately',
     'Do not generate a plan_generation task',
+    'Do not run VSIX installation (antigravity --install-extension). Your scope is limited to building and packaging',
   ],
   'instruction.progress.instruction': 'Write progress status to the progress file regularly as JSON (write_to_file, Overwrite: true). ' +
     'Update percent and status every 30 seconds to 1 minute.',
@@ -720,11 +721,7 @@ export const messages = {
   'btnTeam.teamOff': '🔴 Team OFF',
   'btnTeam.status': 'Status',
   'btnTeam.config': '⚙️ Settings',
-  'btnTeam.spawn': '🚀 Launch',
-  'btnTeam.list': '📋 List',
-  'btnTeam.killAll': '⏹️ Stop All',
-  'btnTeam.noAgents': 'No subagents are running.',
-  'btnTeam.agentListHeader': '🤖 **Subagent List** ({0})',
+
   'btnTeam.enabled': '🟢 Enabled',
   'btnTeam.disabled': '🔴 Disabled',
   'btnTeam.notConnected': '⚠️ Antigravity connection is not established.',
@@ -737,10 +734,7 @@ export const messages = {
   'btnTeam.minutes': 'min',
   'btnTeam.agentList': 'Subagent List',
   'btnTeam.teamConfig': 'Team Settings',
-  'btnTeam.mgrNotInit': '⚠️ SubagentManager is not initialized.',
-  'btnTeam.spawned': '🚀 Subagent launched: {0}',
-  'btnTeam.allStopped': '⏹️ All subagents stopped.',
-  'btnTeam.opFailed': '❌ Team mode operation error: {0}',
+
 
   // -----------------------------------------------------------------------
   // slashButtonSchedule.ts
@@ -884,6 +878,18 @@ export const messages = {
   'command.auto.desc': 'Auto Mode — AI autonomously executes tasks in sequence (Pro only)',
   'command.auto.promptDesc': 'Task prompt (e.g. --steps 10 --confirm semi Redesign the landing page)',
   'command.autoConfig.desc': 'View and configure Auto Mode settings',
+  'command.update.desc': 'Update Anti-Crow to the latest version',
+
+  // --- Update notifications ---
+  'update.checking': '🔍 Checking for updates...',
+  'update.alreadyLatest': '✅ Current version **v{0}** is up to date.',
+  'update.downloading': '📥 Downloading new version...',
+  'update.installing': '⚙️ Installing...',
+  'update.complete': 'Update complete! Extension host will restart.',
+  'update.error': '❌ Update failed: {0}',
+
+  // --- Help: update ---
+  'admin.help.cmdUpdate': '`/update` — Update to the latest version',
 
   // --- Auto Mode notifications ---
   'autoMode.defaultPrompt': 'Autonomously execute the next task based on suggestions',

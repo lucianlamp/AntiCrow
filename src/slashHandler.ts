@@ -54,7 +54,7 @@ import { handleModalSubmit as handleModalSubmitImpl } from './slashModalHandlers
 // ---------------------------------------------------------------------------
 export { handleManageSlash } from './adminHandler';
 export { handleTemplateButton, buildTemplateListPanel } from './templateHandler';
-export { buildTeamButtons, buildSubagentButtons, buildSubagentListText } from './slashButtonTeam';
+export { buildTeamButtons } from './slashButtonTeam';
 export { debouncedRename, resolveRepoRootFromInteraction, resolveHistoryCdp } from './slashHelpers';
 
 // ---------------------------------------------------------------------------
@@ -108,6 +108,7 @@ export async function handleButtonInteraction(
     if (
         customId === 'confirm_approve' ||
         customId === 'confirm_reject' ||
+        customId === 'confirm_auto' ||
         customId.startsWith('choice_') ||
         customId.startsWith('mchoice_')
     ) {
