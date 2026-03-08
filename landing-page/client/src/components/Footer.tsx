@@ -20,8 +20,8 @@ export default function Footer() {
             <a href="#security" className="hover:text-foreground transition-colors">セキュリティ</a>
             <a href="#faq" className="hover:text-foreground transition-colors">FAQ</a>
             <span className="text-[oklch(0.35_0.02_260)]">|</span>
-            <a href="https://lucianlamp.gitbook.io/anticrow/privacy" target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors">プライバシーポリシー</a>
-            <a href="https://lucianlamp.gitbook.io/anticrow/security" target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors">セキュリティポリシー</a>
+            <a href="https://anticrow.gitbook.io/anticrow-docs/privacy" target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors">プライバシーポリシー</a>
+            <a href="https://anticrow.gitbook.io/anticrow-docs/security" target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors">セキュリティポリシー</a>
           </div>
 
           {/* Copyright */}
