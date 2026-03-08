@@ -28,7 +28,7 @@ const execAsync = promisify(exec);
 // ---------------------------------------------------------------------------
 
 /** オートモードの実行状態 */
-export interface AutoModeState {
+interface AutoModeState {
     active: boolean;
     channelId: string;
     wsKey: string;
@@ -57,7 +57,7 @@ export interface AutoModeConfig {
 }
 
 /** ステップの実行結果 */
-export interface StepResult {
+interface StepResult {
     step: number;
     prompt: string;
     response: string;
@@ -67,7 +67,7 @@ export interface StepResult {
 }
 
 /** セーフティチェック結果 */
-export interface SafetyCheckResult {
+interface SafetyCheckResult {
     safe: boolean;
     reason?: string;
     severity?: 'block' | 'warn';
@@ -254,7 +254,7 @@ let confirmResolve: ((action: 'continue' | 'stop') => void) | null = null;
  * 現在のオートモード状態を取得する。
  * オートモードが非アクティブの場合は null を返す。
  */
-export function getAutoModeState(): AutoModeState | null {
+function getAutoModeState(): AutoModeState | null {
     return currentState;
 }
 
@@ -613,7 +613,7 @@ function buildAutonomousPrompt(fallbackPrompt: string): string {
  * @param initialPrompt 初回プロンプト（省略時は AUTO_PROMPT ベース）
  * @returns 構築されたプロンプトテキスト
  */
-export function buildAutoPrompt(channelId: string, initialPrompt?: string): string {
+function buildAutoPrompt(channelId: string, initialPrompt?: string): string {
     const basePrompt = initialPrompt || AUTO_PROMPT;
     const selectionMode = currentState?.config.selectionMode ?? 'auto-delegate';
 
@@ -697,7 +697,7 @@ export function buildAutoPrompt(channelId: string, initialPrompt?: string): stri
  * レスポンスに対してセーフティチェックを実行する（レイヤーA: プリフライト）。
  * DANGEROUS_PATTERNS の各パターンとマッチングし、最初にヒットしたものを返す。
  */
-export function checkSafety(text: string): SafetyCheckResult {
+function checkSafety(text: string): SafetyCheckResult {
     for (const { pattern, reason, severity } of DANGEROUS_PATTERNS) {
         if (pattern.test(text)) {
             logWarn(`autoMode: safety check FAILED — pattern="${pattern.source}" reason="${reason}" severity=${severity}`);
