@@ -19,6 +19,9 @@ export default function Footer() {
             <a href="#how-it-works" className="hover:text-foreground transition-colors">使い方</a>
             <a href="#security" className="hover:text-foreground transition-colors">セキュリティ</a>
             <a href="#faq" className="hover:text-foreground transition-colors">FAQ</a>
+            <span className="text-[oklch(0.35_0.02_260)]">|</span>
+            <a href="/docs/ja/privacy" className="hover:text-foreground transition-colors">プライバシーポリシー</a>
+            <a href="/docs/ja/security" className="hover:text-foreground transition-colors">セキュリティポリシー</a>
           </div>
 
           {/* Copyright */}
