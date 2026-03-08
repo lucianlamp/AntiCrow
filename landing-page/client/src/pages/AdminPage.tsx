@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 
 // --- 型定義 ---
 interface User {
@@ -59,6 +59,8 @@ export default function AdminPage() {
     const [userPage, setUserPage] = useState(1);
     const [userFilter, setUserFilter] = useState('all');
     const [userSearch, setUserSearch] = useState('');
+    const [searchInput, setSearchInput] = useState('');
+    const searchDebounceRef = useRef<ReturnType<typeof setTimeout>>();
     const [releases, setReleases] = useState<Release[]>([]);
     const [selectedEmails, setSelectedEmails] = useState<Set<string>>(new Set());
     const [loading, setLoading] = useState(false);
@@ -133,7 +135,7 @@ export default function AdminPage() {
         try {
             const data = await apiFetch<{ users: User[] }>(`users?status=pending&limit=${count}`, apiKey);
             const emails = data.users.map(u => u.email);
-            if (emails.length === 0) return showToast('未招待のユーザーがいません', 'err');
+            if (emails.length === 0) { setLoading(false); return showToast('未招待のユーザーがいません', 'err'); }
             const result = await apiFetch<{ successCount: number; totalCount: number }>('invite', apiKey, {
                 method: 'POST', body: JSON.stringify({ emails }),
             });
@@ -141,6 +143,16 @@ export default function AdminPage() {
             fetchUsers(); fetchStats();
         } catch (e) { showToast((e as Error).message, 'err'); }
         setLoading(false);
+    };
+
+    // 検索デバウンス（300ms）
+    const handleSearchChange = (value: string) => {
+        setSearchInput(value);
+        if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+        searchDebounceRef.current = setTimeout(() => {
+            setUserSearch(value);
+            setUserPage(1);
+        }, 300);
     };
 
     const uploadRelease = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -259,7 +271,7 @@ export default function AdminPage() {
                 {tab === 'users' && (
                     <div className="space-y-4">
                         <div className="flex flex-wrap items-center gap-3">
-                            <input value={userSearch} onChange={e => { setUserSearch(e.target.value); setUserPage(1); }}
+                            <input value={searchInput} onChange={e => handleSearchChange(e.target.value)}
                                 placeholder="メールアドレスで検索..." className="px-4 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary w-64" />
                             <select value={userFilter} onChange={e => { setUserFilter(e.target.value); setUserPage(1); }}
                                 className="px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground">

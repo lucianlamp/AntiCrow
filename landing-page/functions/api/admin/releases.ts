@@ -1,8 +1,5 @@
 // GET/POST /api/admin/releases - リリース管理
-interface Env {
-    DB: D1Database;
-    R2: R2Bucket;
-}
+import { Env } from '../../../shared/types';
 
 // GET: リリース一覧
 export const onRequestGet: PagesFunction<Env> = async (context) => {
@@ -30,7 +27,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     }
 };
 
-// POST: VSIXアップロード
+// POST: VSIXアップロード（原子的操作: DB先→R2後、失敗時クリーンアップ）
 export const onRequestPost: PagesFunction<Env> = async (context) => {
     const { DB, R2 } = context.env;
     const corsHeaders = {
@@ -63,23 +60,28 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
             );
         }
 
-        // R2 にアップロード
         const r2Key = `releases/anti-crow-${version}.vsix`;
-        const fileBuffer = await file.arrayBuffer();
-        await R2.put(r2Key, fileBuffer, {
-            httpMetadata: {
-                contentType: 'application/octet-stream',
-                contentDisposition: `attachment; filename="anti-crow-${version}.vsix"`,
-            },
-        });
 
-        // 既存の is_latest をリセット
+        // 原子的操作: DB INSERT を先に実行
         await DB.prepare('UPDATE releases SET is_latest = 0 WHERE is_latest = 1').run();
-
-        // DB に記録
         await DB.prepare(
             'INSERT INTO releases (version, r2_key, changelog, is_latest) VALUES (?, ?, ?, 1)'
         ).bind(version, r2Key, changelog || '').run();
+
+        // R2 にアップロード（失敗時はDBレコードを削除してクリーンアップ）
+        try {
+            const fileBuffer = await file.arrayBuffer();
+            await R2.put(r2Key, fileBuffer, {
+                httpMetadata: {
+                    contentType: 'application/octet-stream',
+                    contentDisposition: `attachment; filename="anti-crow-${version}.vsix"`,
+                },
+            });
+        } catch (r2Error) {
+            // R2アップロード失敗時にDBレコードをクリーンアップ
+            await DB.prepare('DELETE FROM releases WHERE version = ?').bind(version).run();
+            throw r2Error;
+        }
 
         return new Response(
             JSON.stringify({ success: true, version, r2Key }),

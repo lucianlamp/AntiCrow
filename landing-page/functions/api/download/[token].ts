@@ -1,8 +1,5 @@
 // GET /api/download/[token] - トークン認証付きVSIXダウンロード
-interface Env {
-    DB: D1Database;
-    R2: R2Bucket;
-}
+import { Env } from '../../../shared/types';
 
 export const onRequestGet: PagesFunction<Env> = async (context) => {
     const { DB, R2 } = context.env;
@@ -32,6 +29,14 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
             return new Response(
                 '<html><body style="background:#0a0a0a;color:#fff;display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif"><div style="text-align:center"><h1>❌ 無効なリンク</h1><p style="color:#888">このダウンロードリンクは無効です。</p></div></body></html>',
                 { status: 404, headers: { 'Content-Type': 'text/html', ...corsHeaders } }
+            );
+        }
+
+        // 既にダウンロード済みかチェック（再DL制限）
+        if (inviteLog.downloaded_at) {
+            return new Response(
+                '<html><body style="background:#0a0a0a;color:#fff;display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif"><div style="text-align:center"><h1>✅ ダウンロード済み</h1><p style="color:#888">このリンクは既に使用されています。新しいダウンロードリンクが必要な場合は、管理者にお問い合わせください。</p></div></body></html>',
+                { status: 410, headers: { 'Content-Type': 'text/html', ...corsHeaders } }
             );
         }
 

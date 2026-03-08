@@ -1,9 +1,6 @@
 // Admin API 認証ミドルウェア
 // ADMIN_API_KEY で認証を行う
-
-interface Env {
-    ADMIN_API_KEY: string;
-}
+import { Env } from '../../../shared/types';
 
 export const onRequest: PagesFunction<Env> = async (context) => {
     const { request, env } = context;
