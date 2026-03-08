@@ -57,7 +57,7 @@ AntiCrow acts as a bridge between Discord and Antigravity.
 
 > 🔒 **All processing runs entirely on your PC.** No data is sent to external servers. Only Discord API communication is performed. No telemetry or usage statistics are collected.
 
-See SECURITY.md and PRIVACY.md for details.
+See [Security Policy](docs/ja/security.md) and [Privacy Policy](docs/ja/privacy.md) for details.
 
 ---
 
@@ -519,7 +519,7 @@ AntiCrow is developed and maintained by [@lucianlamp](https://x.com/lucianlamp).
 Feel free to reach out with feedback, questions, or bug reports 💬
 
 - **X (Twitter):** [@lucianlamp](https://x.com/lucianlamp)
-- **Security reports:** See SECURITY.md
+- **Security reports:** See [Security Policy](docs/ja/security.md)
 
 ---
 
