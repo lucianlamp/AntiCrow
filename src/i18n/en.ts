@@ -799,7 +799,7 @@ export const messages = {
   'wsHandler.wsNotFound': '⚠️ No Antigravity workspaces found.',
   'wsHandler.pageFailed': '⚠️ Failed to switch page.',
   'wsHandler.refreshFailed': '⚠️ Refresh failed. Please try again.',
-  'wsHandler.parentDirNotSet': '⚠️ **Parent directory is not set**\n\nAdd directories for creating new workspaces to `antiCrow.workspaceParentDirs` in Antigravity settings.\n\n**Example:**\n```json\n"antiCrow.workspaceParentDirs": [\n  "C:\\\\Users\\\\user\\\\dev",\n  "C:\\\\Users\\\\user\\\\projects"\n]\n```',
+  'wsHandler.parentDirNotSet': '⚠️ **Parent directory is not set**\n\nAdd directories for creating new workspaces to `antiCrow.workspaceParentDirs` in Antigravity settings.\n\n**Example:**\n```json\n"antiCrow.workspaceParentDirs": [\n  "C:\\\\Users\\\\user\\\\dev",\n  "C:\\\\Users\\\\user\\\\projects",\n  "/Users/user/dev",\n  "/home/user/dev"\n]\n```',
   'wsHandler.newWsTitle': 'Create New Workspace',
   'wsHandler.wsNameLabel': 'Workspace Name (will be folder name)',
   'wsHandler.wsNamePlaceholder': 'e.g. my-new-project',

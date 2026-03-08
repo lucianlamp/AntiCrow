@@ -1,13 +1,6 @@
-// ---------------------------------------------------------------------------
-// shortcutInstaller.ts — デスクトップショートカット作成
-// ---------------------------------------------------------------------------
-// 責務:
-//   初回起動時にデスクトップへ AntiCrow 起動用ショートカット (.lnk) を設置する。
-//   Windows のみ対応。PowerShell の WScript.Shell COM 経由で .lnk を生成する。
-// ---------------------------------------------------------------------------
-
 import * as vscode from 'vscode';
 import * as path from 'path';
+import * as os from 'os';
 import { execSync } from 'child_process';
 import { logDebug, logError, logWarn } from './logger';
 
@@ -17,8 +10,8 @@ const GLOBAL_STATE_KEY = 'shortcutCreated';
  * 初回起動チェック：ショートカット未作成なら自動で設置する。
  */
 export async function checkAndOfferShortcut(context: vscode.ExtensionContext): Promise<void> {
-    // Windows 以外は何もしない
-    if (process.platform !== 'win32') { return; }
+    // Windows と macOS のみ対応（Linux は将来対応）
+    if (process.platform !== 'win32' && process.platform !== 'darwin') { return; }
 
     const alreadyCreated = context.globalState.get<boolean>(GLOBAL_STATE_KEY);
     if (alreadyCreated) { return; }
@@ -40,8 +33,13 @@ export async function checkAndOfferShortcut(context: vscode.ExtensionContext): P
  * package.json の contributes.commands から手動呼び出し可能にするため public。
  */
 export function createDesktopShortcut(extensionPath: string): void {
+    if (process.platform === 'darwin') {
+        createMacShortcut(extensionPath);
+        return;
+    }
+
     if (process.platform !== 'win32') {
-        logWarn('shortcutInstaller: not on Windows, skipping');
+        logWarn('shortcutInstaller: not on Windows or macOS, skipping');
         return;
     }
 
@@ -82,4 +80,30 @@ export function createDesktopShortcut(extensionPath: string): void {
     });
 
     logDebug('shortcutInstaller: created desktop shortcut on Desktop');
+}
+
+/**
+ * macOS: デスクトップに Antigravity.app のシンボリックリンクを作成する。
+ */
+function createMacShortcut(extensionPath: string): void {
+    const desktop = path.join(os.homedir(), 'Desktop');
+    const antigravityApp = '/Applications/Antigravity.app';
+    const linkPath = path.join(desktop, 'Antigravity');
+
+    // CDP 固定ポートを設定から取得（デフォルト 9333）
+    let cdpPort = 9333;
+    try {
+        const vsc = require('vscode') as typeof import('vscode');
+        cdpPort = vsc.workspace.getConfiguration('antiCrow').get<number>('cdpPort') ?? 9333;
+    } catch { /* テスト環境では vscode が読めない場合がある */ }
+
+    try {
+        // シンボリックリンク作成（既存があれば上書き）
+        execSync(`ln -sf "${antigravityApp}" "${linkPath}"`, {
+            timeout: 5000,
+        });
+        logDebug(`shortcutInstaller: created macOS symlink at ${linkPath}`);
+    } catch (e) {
+        logWarn(`shortcutInstaller: macOS symlink creation failed — ${e instanceof Error ? e.message : e}`);
+    }
 }

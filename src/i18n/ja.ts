@@ -834,7 +834,7 @@ export const messages = {
   'wsHandler.wsNotFound': '⚠️ Antigravity ワークスペースが見つかりませんでした。',
   'wsHandler.pageFailed': '⚠️ ページ切り替えに失敗しました。',
   'wsHandler.refreshFailed': '⚠️ 更新に失敗しました。もう一度お試しください。',
-  'wsHandler.parentDirNotSet': '⚠️ **ペアレントディレクトリが未設定です**\n\nAntigravity の設定で `antiCrow.workspaceParentDirs` に\n新規ワークスペースを作成するディレクトリを追加してください。\n\n**設定例:**\n```json\n"antiCrow.workspaceParentDirs": [\n  "C:\\\\Users\\\\user\\\\dev",\n  "C:\\\\Users\\\\user\\\\projects"\n]\n```',
+  'wsHandler.parentDirNotSet': '⚠️ **ペアレントディレクトリが未設定です**\n\nAntigravity の設定で `antiCrow.workspaceParentDirs` に\n新規ワークスペースを作成するディレクトリを追加してください。\n\n**設定例:**\n```json\n"antiCrow.workspaceParentDirs": [\n  "C:\\\\Users\\\\user\\\\dev",\n  "C:\\\\Users\\\\user\\\\projects",\n  "/Users/user/dev",\n  "/home/user/dev"\n]\n```',
   'wsHandler.newWsTitle': '新規ワークスペース作成',
   'wsHandler.wsNameLabel': 'ワークスペース名（フォルダ名になります）',
   'wsHandler.wsNamePlaceholder': '例: my-new-project',
