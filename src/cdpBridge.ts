@@ -269,15 +269,33 @@ export class CdpBridge {
         // Antigravity は単一 CDP ポートで全ウィンドウを管理するため、
         // 明示的に指定すると既存ポートと競合する可能性がある。
 
-        const command = `${args.join(' ')}; exit`;
+        // OS 別のシェル設定
+        let shellPath: string;
+        let shellArgs: string[];
+        let command: string;
 
-        logDebug(`CDP: launching via terminal: ${command}`);
+        if (process.platform === 'win32') {
+            shellPath = 'powershell.exe';
+            shellArgs = ['-ExecutionPolicy', 'Bypass', '-NoProfile'];
+            command = `${args.join(' ')}; exit`;
+        } else if (process.platform === 'darwin') {
+            shellPath = '/bin/zsh';
+            shellArgs = ['-l'];
+            command = `${args.join(' ')} && exit`;
+        } else {
+            // Linux 等
+            shellPath = '/bin/bash';
+            shellArgs = ['-l'];
+            command = `${args.join(' ')} && exit`;
+        }
+
+        logDebug(`CDP: launching via terminal (${process.platform}): ${command}`);
 
         const terminal = vscode.window.createTerminal({
             name: 'Antigravity Launch',
             hideFromUser: true,
-            shellPath: 'powershell.exe',
-            shellArgs: ['-ExecutionPolicy', 'Bypass', '-NoProfile'],
+            shellPath,
+            shellArgs,
         });
         terminal.sendText(command);
 
