@@ -434,8 +434,8 @@ export async function processSuggestionPrompt(
 
             const { plan, guild } = result;
 
-            // 確認フロー
-            if (plan.requires_confirmation) {
+            // 確認フロー（オートモード中は確認をスキップ）
+            if (plan.requires_confirmation && !isAutoModeActive()) {
                 setProcessingStatus(wsKey, {
                     wsKey, phase: 'confirming', startTime: Date.now(),
                     messagePreview: promptText.substring(0, 50),

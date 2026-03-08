@@ -1,0 +1,12 @@
+# 目次
+
+- [はじめに](README.md)
+- [インストール・初期設定](getting-started.md)
+- [基本的な使い方](basic-usage.md)
+- [スラッシュコマンド一覧](commands.md)
+- [自律モード](auto-mode.md)
+- [チームモード](team-mode.md)
+- [テンプレート機能](templates.md)
+- [スケジュール実行](schedules.md)
+- [Pro プラン](pro-plan.md)
+- [よくある質問](faq.md)
