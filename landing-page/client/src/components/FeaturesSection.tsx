@@ -1,5 +1,16 @@
 import { motion } from "framer-motion";
-import { Smartphone, Clock, Users, Zap, Brain, FolderOpen } from "lucide-react";
+import {
+  Smartphone,
+  Clock,
+  Users,
+  Zap,
+  Brain,
+  FolderOpen,
+  MessageSquare,
+  Bot,
+  CheckCircle2,
+  ChevronRight,
+} from "lucide-react";
 
 const features = [
   {
@@ -39,6 +50,30 @@ const features = [
     title: "複数WS対応",
     description: "プロジェクトごとに Discord チャンネルを自動作成",
     color: "from-amber to-indigo",
+  },
+];
+
+const steps = [
+  {
+    step: "01",
+    icon: MessageSquare,
+    title: "メッセージを送る",
+    description: "やりたいことを Discord に書くだけ。スマホからでもOK",
+    color: "indigo",
+  },
+  {
+    step: "02",
+    icon: Bot,
+    title: "AI が実行",
+    description: "AntiCrow が自動で AI を起動してコーディング開始",
+    color: "coral",
+  },
+  {
+    step: "03",
+    icon: CheckCircle2,
+    title: "結果を受け取る",
+    description: "完了したら Discord に通知。進捗もリアルタイムで確認できる",
+    color: "amber",
   },
 ];
 
@@ -129,6 +164,92 @@ export default function FeaturesSection() {
               </p>
             </motion.div>
           ))}
+        </motion.div>
+
+        {/* ─── How It Works (統合セクション) ─── */}
+        <motion.div
+          initial={{ opacity: 0, y: 30 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-100px" }}
+          transition={{ duration: 0.6 }}
+          className="mt-16 md:mt-20"
+        >
+          {/* Sub-header */}
+          <div className="max-w-2xl mx-auto text-center mb-10 md:mb-12">
+            <span className="text-sm font-semibold text-coral tracking-widest uppercase mb-4 block font-mono">
+              How it works
+            </span>
+            <h3 className="font-heading text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight mb-4">
+              使い方はたった
+              <span className="text-gradient-primary">3ステップ</span>
+            </h3>
+            <p className="text-muted-foreground leading-relaxed">
+              Discord でメッセージを送るだけ。あとは AntiCrow が全部やります。
+            </p>
+          </div>
+
+          {/* Steps */}
+          <div className="relative">
+            {/* Connection Line */}
+            <div className="hidden lg:block absolute top-1/2 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-indigo/30 to-transparent -translate-y-1/2" />
+
+            <div className="grid lg:grid-cols-3 gap-6">
+              {steps.map((step, index) => (
+                <motion.div
+                  key={step.step}
+                  initial={{ opacity: 0, y: 40 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true, margin: "-50px" }}
+                  transition={{ duration: 0.6, delay: index * 0.15 }}
+                  className="relative group"
+                >
+                  <div className={`glass-card rounded-2xl p-7 h-full transition-all duration-500 hover:bg-[oklch(0.2_0.04_260_/_50%)] ${step.color === "indigo"
+                      ? "hover:border-indigo/40"
+                      : step.color === "coral"
+                        ? "hover:border-coral/40"
+                        : "hover:border-amber/40"
+                    }`}>
+                    {/* Step Number */}
+                    <div className={`font-mono text-5xl font-bold mb-5 select-none ${step.color === "indigo"
+                        ? "text-indigo/30"
+                        : step.color === "coral"
+                          ? "text-coral/30"
+                          : "text-amber/30"
+                      }`}>
+                      {step.step}
+                    </div>
+
+                    {/* Icon */}
+                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center mb-5 ${step.color === "indigo"
+                      ? "bg-indigo/15 text-indigo"
+                      : step.color === "coral"
+                        ? "bg-coral/15 text-coral"
+                        : "bg-amber/15 text-amber"
+                      }`}>
+                      <step.icon className="w-6 h-6" />
+                    </div>
+
+                    {/* Content */}
+                    <h4 className="font-heading font-semibold text-xl text-foreground mb-2">
+                      {step.title}
+                    </h4>
+                    <p className="text-muted-foreground leading-relaxed">
+                      {step.description}
+                    </p>
+                  </div>
+
+                  {/* Arrow between steps */}
+                  {index < steps.length - 1 && (
+                    <div className="hidden lg:flex absolute top-1/2 -right-3 -translate-y-1/2 z-10">
+                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo/20 to-coral/20 border border-indigo/30 flex items-center justify-center shadow-lg shadow-indigo/10">
+                        <ChevronRight className="w-4 h-4 text-indigo" />
+                      </div>
+                    </div>
+                  )}
+                </motion.div>
+              ))}
+            </div>
+          </div>
         </motion.div>
       </div>
     </section>

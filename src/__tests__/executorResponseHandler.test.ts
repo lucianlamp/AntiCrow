@@ -98,6 +98,12 @@ vi.mock('../discordFormatter', () => ({
     splitForEmbeds: vi.fn((text: string) => [[text]]),
 }));
 
+// autoModeController モック
+const mockIsAutoModeActive = vi.fn(() => false);
+vi.mock('../autoModeController', () => ({
+    isAutoModeActive: () => mockIsAutoModeActive(),
+}));
+
 // configHelper モック
 vi.mock('../configHelper', () => ({
     getMaxRetries: vi.fn(() => 0),
@@ -326,6 +332,90 @@ describe('sendTeamResponse', () => {
                 channelId: 'ch-123',
                 callbacks,
             })).resolves.not.toThrow();
+        });
+
+        it('オートモード中 + onAutoModeComplete 設定時は SUGGESTIONS がスキップされること', async () => {
+            const { parseSuggestions } = await import('../suggestionParser');
+            const callbacks = createMockCallbacks();
+            // onAutoModeComplete を設定
+            (callbacks as any).onAutoModeComplete = vi.fn();
+            const plan = createMockPlan();
+
+            (parseSuggestions as any).mockReturnValue({
+                suggestions: [{ label: 'テスト', prompt: 'プロンプト' }],
+                cleanContent: 'テスト結果',
+            });
+
+            // オートモードをアクティブに
+            mockIsAutoModeActive.mockReturnValue(true);
+
+            await sendTeamResponse({
+                response: 'テスト結果',
+                responsePath: '/mock/ipc/response.md',
+                plan,
+                channelId: 'ch-123',
+                callbacks,
+            });
+
+            // sendSuggestionButtons は呼ばれないこと
+            expect(callbacks.sendSuggestionButtons).not.toHaveBeenCalled();
+            // onAutoModeComplete は呼ばれること
+            expect((callbacks as any).onAutoModeComplete).toHaveBeenCalled();
+
+            mockIsAutoModeActive.mockReturnValue(false);
+        });
+
+        it('オートモード中でも onAutoModeComplete 未設定時は SUGGESTIONS が送信されること', async () => {
+            const { parseSuggestions } = await import('../suggestionParser');
+            const callbacks = createMockCallbacks();
+            // onAutoModeComplete は設定しない（チームモード完了時のパターン）
+            const plan = createMockPlan();
+
+            const suggestions = [{ label: 'テスト', prompt: 'テストプロンプト' }];
+            (parseSuggestions as any).mockReturnValue({
+                suggestions,
+                cleanContent: 'テスト結果',
+            });
+
+            // オートモードをアクティブに
+            mockIsAutoModeActive.mockReturnValue(true);
+
+            await sendTeamResponse({
+                response: 'テスト結果',
+                responsePath: '/mock/ipc/response.md',
+                plan,
+                channelId: 'ch-123',
+                callbacks,
+            });
+
+            // onAutoModeComplete が未設定なので SUGGESTIONS は送信される
+            expect(callbacks.sendSuggestionButtons).toHaveBeenCalledWith(suggestions);
+
+            mockIsAutoModeActive.mockReturnValue(false);
+        });
+
+        it('オートモード非アクティブ時は SUGGESTIONS が通常送信されること', async () => {
+            const { parseSuggestions } = await import('../suggestionParser');
+            const callbacks = createMockCallbacks();
+            const plan = createMockPlan();
+
+            const suggestions = [{ label: 'A', prompt: 'a' }, { label: 'B', prompt: 'b' }];
+            (parseSuggestions as any).mockReturnValue({
+                suggestions,
+                cleanContent: 'テスト結果',
+            });
+
+            mockIsAutoModeActive.mockReturnValue(false);
+
+            await sendTeamResponse({
+                response: 'テスト結果',
+                responsePath: '/mock/ipc/response.md',
+                plan,
+                channelId: 'ch-123',
+                callbacks,
+            });
+
+            expect(callbacks.sendSuggestionButtons).toHaveBeenCalledWith(suggestions);
         });
     });
 

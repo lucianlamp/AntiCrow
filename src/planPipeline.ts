@@ -362,6 +362,8 @@ export interface ConfirmationResult {
     selectedChoices?: number[];
     /** エージェントに委任された場合 true */
     agentDelegated?: boolean;
+    /** オートモードで実行する場合 true */
+    autoMode?: boolean;
 }
 
 /**
@@ -419,10 +421,13 @@ export async function handleConfirmation(
     }
     // choiceMode === 'none'
     const sentMsg = await channel.send({ embeds: [buildEmbed(confirmMsg, EmbedColor.Warning)] });
-    const confirmed = await bot.waitForConfirmation(sentMsg);
-    if (!confirmed) {
+    const result = await bot.waitForConfirmation(sentMsg);
+    if (result === 'rejected') {
         await channel.send({ embeds: [buildEmbed(t('pipeline.rejected'), EmbedColor.Error)] });
         return { confirmed: false };
+    }
+    if (result === 'auto') {
+        return { confirmed: true, autoMode: true };
     }
     plan.status = 'active';
     return { confirmed: true };
@@ -467,16 +472,24 @@ export async function dispatchPlan(
         plan.notify_channel_id = channel.id;
 
         // -------------------------------------------------------------------
-        // オートモード: 確認ステップスキップ → 直接実行キューに追加
+        // オートモード: 確認ステップスキップ
+        // チームモードが有効かつ tasks がある場合は チームモード分岐にフォールスルー
+        // それ以外は直接実行キューに追加
         // -------------------------------------------------------------------
         if (autoMode) {
-            logDebug(`dispatchPlan: Auto mode — skipping confirmation, direct execution (plan=${plan.plan_id})`);
-            if (executorPool) {
-                await executorPool.enqueueImmediate(wsNameForImmediate || '', plan);
-            } else if (executor) {
-                await executor.enqueueImmediate(plan);
+            if (isTeamMode && ctx.teamOrchestrator && plan.tasks && plan.tasks.length > 1) {
+                // オートモード + チームモード: 確認スキップしてチームモード分岐にフォールスルー
+                logDebug(`dispatchPlan: Auto mode + Team mode — skipping confirmation, falling through to team orchestration (plan=${plan.plan_id}, tasks=${plan.tasks.length})`);
+            } else {
+                // オートモード単独: 直接実行キューに追加
+                logDebug(`dispatchPlan: Auto mode — skipping confirmation, direct execution (plan=${plan.plan_id})`);
+                if (executorPool) {
+                    await executorPool.enqueueImmediate(wsNameForImmediate || '', plan);
+                } else if (executor) {
+                    await executor.enqueueImmediate(plan);
+                }
+                return;
             }
-            return;
         }
 
         // -------------------------------------------------------------------
@@ -551,6 +564,7 @@ export async function dispatchPlan(
 
                         logDebug(`dispatchPlan: Team mode — sending report prompt to main Cascade (${reportPrompt.length} chars)`);
 
+                        // 既存チャットにそのまま報告プロンプトを送信（コンテキストを維持）
                         await activeCdp.sendPrompt(reportPrompt);
                         logDebug('dispatchPlan: Team mode — report prompt sent, waiting for response...');
 
@@ -658,8 +672,8 @@ export async function dispatchPlan(
                     teamModeFallback = true;
                 }
             } else {
-                // plan.tasks がない → AI がチームモード不要と判断
-                logDebug('dispatchPlan: Team mode — no plan.tasks provided by AI, falling back to normal mode');
+                // plan.tasks がない → AI がチームモード不要と判断（team_mode情報は注入済み）
+                logInfo('dispatchPlan: Team mode enabled but AI did not provide plan.tasks — falling back to normal mode (single-agent execution)');
                 await channel.send({ embeds: [buildEmbed(t('pipeline.normalMode'), EmbedColor.Info)] });
                 teamModeFallback = true;
             }

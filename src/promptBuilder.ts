@@ -16,6 +16,7 @@ import { getTimezone } from './configHelper';
 import { readCombinedMemory } from './memoryStore';
 import { sanitizeWorkspaceName } from './fileIpc';
 import { t } from './i18n';
+import { loadTeamConfig } from './teamConfig';
 
 // ---------------------------------------------------------------------------
 // Plan プロンプト生成
@@ -167,6 +168,27 @@ export function buildPlanPrompt(
         promptObj.memory = combinedMemory;
         promptObj.memory_instruction = t('prompt.memory_instruction');
         logDebug(`promptBuilder: injected combined memory (${combinedMemory.length} chars)`);
+    }
+
+    // チームモード情報を注入（AI が tasks 分割を積極的に行うようガイド）
+    if (workspacePath) {
+        try {
+            const teamConfig = loadTeamConfig(workspacePath);
+            if (teamConfig.enabled) {
+                promptObj.team_mode = {
+                    enabled: true,
+                    max_agents: teamConfig.maxAgents,
+                    instruction: `チームモードが有効です（最大${teamConfig.maxAgents}エージェント並列）。` +
+                        `タスクを独立した複数のサブタスクに分割して \`tasks\` 配列に記述してください。` +
+                        `各タスクは並列実行されるため、同じファイルを複数タスクで修正しないこと。` +
+                        `3ファイル以上にまたがる変更は積極的に分割してください。` +
+                        `ただし、軽量タスク（単一ファイル修正・質問回答・型チェックのみ等）は tasks を省略してください。`,
+                };
+                logDebug(`promptBuilder: team_mode injected (maxAgents=${teamConfig.maxAgents})`);
+            }
+        } catch (e) {
+            logDebug(`promptBuilder: failed to load team config: ${e instanceof Error ? e.message : e}`);
+        }
     }
 
     // 進捗報告パス（計画生成中もリアルタイム進捗通知を行う）

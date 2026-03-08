@@ -1,0 +1,15 @@
+Executing prepublish script 'npm run vscode:prepublish'...
+
+> anti-crow@0.1.0 vscode:prepublish
+> npm run typecheck && npm run bundle
+
+
+> anti-crow@0.1.0 typecheck
+> tsc -p ./ --noEmit
+
+
+> anti-crow@0.1.0 bundle
+> node ./esbuild.js
+
+[dotenv@17.3.1] injecting env (0) from .env -- tip: 孱・・auth for agents: https://vestauth.com
+ ERROR  Couldn't detect the repository where this extension is published. The link 'README.ja.md' will be broken in README.md. GitHub/GitLab repositories will be automatically detected. Otherwise, please provide the repository URL in package.json or use the --baseContentUrl and --baseImagesUrl options.

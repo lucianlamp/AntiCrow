@@ -1,0 +1,21 @@
+# Anti-Crow R2 バケット設定
+# 
+# 使い方:
+#   npx wrangler r2 object put ... で VSIX ファイルを R2 にアップロードする
+#
+# 環境変数:
+#   CLOUDFLARE_ACCOUNT_ID — Cloudflare アカウント ID（必須）
+#   CLOUDFLARE_API_TOKEN  — Cloudflare API トークン（必須）
+#
+# 注意:
+#   account_id は環境変数 CLOUDFLARE_ACCOUNT_ID から自動的に取得される。
+#   このファイルにハードコードしないこと。
+
+# name はプロジェクトの識別用（Workers を使わないが wrangler.toml に必要）
+name = "anti-crow"
+compatibility_date = "2024-01-01"
+
+# R2 バケット設定
+[[r2_buckets]]
+binding = "R2_BUCKET"
+bucket_name = "anti-crow-releases"

@@ -13,14 +13,17 @@ import { ExecutionJob, Plan } from './types';
 import { CdpBridge } from './cdpBridge';
 import { FileIpc } from './fileIpc';
 import { PlanStore } from './planStore';
-import { logDebug, logError, logWarn } from './logger';
+import { logDebug, logError, logInfo, logWarn } from './logger';
 import { CdpConnectionError, IpcTimeoutError } from './errors';
 import { EmbedColor } from './embedHelper';
 import { getCurrentModel } from './cdpModels';
 import { UIWatcher } from './uiWatcher';
 import { getMaxRetries } from './configHelper';
 import { t } from './i18n';
+import { isAutoModeActive, onStepComplete, handleAutoModeError } from './autoModeController';
+import type { SuggestionItem } from './suggestionParser';
 import * as fs from 'fs';
+import { getActivePlanTypingIntervals, getActivePlanProgressIntervals } from './messageQueue';
 
 // 新モジュールから関数を import
 import {
@@ -361,6 +364,15 @@ export class Executor {
                             await sendSuggestionButtons(suggestions, notifyChannel, this.postSuggestions);
                         }
                     },
+                    // オートモード: ステップ完了時に次のプロンプトを自動投入
+                    onAutoModeComplete: isAutoModeActive()
+                        ? (suggestions: SuggestionItem[], cleanContent: string) => {
+                            this.autoModeContinueLoop(notifyChannel, suggestions, cleanContent, plan)
+                                .catch(err => {
+                                    logError('Executor: autoModeContinueLoop failed', err);
+                                });
+                        }
+                        : undefined,
                 },
             });
 
@@ -481,6 +493,190 @@ export class Executor {
         this.queue.splice(idx, 1);
         logDebug(`Executor: cancelled queued job for plan ${planId}`);
         return true;
+    }
+
+    // -----------------------------------------------------------------------
+    // オートモードループ
+    // -----------------------------------------------------------------------
+
+    /**
+     * オートモードの次ステップを自動投入するループ。
+     * onStepComplete → 次プロンプト構築 → CDP 送信 → waitForResponse → sendProcessedResponse
+     * を繰り返す。onStepComplete が null を返したらループ終了。
+     */
+    private async autoModeContinueLoop(
+        notifyChannel: string,
+        suggestions: SuggestionItem[],
+        cleanContent: string,
+        plan: Plan,
+    ): Promise<void> {
+        // Discord チャンネルを取得するために TextChannel が必要
+        // onStepComplete は TextChannel を要求するので、discordBot 経由で取得
+        const { TextChannel: TC } = await import('discord.js');
+        let channel: import('discord.js').TextChannel;
+        try {
+            // executor 内では Discord client への直接参照がないため、
+            // notifyDiscord コールバック経由でチャンネルを特定できない。
+            // 代わりに onStepComplete に TextChannel を渡す必要がある。
+            // ここでは discord.js の Client を動的に取得する方法がないため、
+            // safeNotify を使ってチャンネルに通知するラッパーを使う。
+            //
+            // onStepComplete のシグネチャ: (channel: TextChannel, suggestions, responseContent) => Promise<string | null>
+            // TextChannel を取得するために DiscordBot のクライアントを使う
+            const { DiscordBot } = await import('./discordBot');
+            const client = DiscordBot.getClient();
+            if (!client) {
+                logWarn('Executor: autoModeContinueLoop — Discord client not available');
+                return;
+            }
+            const fetched = await client.channels.fetch(notifyChannel);
+            if (!fetched || !(fetched instanceof TC)) {
+                logWarn(`Executor: autoModeContinueLoop — channel ${notifyChannel} not found or not TextChannel`);
+                return;
+            }
+            channel = fetched;
+        } catch (e) {
+            logError('Executor: autoModeContinueLoop — failed to fetch channel', e);
+            return;
+        }
+
+        let currentSuggestions = suggestions;
+        let currentCleanContent = cleanContent;
+
+        while (true) {
+            try {
+                // onStepComplete: セーフティチェック → Discord通知 → ループ継続判定 → 次プロンプト構築
+                const nextPrompt = await onStepComplete(channel, currentSuggestions, currentCleanContent);
+                if (!nextPrompt) {
+                    // ループ終了（stopAutoMode が呼ばれた）
+                    logInfo('Executor: autoModeContinueLoop — loop ended (onStepComplete returned null)');
+                    return;
+                }
+
+                logInfo(`Executor: autoModeContinueLoop — next step prompt (${nextPrompt.length} chars)`);
+
+                // 新しい requestId / responsePath を生成
+                const { requestId: nextReqId, responsePath: nextResponsePath } = this.fileIpc.createMarkdownRequestId(plan.workspace_name);
+                this.fileIpc.writeRequestMeta(nextReqId, notifyChannel, plan.workspace_name);
+                const nextProgressPath = this.fileIpc.createProgressPath(nextReqId);
+
+                // ユーザーメモリを再読み込み
+                this.userMemory = loadUserMemory(plan.workspace_name);
+
+                // プロンプト構築（オートモード用：plan_generation をスキップして直接 execution）
+                const nextFinalPrompt = buildFinalPrompt({
+                    plan: { ...plan, prompt: nextPrompt },
+                    responsePath: nextResponsePath,
+                    progressPath: nextProgressPath,
+                    promptTemplate: this.promptTemplate,
+                    promptRulesContent: this.promptRulesContent,
+                    userGlobalRules: this.userGlobalRules,
+                    userMemory: this.userMemory,
+                });
+
+                // 一時ファイル書き出し
+                const { tmpExecPath: nextTmpPath, cdpInstruction: nextCdpInstruction } = writeTempPrompt(
+                    nextFinalPrompt, nextResponsePath, nextReqId, plan.workspace_name,
+                );
+
+                // typing indicator（外部停止可能にするためグローバルセットにも登録）
+                const stepTyping = setInterval(async () => {
+                    try { await this.sendTypingToChannel(notifyChannel); } catch { /* ignore */ }
+                }, RETRY_DELAY_MS);
+                getActivePlanTypingIntervals().add(stepTyping);
+                try { await this.sendTypingToChannel(notifyChannel); } catch { /* ignore */ }
+
+                // 進捗監視（外部停止可能にするためグローバルセットにも登録）
+                let lastStepProgress = '';
+                const stepProgress = setInterval(async () => {
+                    try {
+                        const progress = await this.fileIpc.readProgress(nextProgressPath);
+                        if (progress) {
+                            const cur = JSON.stringify(progress);
+                            if (cur !== lastStepProgress) {
+                                lastStepProgress = cur;
+                                const pct = progress.percent !== undefined ? ` (${progress.percent}%)` : '';
+                                const det = progress.detail ? `\n${progress.detail}` : '';
+                                await this.safeNotify(notifyChannel, t('executor.run.progress', pct, progress.status, det), EmbedColor.Progress);
+                            }
+                        }
+                    } catch { /* ignore */ }
+                    try { await this.cdp.autoFollowOutput(); } catch { /* ignore */ }
+                }, PROGRESS_POLL_INTERVAL_MS);
+                getActivePlanProgressIntervals().add(stepProgress);
+
+                let stepResponse: string;
+                try {
+                    // CDP 経由でプロンプト送信
+                    await this.cdp.sendPrompt(nextCdpInstruction);
+                    logDebug('Executor: autoModeContinueLoop — prompt sent, waiting for response...');
+
+                    // 一時ファイルクリーンアップ
+                    await this.fileIpc.cleanupTmpFiles([nextTmpPath]);
+
+                    // レスポンス待ち
+                    this.fileIpc.registerActiveRequest(nextReqId);
+                    try {
+                        stepResponse = await this.fileIpc.waitForResponse(nextResponsePath, this.timeoutMs);
+                    } finally {
+                        this.fileIpc.unregisterActiveRequest(nextReqId);
+                    }
+                } finally {
+                    clearInterval(stepTyping);
+                    getActivePlanTypingIntervals().delete(stepTyping);
+                    clearInterval(stepProgress);
+                    getActivePlanProgressIntervals().delete(stepProgress);
+                    await this.fileIpc.cleanupProgress(nextProgressPath).catch(() => { });
+                    try { require('fs').unlinkSync(nextTmpPath); } catch { /* ignore */ }
+                }
+
+                logDebug(`Executor: autoModeContinueLoop — response received (${stepResponse.length} chars)`);
+
+                // レスポンス処理（ループ内でも onAutoModeComplete を設定して SUGGESTIONS ボタンを抑制する）
+                // ダミーの onAutoModeComplete を設定：sendProcessedResponse 内の suppressSuggestions 判定で
+                // isAutoModeActive() && !!callbacks.onAutoModeComplete が true になり、ボタン送信をスキップする。
+                // 実際のループ継続は while(true) で制御するため、コールバック内では何もしない。
+                const { cleanContent: stepCleanContent, suggestions: stepSuggestions } = await sendProcessedResponse({
+                    response: stepResponse,
+                    responsePath: nextResponsePath,
+                    plan,
+                    channelId: notifyChannel,
+                    callbacks: {
+                        sendToChannel: this.safeNotify.bind(this),
+                        sendFileToChannel: this.sendFile!,
+                        sendEmbeds: async (descriptions, color) => {
+                            const combined = descriptions.join('\n');
+                            await this.safeNotify(notifyChannel, combined, color);
+                        },
+                        sendSuggestionButtons: async (sug) => {
+                            if (this.postSuggestions) {
+                                await sendSuggestionButtons(sug, notifyChannel, this.postSuggestions);
+                            }
+                        },
+                        // ダミー onAutoModeComplete: SUGGESTIONS ボタンを抑制するために設定
+                        // （実際の継続処理は while(true) ループが担当）
+                        onAutoModeComplete: () => { /* no-op: ループは while(true) で制御 */ },
+                    },
+                });
+
+                // レスポンスファイルクリーンアップ
+                try {
+                    await require('fs').promises.unlink(nextResponsePath);
+                    const metaPath = nextResponsePath.replace(/_response\.(json|md)$/, '_meta.json');
+                    await require('fs').promises.unlink(metaPath).catch(() => { });
+                } catch { /* ignore */ }
+
+                // sendProcessedResponse の返り値から suggestions を直接取得
+                // （二重 parseSuggestions 呼び出しを排除）
+                currentSuggestions = stepSuggestions;
+                currentCleanContent = stepCleanContent;
+
+            } catch (err) {
+                logError('Executor: autoModeContinueLoop — error in loop', err);
+                await handleAutoModeError(channel, err);
+                return;
+            }
+        }
     }
 
     // -----------------------------------------------------------------------

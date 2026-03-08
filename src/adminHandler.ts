@@ -42,6 +42,7 @@ import { buildTemplateListPanel } from './templateHandler';
 import { readAnticrowMd } from './anticrowCustomizer';
 import { t } from './i18n';
 import { loadAutoModeConfig, saveAutoModeConfig, parseAutoModeArgs, formatConfigForDisplay, setConfigStoragePath } from './autoModeConfig';
+import { isAutoModeActive, stopAutoMode } from './autoModeController';
 import { handleUpdate } from './slashButtonUpdate';
 
 // ---------------------------------------------------------------------------
@@ -224,6 +225,13 @@ async function handleCancel(ctx: BridgeContext, interaction: ChatInputCommandInt
             execRunning = executor?.isRunning() || false;
             if (execRunning) { executor?.forceStop(); }
             logDebug('handleCancel: /stop executed — default executor stopped (no pool entries)');
+        }
+
+        // オートモード停止（Executor 停止後にループも止める）
+        if (isAutoModeActive()) {
+            const channel = interaction.channel as TextChannel;
+            await stopAutoMode(channel, 'manual_stop');
+            logDebug('handleCancel: auto mode stopped via /stop command');
         }
 
         let cancelResult = t('admin.cancel.cdpNotConnected');

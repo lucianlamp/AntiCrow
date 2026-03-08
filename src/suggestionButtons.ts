@@ -102,7 +102,7 @@ export function buildSuggestionRow(
     if (currentButtonCount < 5) {
         const autoModeButton = new ButtonBuilder()
             .setCustomId(SUGGEST_AUTO_MODE_ID)
-            .setLabel('オートモードで実行')
+            .setLabel('自律モードで実行')
             .setStyle(ButtonStyle.Primary)
             .setEmoji('🔄');
         row.addComponents(autoModeButton);

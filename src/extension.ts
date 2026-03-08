@@ -142,11 +142,12 @@ export async function activate(context: vscode.ExtensionContext) {
     context.secrets.get('license-key').then((key) => {
         if (key) {
             licenseChecker!.setLicenseKey(key);
-            licenseChecker!.startAutoCheck();
             logDebug('License: restored key from SecretStorage');
         } else {
-            logDebug('License: no key found (Free plan)');
+            logDebug('License: no key found — checking trial status');
         }
+        // キーの有無に関わらず check() を実行してトライアル状態を反映
+        licenseChecker!.startAutoCheck();
     });
 
     registerLicenseCommands(context, licenseChecker);

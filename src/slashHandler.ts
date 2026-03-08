@@ -219,7 +219,8 @@ export async function handleButtonInteraction(
             customId === 'safety_approve' ||
             customId === 'safety_skip' ||
             customId === 'safety_stop' ||
-            customId === 'automode_stop'
+            customId === 'automode_stop' ||
+            customId === 'auto_stop'
         ) {
             try {
                 const autoMode: any = await import('./autoModeController');

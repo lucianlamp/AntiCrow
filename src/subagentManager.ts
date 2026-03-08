@@ -593,6 +593,17 @@ export class WorktreePool {
             return;
         }
 
+        // コミット存在チェック: HEAD が存在しないと git worktree / git branch が失敗する
+        try {
+            await execAsync('git rev-parse HEAD', { cwd: this.repoRoot });
+        } catch {
+            throw new Error(
+                `リポジトリにコミットがありません。チームモードを使用するには、最低1つのコミットが必要です。` +
+                `先に \`git init && git add -A && git commit -m "initial commit"\` を実行してください。` +
+                `(repoRoot: ${this.repoRoot})`,
+            );
+        }
+
         // poolDir が存在しない場合は作成
         if (!fs.existsSync(this.poolDir)) {
             fs.mkdirSync(this.poolDir, { recursive: true });
@@ -612,6 +623,8 @@ export class WorktreePool {
                     await this.removeWorktreeForced(entryPath, branchName);
                     await this.createWorktree(entryPath, branchName);
                 }
+                // 再利用時も Source Control から非表示にする
+                this.hideFromSourceControl(entryPath);
             } else {
                 // 新規作成
                 await this.createWorktree(entryPath, branchName);
@@ -826,6 +839,20 @@ export class WorktreePool {
         await execAsync(`git worktree add "${wtPath}" ${branchName}`, {
             cwd: this.repoRoot,
         });
+
+        // worktree を lock して Git 管理画面に影響しないようにする
+        try {
+            await execAsync(`git worktree lock "${wtPath}" --reason "anti-crow pool worktree"`, {
+                cwd: this.repoRoot,
+            });
+            logDebug(`[WorktreePool] worktree lock 完了: ${wtPath}`);
+        } catch {
+            logDebug(`[WorktreePool] worktree lock スキップ: ${wtPath}`);
+        }
+
+        // Source Control パネルからこの worktree リポジトリを非表示にする
+        this.hideFromSourceControl(wtPath);
+
         logDebug(`[WorktreePool] worktree 作成: ${wtPath}`);
     }
 
@@ -856,5 +883,24 @@ export class WorktreePool {
         try {
             await execAsync(`git branch -D ${branchName}`, { cwd: this.repoRoot });
         } catch { /* ignore */ }
+    }
+
+    /**
+     * VSCode の git.ignoredRepositories に worktree パスを追加して、
+     * Source Control パネルに表示させないようにする。
+     */
+    private hideFromSourceControl(wtPath: string): void {
+        try {
+            const gitConfig = vscode.workspace.getConfiguration('git');
+            const ignored: string[] = [...(gitConfig.get<string[]>('ignoredRepositories') ?? [])];
+            const normalizedPath = wtPath.replace(/\\/g, '/');
+            if (!ignored.includes(normalizedPath)) {
+                ignored.push(normalizedPath);
+                gitConfig.update('ignoredRepositories', ignored, vscode.ConfigurationTarget.Workspace);
+                logDebug(`[WorktreePool] git.ignoredRepositories に追加: ${normalizedPath}`);
+            }
+        } catch (err) {
+            logDebug(`[WorktreePool] git.ignoredRepositories 更新失敗: ${err}`);
+        }
     }
 }

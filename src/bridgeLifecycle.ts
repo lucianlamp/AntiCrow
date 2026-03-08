@@ -44,6 +44,7 @@ import { TeamOrchestrator } from './teamOrchestrator';
 import { loadTeamConfig } from './teamConfig';
 import { deployAntiCrowSkill } from './embeddedSkill';
 import { t } from './i18n';
+import { isAutoModeActive } from './autoModeController';
 import * as fs from 'fs';
 
 /** ワークスペース名としてカテゴリ作成すべきでない名前を判定する */
@@ -82,6 +83,12 @@ async function redeliverStaleResponses(
     ctx: BridgeContext,
     staleResponses: import('./fileIpc').StaleResponse[],
 ): Promise<void> {
+    // オートモード中は stale response リカバリーをスキップ
+    // （オートモードのレスポンス管理は autoModeContinueLoop が担当）
+    if (isAutoModeActive()) {
+        logDebug('Bridge: skipping stale response recovery — auto mode is active');
+        return;
+    }
     if (staleResponses.length === 0) { return; }
     for (const sr of staleResponses) {
         try {
@@ -717,6 +724,11 @@ async function startBridgeInternal(
     // 定期 stale response チェック（5分間隔 — 再起動後に AI が書いたレスポンスもピックアップ）
     ctx.staleRecoveryTimer = setInterval(async () => {
         if (!ctx.fileIpc || !ctx.bot || !ctx.bot.isReady()) { return; }
+        // オートモード中はスキップ（autoModeContinueLoop がレスポンスを管理中）
+        if (isAutoModeActive()) {
+            logDebug('Bridge: skipping periodic stale check — auto mode is active');
+            return;
+        }
         try {
             const stale = await ctx.fileIpc.recoverStaleResponses();
             if (stale.length > 0) {

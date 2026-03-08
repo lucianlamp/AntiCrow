@@ -141,6 +141,18 @@ export class SubagentHandle {
         } else {
             // 従来通り: worktree + ブランチ作成
             try {
+                // コミット存在チェック: HEAD が存在しないと git worktree add が失敗する
+                try {
+                    await execAsync('git rev-parse HEAD', { cwd: this.repoRoot });
+                } catch {
+                    this._state = 'FAILED';
+                    throw new Error(
+                        `リポジトリにコミットがありません。チームモードを使用するには、最低1つのコミットが必要です。` +
+                        `先に \`git init && git add -A && git commit -m "initial commit"\` を実行してください。` +
+                        `(repoRoot: ${this.repoRoot})`,
+                    );
+                }
+
                 // .anticrow/worktrees ディレクトリが存在しない場合は作成
                 const worktreeDir = path.dirname(this.worktreePath);
                 if (!fs.existsSync(worktreeDir)) {
@@ -328,8 +340,7 @@ export class SubagentHandle {
 
         // --- CLEANED ---
         if (this.usePool) {
-            // プール使用時でもブランチと worktree の両方を削除する。
-            // 直接編集モードでは worktree はウィンドウ起動用のダミーなので close 時に不要。
+            // プール使用時: ブランチのみ削除。worktree フォルダは次回再利用のため残す
             try {
                 await execAsync(`git branch -D ${this.branch}`, {
                     cwd: this.repoRoot,
@@ -338,7 +349,8 @@ export class SubagentHandle {
             } catch {
                 logDebug(`[SubagentHandle] ブランチ削除スキップ（存在しない可能性）: ${this.branch}`);
             }
-            await this.cleanupWorktree();
+            // cleanupWorktree() は呼ばない（フォルダを残して再利用するため）
+            logDebug(`[SubagentHandle] プール使用: worktree フォルダは再利用のため残します: ${this.worktreePath}`);
         } else {
             await this.cleanupWorktree();
         }

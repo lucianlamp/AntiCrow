@@ -154,7 +154,7 @@ export async function handleMiscButton(
             return true;
         }
 
-        await interaction.reply({ embeds: [buildEmbed('🔄 **オートモードを開始します...**\n提案をすべて順番に自動実行します', EmbedColor.Info)] });
+        await interaction.reply({ embeds: [buildEmbed('🔄 **自律モードを開始します...**\n提案をすべて順番に自動実行します', EmbedColor.Info)] });
 
         // ワークスペースキーの取得
         const repoRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;

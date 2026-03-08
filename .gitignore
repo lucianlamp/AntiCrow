@@ -21,3 +21,5 @@ tmp_*.json
 test-*.txt
 test_*.txt
 
+# Anti-Crow worktree プール
+.anticrow/worktrees/

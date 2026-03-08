@@ -379,6 +379,7 @@ export const messages = {
   'misc.queue.cleared': '✅ {0} waiting messages deleted.',
   'misc.suggest.auto': '🤖 **Executing next action based on agent\'s judgment**',
   'misc.suggest.autoPromptPrefix': 'The following suggestions were displayed recently. Use them as reference and execute the optimal action based on agent judgment.\n\n[Recent Suggestions]\n{0}\n\n{1}',
+  'autoMode.autonomousPrompt': 'Review the remaining work toward the original task goal, determine the next action, and execute it.',
   'misc.suggest.expired': '⚠️ This suggestion is no longer valid.',
   'misc.suggest.executing': '💡 **Executing suggestion:** {0}',
 
@@ -443,6 +444,7 @@ export const messages = {
   'team.helperFollowup': 'Sub-agent {0} is running behind. Please help with the remaining work on this task: {1}',
   'team.helperStarted': '🤝 Sub-agent {0} started assisting Sub-agent {1}',
   'team.helperModeEnabled': '🤝 Agents that finish early will assist others',
+  'team.noCommits': '⚠️ No commits found in the repository. Team mode requires at least one commit. Please run `git init && git add -A && git commit -m "initial commit"` first. (repoRoot: {0})',
 
   // -----------------------------------------------------------------------
   // adminHandler.ts — Admin slash command handler
@@ -873,11 +875,11 @@ export const messages = {
   'bot.unknownCommand': '⚠️ Unknown command: /{0}',
 
   // -----------------------------------------------------------------------
-  // autoModeController.ts — Auto Mode
+  // autoModeController.ts — Autonomous Mode
   // -----------------------------------------------------------------------
-  'command.auto.desc': 'Auto Mode — AI autonomously executes tasks in sequence (Pro only)',
+  'command.auto.desc': 'Autonomous Mode — AI autonomously executes tasks in sequence (Pro only)',
   'command.auto.promptDesc': 'Task prompt (e.g. --steps 10 --confirm semi Redesign the landing page)',
-  'command.autoConfig.desc': 'View and configure Auto Mode settings',
+  'command.autoConfig.desc': 'View and configure Autonomous Mode settings',
   'command.update.desc': 'Update Anti-Crow to the latest version',
 
   // --- Update notifications ---
@@ -891,33 +893,33 @@ export const messages = {
   // --- Help: update ---
   'admin.help.cmdUpdate': '`/update` — Update to the latest version',
 
-  // --- Auto Mode notifications ---
+  // --- Autonomous Mode notifications ---
   'autoMode.defaultPrompt': 'Autonomously execute the next task based on suggestions',
-  'autoMode.started': '🚀 **Auto Mode Started**\n━━━━━━━━━━━━━━━━━━━━\n\n📝 Task: {0}\n⚙️ Settings: Max {1} steps / {2} min\n🔒 Safety Guard: Enabled',
-  'autoMode.stopped': '⏹️ **Auto Mode Stopped**\n\nStopped at step {0}/{1}.',
-  'autoMode.completed': '📊 **Auto Mode Completed**\n━━━━━━━━━━━━━━━━━━━━\n\n✅ Steps Completed: {0}/{1}\n⏱️ Total Time: {2}\n🛡️ Safety Triggers: {3}',
+  'autoMode.started': '🚀 **Autonomous Mode Started**\n━━━━━━━━━━━━━━━━━━━━\n\n📝 Task: {0}\n⚙️ Settings: Max {1} steps / {2} min\n🔒 Safety Guard: Enabled',
+  'autoMode.stopped': '⏹️ **Autonomous Mode Stopped**\n\nStopped at step {0}/{1}.',
+  'autoMode.completed': '📊 **Autonomous Mode Completed**\n━━━━━━━━━━━━━━━━━━━━\n\n✅ Steps Completed: {0}/{1}\n⏱️ Total Time: {2}\n🛡️ Safety Triggers: {3}',
   'autoMode.stepComplete': '✅ **Step {0}/{1} Complete** ({2})\n━━━━━━━━━━━━━━━━━━━━\n\n📄 {3}',
   'autoMode.stepSuggestions': '\n\n💡 Suggestions referenced by AI:\n{0}',
   'autoMode.progress': '\n\n⏱️ Elapsed: {0} / {1} min',
-  'autoMode.error': '❌ **Auto Mode Error**\n\nError occurred at step {0}: {1}',
-  'autoMode.alreadyRunning': '⚠️ Auto Mode is already running. Use `/stop` to stop it first.',
-  'autoMode.proRequired': '⚠️ Auto Mode is a Pro-only feature.',
-  'autoMode.notRunning': '⚠️ Auto Mode is not running.',
+  'autoMode.error': '❌ **Autonomous Mode Error**\n\nError occurred at step {0}: {1}',
+  'autoMode.alreadyRunning': '⚠️ Autonomous Mode is already running. Use `/stop` to stop it first.',
+  'autoMode.proRequired': '⚠️ Autonomous Mode is a Pro-only feature.',
+  'autoMode.notRunning': '⚠️ Autonomous Mode is not running.',
   'autoMode.promptRequired': '⚠️ Please specify a prompt.\nUsage: `/auto Redesign the landing page`',
   'autoMode.stopButton': '❌ Stop',
 
   // --- Safety Guard ---
-  'autoMode.safety.detected': '🚨 **Safety Guard Triggered**\n━━━━━━━━━━━━━━━━━━━━\n\n⚠️ Dangerous action detected\n\n🔍 Detection: {0}\n📝 Pattern: `{1}`\n\n⏸️ Auto Mode paused',
+  'autoMode.safety.detected': '🚨 **Safety Guard Triggered**\n━━━━━━━━━━━━━━━━━━━━\n\n⚠️ Dangerous action detected\n\n🔍 Detection: {0}\n📝 Pattern: `{1}`\n\n⏸️ Autonomous Mode paused',
   'autoMode.safety.approve': '✅ Approve',
   'autoMode.safety.skip': '⏭️ Skip',
   'autoMode.safety.stop': '🛑 Stop',
   'autoMode.safety.approved': '✅ Safety check approved. Resuming loop.',
   'autoMode.safety.skipped': '⏭️ Skipped this step. Moving to next step.',
-  'autoMode.safety.stopped': '🛑 Auto Mode stopped by safety check.',
+  'autoMode.safety.stopped': '🛑 Autonomous Mode stopped by safety check.',
   'autoMode.safety.warn': '⚠️ **Safety Warning**: {0} (pattern: `{1}`) — Loop continues',
 
   // --- Help ---
-  'admin.help.cmdAuto': '`/auto` — Auto Mode (AI autonomous execution) Pro only',
+  'admin.help.cmdAuto': '`/auto` — Autonomous Mode (AI autonomous execution) Pro only',
 
   // --- Phase 2: ai-select prompt ---
   'autoMode.aiSelectPrompt': 'The following suggestions were displayed recently. Choose the most appropriate one and execute it. Briefly explain your selection reason.\n\n[Suggestions]\n{0}\n\n{1}',
@@ -926,8 +928,8 @@ export const messages = {
   'autoMode.confirm.prompt': '⏸️ **Step {0}/{1} Complete — Continue?**\n━━━━━━━━━━━━━━━━━━━━\n\nChoose whether to proceed to the next step or stop here.',
   'autoMode.confirm.continueBtn': '▶️ Continue',
   'autoMode.confirm.stopBtn': '🛑 Stop',
-  'autoMode.confirm.continued': '▶️ Auto Mode continuing.',
-  'autoMode.confirm.stopped': '🛑 Auto Mode stopped by confirmation.',
+  'autoMode.confirm.continued': '▶️ Autonomous Mode continuing.',
+  'autoMode.confirm.stopped': '🛑 Autonomous Mode stopped by confirmation.',
 
   // --- Phase 2: diffSummary ---
   'autoMode.diffSummary.title': '📊 **Changes:**',

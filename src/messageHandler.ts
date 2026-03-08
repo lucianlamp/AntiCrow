@@ -24,6 +24,8 @@ import { getCurrentModel } from './cdpModels';
 import { getCurrentMode } from './cdpModes';
 import { AUTO_PROMPT } from './suggestionButtons';
 import { loadTeamConfig } from './teamConfig';
+import { startAutoMode, stopAutoMode, isAutoModeActive } from './autoModeController';
+import { loadAutoModeConfig } from './autoModeConfig';
 import { FileIpc } from './fileIpc';
 import { getLicenseGate } from './extension';
 import { FREE_DAILY_TASK_LIMIT, FREE_WEEKLY_TASK_LIMIT } from './licensing/licenseGate';
@@ -200,6 +202,8 @@ export async function handleDiscordMessage(
         if (!result) { return; }
         const { plan, guild } = result;
 
+
+
         // 計画詳細を Discord に表示
         try {
             const summaryText = plan.action_summary || plan.discord_templates.ack || plan.human_summary
@@ -239,7 +243,15 @@ export async function handleDiscordMessage(
             await channel.send({ embeds: [buildEmbed(plan.discord_templates.ack, EmbedColor.Info)] });
         }
 
+        // オートモード状態リセット: requires_confirmation: false で新規計画が来た場合、
+        // 既存のオートモードループを停止する（意図しないオートモード起動防止）
+        if (!plan.requires_confirmation && isAutoModeActive()) {
+            logDebug('handleDiscordMessage: Auto mode was active but requires_confirmation=false — stopping auto mode to prevent unintended auto execution');
+            await stopAutoMode(channel, 'auto_reset');
+        }
+
         // 確認フロー
+        let confirmAutoMode = false;
         if (plan.requires_confirmation) {
             // ステータス: 確認待ち
             setProcessingStatus(wsKeyForStatus, {
@@ -254,6 +266,7 @@ export async function handleDiscordMessage(
                 return;
             }
             if (!confirmResult.confirmed) { return; }
+            if (confirmResult.autoMode) { confirmAutoMode = true; }
             applyChoiceSelection(plan, confirmResult.selectedChoices);
         }
 
@@ -284,8 +297,17 @@ export async function handleDiscordMessage(
         // タスクカウントをインクリメント
         if (taskGate) { await taskGate.incrementTaskCount(); }
 
+        // オートモード開始: startAutoMode() で currentState を初期化
+        // これにより executor.ts の isAutoModeActive() が true を返し、
+        // onAutoModeComplete コールバック経由で autoModeContinueLoop が起動する
+        if (confirmAutoMode) {
+            const autoConfig = loadAutoModeConfig(channel.id);
+            await startAutoMode(channel, wsKeyForStatus, plan.prompt, autoConfig, isTeamMode);
+            logDebug(`handleDiscordMessage: startAutoMode called — isActive=${isAutoModeActive()}, teamMode=${isTeamMode}`);
+        }
+
         // 即時実行 or 定期登録
-        await dispatchPlan(ctx, plan, channel, activeCdp, wsNameFromCategory, guild, isTeamMode);
+        await dispatchPlan(ctx, plan, channel, activeCdp, wsNameFromCategory, guild, isTeamMode, confirmAutoMode);
 
     } catch (e) {
         const errMsg = e instanceof Error ? e.message : String(e);

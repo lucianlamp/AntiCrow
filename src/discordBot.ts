@@ -55,6 +55,8 @@ export type ModalSubmitHandler = (
 ) => Promise<void>;
 
 export class DiscordBot {
+    private static instance: DiscordBot | null = null;
+
     private client: Client;
     private token: string;
 
@@ -66,6 +68,11 @@ export class DiscordBot {
     private ready = false;
     private currentModelName: string | null = null;
 
+    /** Discord Client を取得するスタティックメソッド（autoModeContinueLoop 等で使用） */
+    static getClient(): Client | null {
+        return DiscordBot.instance?.client ?? null;
+    }
+
     /** フッターに表示するモデル名を設定 */
     setModelName(name: string | null): void {
         this.currentModelName = name;
@@ -73,6 +80,7 @@ export class DiscordBot {
 
     constructor(token: string) {
         this.token = token;
+        DiscordBot.instance = this;
 
         this.client = new Client({
             intents: [
@@ -139,6 +147,7 @@ export class DiscordBot {
                 if (
                     cid === 'confirm_approve' ||
                     cid === 'confirm_reject' ||
+                    cid === 'confirm_auto' ||
                     cid.startsWith('choice_') ||
                     cid.startsWith('mchoice_')
                 ) {
@@ -246,6 +255,9 @@ export class DiscordBot {
             case 'screenshot': return 'admin';
             case 'soul': return 'admin';
             case 'team': return 'admin';
+            case 'auto': return 'admin';
+            case 'auto-config': return 'admin';
+            case 'update': return 'admin';
             default: return null;
         }
     }
@@ -522,7 +534,7 @@ export class DiscordBot {
     // -----------------------------------------------------------------------
 
     /** メッセージにリアクション待ちして確認を取る */
-    async waitForConfirmation(message: Message): Promise<boolean> {
+    async waitForConfirmation(message: Message): Promise<'approved' | 'rejected' | 'auto'> {
         return reactions.waitForConfirmation(message, this.client.user?.id);
     }
 

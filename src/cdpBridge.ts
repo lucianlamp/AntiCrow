@@ -42,6 +42,7 @@ import {
     waitForElement as uiWaitForElement,
     checkElementExists as uiCheckElementExists,
     clickExpandAll as uiClickExpandAll,
+    clickDropupChevron as uiClickDropupChevron,
     scrollToBottom as uiScrollToBottom,
     autoFollowOutput as uiAutoFollowOutput,
     autoApprove as uiAutoApprove,
@@ -464,6 +465,10 @@ export class CdpBridge {
 
     async clickExpandAll(): Promise<boolean> {
         return uiClickExpandAll(this.ops);
+    }
+
+    async clickDropupChevron(): Promise<boolean> {
+        return uiClickDropupChevron(this.ops);
     }
 
     async scrollToBottom(): Promise<boolean> {

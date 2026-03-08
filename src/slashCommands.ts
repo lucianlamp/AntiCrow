@@ -92,6 +92,10 @@ export const slashCommandDefinitions = [
         .setName('auto-config')
         .setDescription(t('command.autoConfig.desc')),
 
+    // /update — R2 から最新版をダウンロードして更新
+    new SlashCommandBuilder()
+        .setName('update')
+        .setDescription(t('command.update.desc')),
 
 ];
 

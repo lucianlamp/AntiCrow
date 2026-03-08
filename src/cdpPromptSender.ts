@@ -77,6 +77,78 @@ export async function startNewChat(ctx: PromptSenderContext): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// waitForCascadeIdle
+// ---------------------------------------------------------------------------
+
+/**
+ * Cascade がアイドル状態（処理中でない）になるまで待機する。
+ * キャンセルボタンが存在する = 処理中。自動クリックで停止させる。
+ */
+async function waitForCascadeIdle(ctx: PromptSenderContext, maxWaitMs = 15000): Promise<void> {
+    const IDLE_CHECK_JS = `
+(function() {
+    function getTargetDoc() {
+        var iframes = document.querySelectorAll('iframe');
+        for (var fi = 0; fi < iframes.length; fi++) {
+            try {
+                if (iframes[fi].src && iframes[fi].src.includes('cascade-panel') && iframes[fi].contentDocument) {
+                    return iframes[fi].contentDocument;
+                }
+            } catch(e) {}
+        }
+        return document;
+    }
+    var doc = getTargetDoc();
+    // キャンセルボタンの存在チェック（処理中の指標）
+    var cancelBtn = doc.querySelector('[data-tooltip-id="input-send-button-cancel-tooltip"]');
+    if (!cancelBtn) {
+        cancelBtn = doc.querySelector('[data-tooltip-id*="cancel"]');
+    }
+    if (cancelBtn) {
+        cancelBtn.click();
+        return { idle: false, action: 'cancelled' };
+    }
+    // Stop/停止 ボタンテキストの存在チェック
+    var buttons = doc.querySelectorAll('button');
+    for (var i = 0; i < buttons.length; i++) {
+        var txt = (buttons[i].innerText || '').trim().toLowerCase();
+        if (txt === 'stop' || txt === '停止') {
+            buttons[i].click();
+            return { idle: false, action: 'stopped' };
+        }
+    }
+    return { idle: true };
+})()
+    `.trim();
+
+    const deadline = Date.now() + maxWaitMs;
+    const pollMs = 1000;
+    let clickedCancel = false;
+
+    while (Date.now() < deadline) {
+        try {
+            const contextId = await ctx.getCascadeContext();
+            const result = await ctx.conn.evaluate(IDLE_CHECK_JS, contextId) as { idle: boolean; action?: string };
+            if (result?.idle) {
+                if (clickedCancel) {
+                    logDebug('CDP: waitForCascadeIdle — Cascade is now idle after cancel');
+                    await ctx.sleep(1000); // キャンセル後の安定待ち
+                }
+                return;
+            }
+            if (result?.action) {
+                logDebug(`CDP: waitForCascadeIdle — action: ${result.action}, waiting for idle...`);
+                clickedCancel = true;
+            }
+        } catch (e) {
+            logDebug(`CDP: waitForCascadeIdle — check failed: ${e instanceof Error ? e.message : e}`);
+        }
+        await ctx.sleep(pollMs);
+    }
+    logWarn('CDP: waitForCascadeIdle — timeout, proceeding anyway');
+}
+
+// ---------------------------------------------------------------------------
 // sendPrompt
 // ---------------------------------------------------------------------------
 
@@ -98,6 +170,9 @@ export async function sendPrompt(ctx: PromptSenderContext, prompt: string): Prom
     } catch (e) {
         logWarn(`CDP: ensureCascadePanel failed: ${e}`);
     }
+    // --- (0) Cascade のアイドル状態を保証 ---
+    await waitForCascadeIdle(ctx);
+
     const contextId = await ctx.getCascadeContext();
 
     // --- (A) テキストボックスの readiness チェック ---

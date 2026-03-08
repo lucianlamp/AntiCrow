@@ -338,6 +338,237 @@ export async function clickExpandAll(
 }
 
 // -----------------------------------------------------------------------
+// clickDropupChevron — パネル狭小時のドロップアップ展開ボタンを自動クリック
+// -----------------------------------------------------------------------
+
+/**
+ * パネルが狭い状態で承認ボタン（Allow 等）がドロップアップメニュー内に隠れている場合、
+ * チェブロン（上矢印 ^）ボタンをクリックしてメニューを展開する。
+ * autoApprove の前に呼び出すことで、隠れた承認ボタンを検出可能にする。
+ */
+export async function clickDropupChevron(
+    ops: CdpBridgeOps,
+): Promise<boolean> {
+    const CHEVRON_SCRIPT = `
+(function() {
+    // getTargetDoc パターン — iframe 内外を透過的に探索
+    function getTargetDoc() {
+        var iframes = document.querySelectorAll('iframe');
+        for (var fi = 0; fi < iframes.length; fi++) {
+            try {
+                if (iframes[fi].src && iframes[fi].src.includes('cascade-panel') && iframes[fi].contentDocument) {
+                    return iframes[fi].contentDocument;
+                }
+            } catch (e) { /* cross-origin は無視 */ }
+        }
+        return document;
+    }
+
+    var docs = [];
+    var cascadeDoc = getTargetDoc();
+    docs.push(cascadeDoc);
+    if (cascadeDoc !== document) {
+        docs.push(document);
+    }
+
+    function findAllInTree(root, predicate) {
+        if (!root) return [];
+        var matches = [];
+        var ownerDoc = root.ownerDocument || root;
+        if (root.nodeType === 1 && predicate(root)) matches.push(root);
+        var walker = (ownerDoc.createTreeWalker || document.createTreeWalker).call(ownerDoc, root, 1, null, false);
+        var el;
+        while ((el = walker.nextNode())) {
+            if (predicate(el)) matches.push(el);
+            if (el.shadowRoot) {
+                matches = matches.concat(findAllInTree(el.shadowRoot, predicate));
+            }
+        }
+        return matches;
+    }
+
+    function isVisible(el) {
+        if (!el) return false;
+        var rect = el.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0) return false;
+        if (el.offsetParent === null && el.tagName !== 'BODY' && el.tagName !== 'HTML') {
+            try {
+                var style = (el.ownerDocument.defaultView || window).getComputedStyle(el);
+                if (style.position !== 'fixed' && style.position !== 'sticky') return false;
+            } catch (e) { return false; }
+        }
+        return true;
+    }
+
+    function clickEl(el) {
+        try { el.scrollIntoView({ block: 'center', behavior: 'instant' }); } catch (e) { }
+        var rect = el.getBoundingClientRect();
+        var cx = rect.left + rect.width / 2;
+        var cy = rect.top + rect.height / 2;
+        var opts = { bubbles: true, cancelable: true, view: el.ownerDocument.defaultView || window, clientX: cx, clientY: cy };
+        el.dispatchEvent(new MouseEvent('mousedown', opts));
+        el.dispatchEvent(new MouseEvent('mouseup', opts));
+        el.dispatchEvent(new MouseEvent('click', opts));
+        try {
+            el.dispatchEvent(new PointerEvent('pointerdown', opts));
+            el.dispatchEvent(new PointerEvent('pointerup', opts));
+        } catch (e) { }
+    }
+
+    // isExcluded: statusbar/menubar/titlebar/dropdown 等を除外
+    function isExcluded(el) {
+        if (el.closest('[id*="statusbar"], [class*="statusbar"]')) return true;
+        if (el.closest('[class*="menubar"], [role="menubar"]')) return true;
+        if (el.closest('[class*="titlebar"]')) return true;
+        return false;
+    }
+
+    // チェブロンボタンの検出条件:
+    // - Configure / Deny ボタンの隣にあるボタン
+    // - テキストが空またはSVGのみ
+    // - 幅が小さい（50px 以下）
+    // - aria-label に expand/more/chevron/arrow/show が含まれる
+    var CHEVRON_LABELS = ['expand', 'more', 'chevron', 'arrow', 'show', 'open', 'dropdown'];
+    var ARROW_CHARS = /^[\s\u25B2\u25B4\u25B8\u25BA\u25BC\u25BE\u02C4\u02C5\u2303\u2304\u2227\u2228\uFF3E\u005E\u02C6\u2039\u203A\u276E\u276F\u2191\u2193>v<]*$/;
+
+    for (var di = 0; di < docs.length; di++) {
+        var doc = docs[di];
+
+        // 戦略A: Configure/Deny ボタンの兄弟要素からチェブロンを探す
+        var allElements = findAllInTree(doc, function(el) {
+            var tag = el.tagName.toLowerCase();
+            return tag === 'button' || tag === 'vscode-button' || tag === 'a' ||
+                el.getAttribute('role') === 'button' ||
+                (tag === 'div' && !el.getAttribute('data-tooltip-id'));
+        });
+
+        // Configure/Deny ボタンが存在する権限ダイアログを特定
+        var hasPermissionDialog = false;
+        var permissionContainer = null;
+        for (var i = 0; i < allElements.length; i++) {
+            var text = (allElements[i].textContent || '').replace(/\s+/g, ' ').trim().toLowerCase();
+            if (text === 'configure' || text === 'deny') {
+                hasPermissionDialog = true;
+                // 親コンテナを特定（ボタン群の共通親）
+                permissionContainer = allElements[i].parentElement;
+                break;
+            }
+        }
+
+        if (!hasPermissionDialog) continue;
+
+        // permissionContainer 内またはドキュメント全体でチェブロンを探す
+        var searchElements = permissionContainer
+            ? findAllInTree(permissionContainer, function(el) {
+                var tag = el.tagName.toLowerCase();
+                return tag === 'button' || tag === 'vscode-button' || tag === 'a' ||
+                    el.getAttribute('role') === 'button' ||
+                    (tag === 'div' && !el.getAttribute('data-tooltip-id'));
+            })
+            : allElements;
+
+        for (var j = 0; j < searchElements.length; j++) {
+            var el = searchElements[j];
+            if (!isVisible(el)) continue;
+            if (isExcluded(el)) continue;
+
+            var rect = el.getBoundingClientRect();
+            var elText = (el.textContent || '').replace(/\s+/g, ' ').trim();
+            var ariaLabel = (el.getAttribute('aria-label') || '').toLowerCase();
+            var hasSvg = el.querySelector('svg') !== null;
+
+            // 条件1: テキストが空または矢印文字のみ、かつ SVG を含む
+            var isTextEmpty = elText.length === 0 || ARROW_CHARS.test(elText);
+            // 条件2: aria-label にチェブロン関連キーワード
+            var hasChevronLabel = false;
+            for (var k = 0; k < CHEVRON_LABELS.length; k++) {
+                if (ariaLabel.indexOf(CHEVRON_LABELS[k]) >= 0) {
+                    hasChevronLabel = true;
+                    break;
+                }
+            }
+            // 条件3: 幅が小さい（チェブロンボタンは通常コンパクト）
+            var isCompact = rect.width <= 60;
+
+            // テキストが「Configure」「Deny」等の実際のボタンは除外
+            var btnText = elText.toLowerCase();
+            if (btnText === 'configure' || btnText === 'deny' || btnText === 'allow' ||
+                btnText === 'allow once' || btnText === 'always allow' || btnText === 'allow this conversation' ||
+                btnText === 'cancel' || btnText === 'run' || btnText === 'ok' || btnText === 'yes') {
+                continue;
+            }
+
+            // チェブロン判定: (テキスト空+SVGあり) or (aria-labelマッチ) 、かつコンパクト
+            if (((isTextEmpty && hasSvg) || hasChevronLabel) && isCompact) {
+                clickEl(el);
+                return { clicked: true, method: 'chevron', tag: el.tagName, ariaLabel: ariaLabel || null, text: elText || null, width: rect.width };
+            }
+        }
+
+        // 戦略B: permissionContainer が見つからなかった場合、
+        // ドキュメント全体でSVGのみの小さいボタンを探す（フォールバック）
+        if (!permissionContainer) {
+            for (var m = 0; m < allElements.length; m++) {
+                var el2 = allElements[m];
+                if (!isVisible(el2)) continue;
+                if (isExcluded(el2)) continue;
+
+                var rect2 = el2.getBoundingClientRect();
+                var elText2 = (el2.textContent || '').replace(/\s+/g, ' ').trim();
+                var hasSvg2 = el2.querySelector('svg') !== null;
+                var ariaLabel2 = (el2.getAttribute('aria-label') || '').toLowerCase();
+
+                var hasChevronLabel2 = false;
+                for (var n = 0; n < CHEVRON_LABELS.length; n++) {
+                    if (ariaLabel2.indexOf(CHEVRON_LABELS[n]) >= 0) {
+                        hasChevronLabel2 = true;
+                        break;
+                    }
+                }
+
+                if (hasChevronLabel2 && hasSvg2 && rect2.width <= 60 &&
+                    (elText2.length === 0 || ARROW_CHARS.test(elText2))) {
+                    clickEl(el2);
+                    return { clicked: true, method: 'chevron-fallback', tag: el2.tagName, ariaLabel: ariaLabel2 || null, width: rect2.width };
+                }
+            }
+        }
+    }
+
+    return { clicked: false };
+})()
+`.trim();
+
+    try {
+        // メインフレームで実行（getTargetDoc で iframe 内も探索）
+        const result = await ops.conn.evaluate(CHEVRON_SCRIPT) as { clicked: boolean; method?: string; [key: string]: unknown } | null;
+        if (result?.clicked) {
+            logInfo(`CDP: clickDropupChevron — clicked chevron button (${result.method}, tag=${result.tag})`);
+            // 展開アニメーションを待機
+            await ops.sleep(200);
+            return true;
+        }
+    } catch (e) {
+        logDebug(`CDP: clickDropupChevron main frame failed — ${e instanceof Error ? e.message : e}`);
+    }
+
+    // cascade iframe 内でも試行
+    try {
+        const cascadeResult = await ops.evaluateInCascade(CHEVRON_SCRIPT) as { clicked: boolean; method?: string; [key: string]: unknown } | null;
+        if (cascadeResult?.clicked) {
+            logInfo(`CDP: clickDropupChevron(cascade) — clicked chevron button (${cascadeResult.method}, tag=${cascadeResult.tag})`);
+            await ops.sleep(200);
+            return true;
+        }
+    } catch {
+        // cascade iframe がない場合は無視
+    }
+
+    logDebug('CDP: clickDropupChevron — no chevron button found');
+    return false;
+}
+
+// -----------------------------------------------------------------------
 // scrollToBottom — チャットエリアを最下部にスクロール
 // -----------------------------------------------------------------------
 
@@ -963,10 +1194,13 @@ export async function autoFollowOutput(
     // 2. 折りたたまれたセクションを展開（承認ボタンが見えるように先に展開）
     await clickExpandAll(ops);
 
-    // 3. スクロール＆展開で出てきた承認ボタンを自動クリック（VSCodeコマンド + DOM探索）
+    // 3. パネル狭小時のドロップアップ チェブロンを展開（隠れた承認ボタンを表示する）
+    await clickDropupChevron(ops);
+
+    // 4. スクロール＆展開で出てきた承認ボタンを自動クリック（VSCodeコマンド + DOM探索）
     await autoApprove(ops);
 
-    // 4. 権限確認ダイアログを自動承認
+    // 5. 権限確認ダイアログを自動承認
     await dismissPermissionDialog(ops);
 
     logDebug('CDP: autoFollowOutput completed');

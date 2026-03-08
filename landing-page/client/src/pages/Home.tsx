@@ -2,7 +2,6 @@ import Navbar from "@/components/Navbar";
 import ParticleField from "@/components/ParticleField";
 import HeroSection from "@/components/HeroSection";
 import FeaturesSection from "@/components/FeaturesSection";
-import HowItWorksSection from "@/components/HowItWorksSection";
 import SecuritySection from "@/components/SecuritySection";
 import PricingSection from "@/components/PricingSection";
 import FAQSection from "@/components/FAQSection";
@@ -17,7 +16,6 @@ export default function Home() {
       <main className="relative z-10">
         <HeroSection />
         <FeaturesSection />
-        <HowItWorksSection />
         <SecuritySection />
         <PricingSection />
         <FAQSection />

@@ -305,7 +305,12 @@ describe('SubagentHandle', () => {
             mockExec.mockImplementation((_cmd: string, _opts: any, cb?: Function) => {
                 const callback = cb ?? _opts;
                 if (typeof callback === 'function') {
-                    callback(new Error('git error'), { stdout: '', stderr: '' });
+                    // git rev-parse HEAD は成功させる（コミットが存在する状態を模擬）
+                    if (typeof _cmd === 'string' && _cmd.includes('git rev-parse HEAD')) {
+                        callback(null, { stdout: 'abc123', stderr: '' });
+                    } else {
+                        callback(new Error('git error'), { stdout: '', stderr: '' });
+                    }
                 }
                 return { on: vi.fn(), stdout: null, stderr: null, pid: 0 };
             });
@@ -315,6 +320,26 @@ describe('SubagentHandle', () => {
 
             // FAILED 状態から再度 spawn を試みる
             await expect(handle.spawn()).rejects.toThrow('IDLE 状態でのみ');
+        });
+
+        it('コミットゼロのリポジトリでわかりやすいエラーを投げる', async () => {
+            const { handle } = createHandle();
+
+            // git rev-parse HEAD が失敗する = コミットゼロ
+            mockExec.mockImplementation((cmd: string, _opts: any, cb?: Function) => {
+                const callback = cb ?? _opts;
+                if (typeof callback === 'function') {
+                    if (typeof cmd === 'string' && cmd.includes('git rev-parse HEAD')) {
+                        callback(new Error('fatal: bad default revision \'HEAD\''), { stdout: '', stderr: '' });
+                    } else {
+                        callback(null, { stdout: '', stderr: '' });
+                    }
+                }
+                return { on: vi.fn(), stdout: null, stderr: null, pid: 0 };
+            });
+
+            await expect(handle.spawn()).rejects.toThrow('リポジトリにコミットがありません');
+            expect(handle.state).toBe('FAILED');
         });
     });
 

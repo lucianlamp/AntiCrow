@@ -4,7 +4,7 @@ import { Menu, X } from "lucide-react";
 
 const navLinks = [
   { label: "機能", href: "#features" },
-  { label: "使い方", href: "#how-it-works" },
+  { label: "使い方", href: "#features" },
   { label: "セキュリティ", href: "#security" },
   { label: "料金", href: "#pricing" },
   { label: "FAQ", href: "#faq" },
@@ -25,11 +25,10 @@ export default function Navbar() {
       initial={{ y: -100 }}
       animate={{ y: 0 }}
       transition={{ duration: 0.6 }}
-      className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 ${
-        scrolled
+      className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 ${scrolled
           ? "bg-[oklch(0.14_0.03_260_/_80%)] backdrop-blur-xl border-b border-[oklch(0.3_0.03_260_/_30%)]"
           : "bg-transparent"
-      }`}
+        }`}
     >
       <div className="container flex items-center justify-between h-16 md:h-20">
         {/* Logo */}

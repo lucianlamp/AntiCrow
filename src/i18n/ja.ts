@@ -390,6 +390,7 @@ export const messages = {
   'misc.queue.cleared': '✅ {0}件の待機メッセージを削除しました。',
   'misc.suggest.auto': '🤖 **エージェントの判断で次のアクションを実行します**',
   'misc.suggest.autoPromptPrefix': '以下の提案が直前に表示されています。これらを参考にして、エージェントの判断で最適なアクションを実行してください。\n\n【直前の提案】\n{0}\n\n{1}',
+  'autoMode.autonomousPrompt': '元のタスク目標に向けて、残りの作業を洗い出し、次のアクションを決定して実行してください。',
   'misc.suggest.expired': '⚠️ この提案は既に無効です。',
   'misc.suggest.executing': '💡 **提案を実行:** {0}',
 
@@ -462,6 +463,7 @@ export const messages = {
   'team.helperFollowup': 'サブエージェント{0}の作業が遅れています。以下のタスクの残り作業を手伝ってください: {1}',
   'team.helperStarted': '🤝 サブエージェント{0}がサブエージェント{1}のタスクを支援開始',
   'team.helperModeEnabled': '🤝 先に完了したエージェントが他のタスクを手伝います',
+  'team.noCommits': '⚠️ リポジトリにコミットがありません。チームモードを使用するには、最低1つのコミットが必要です。先に `git init && git add -A && git commit -m "initial commit"` を実行してください。(repoRoot: {0})',
 
   // -----------------------------------------------------------------------
   // adminHandler.ts — 管理系スラッシュコマンドハンドラ
@@ -908,11 +910,11 @@ export const messages = {
   'bot.unknownCommand': '⚠️ 不明なコマンド: /{0}',
 
   // -----------------------------------------------------------------------
-  // autoModeController.ts — オートモード関連
+  // autoModeController.ts — 自律モード関連
   // -----------------------------------------------------------------------
-  'command.auto.desc': 'オートモード — AIが自律的にタスクを連続実行します（Pro限定）',
+  'command.auto.desc': '自律モード — AIが自律的にタスクを連続実行します（Pro限定）',
   'command.auto.promptDesc': 'タスクのプロンプト（例: --steps 10 --confirm semi LPをリニューアルして）',
-  'command.autoConfig.desc': 'オートモードの設定を表示・変更します',
+  'command.autoConfig.desc': '自律モードの設定を表示・変更します',
   'command.update.desc': 'Anti-Crow を最新バージョンに更新します',
 
   // --- アップデート通知 ---
@@ -926,33 +928,33 @@ export const messages = {
   // --- ヘルプに update を追加 ---
   'admin.help.cmdUpdate': '`/update` — 最新版に更新',
 
-  // --- オートモード通知 ---
+  // --- 自律モード通知 ---
   'autoMode.defaultPrompt': '提案に基づいて次のタスクを自律実行してください',
-  'autoMode.started': '🚀 **オートモード開始**\n━━━━━━━━━━━━━━━━━━━━\n\n📝 タスク: {0}\n⚙️ 設定: 最大{1}ステップ / {2}分\n🔒 セーフティガード: 有効',
-  'autoMode.stopped': '⏹️ **オートモード停止**\n\nステップ {0}/{1} で停止しました。',
-  'autoMode.completed': '📊 **オートモード完了**\n━━━━━━━━━━━━━━━━━━━━\n\n✅ 完了ステップ: {0}/{1}\n⏱️ 合計時間: {2}\n🛡️ セーフティ発動: {3}回',
+  'autoMode.started': '🚀 **自律モード開始**\n━━━━━━━━━━━━━━━━━━━━\n\n📝 タスク: {0}\n⚙️ 設定: 最大{1}ステップ / {2}分\n🔒 セーフティガード: 有効',
+  'autoMode.stopped': '⏹️ **自律モード停止**\n\nステップ {0}/{1} で停止しました。',
+  'autoMode.completed': '📊 **自律モード完了**\n━━━━━━━━━━━━━━━━━━━━\n\n✅ 完了ステップ: {0}/{1}\n⏱️ 合計時間: {2}\n🛡️ セーフティ発動: {3}回',
   'autoMode.stepComplete': '✅ **ステップ {0}/{1} 完了** ({2})\n━━━━━━━━━━━━━━━━━━━━\n\n📄 {3}',
   'autoMode.stepSuggestions': '\n\n💡 AIが参照した提案:\n{0}',
   'autoMode.progress': '\n\n⏱️ 経過: {0} / {1}分',
-  'autoMode.error': '❌ **オートモードエラー**\n\nステップ {0} でエラーが発生しました: {1}',
-  'autoMode.alreadyRunning': '⚠️ オートモードは既に実行中です。先に `/stop` で停止してください。',
-  'autoMode.proRequired': '⚠️ オートモードは Pro プラン限定機能です。',
-  'autoMode.notRunning': '⚠️ オートモードは実行されていません。',
+  'autoMode.error': '❌ **自律モードエラー**\n\nステップ {0} でエラーが発生しました: {1}',
+  'autoMode.alreadyRunning': '⚠️ 自律モードは既に実行中です。先に `/stop` で停止してください。',
+  'autoMode.proRequired': '⚠️ 自律モードは Pro プラン限定機能です。',
+  'autoMode.notRunning': '⚠️ 自律モードは実行されていません。',
   'autoMode.promptRequired': '⚠️ プロンプトを指定してください。\n使い方: `/auto LPをリニューアルして`',
   'autoMode.stopButton': '❌ 停止',
 
   // --- セーフティガード ---
-  'autoMode.safety.detected': '🚨 **セーフティガード発動**\n━━━━━━━━━━━━━━━━━━━━\n\n⚠️ 危険なアクションを検知しました\n\n🔍 検知内容: {0}\n📝 パターン: `{1}`\n\n⏸️ オートモードを一時停止しました',
+  'autoMode.safety.detected': '🚨 **セーフティガード発動**\n━━━━━━━━━━━━━━━━━━━━\n\n⚠️ 危険なアクションを検知しました\n\n🔍 検知内容: {0}\n📝 パターン: `{1}`\n\n⏸️ 自律モードを一時停止しました',
   'autoMode.safety.approve': '✅ 承認',
   'autoMode.safety.skip': '⏭️ スキップ',
   'autoMode.safety.stop': '🛑 停止',
   'autoMode.safety.approved': '✅ セーフティチェックを承認しました。ループを再開します。',
   'autoMode.safety.skipped': '⏭️ このステップをスキップしました。次のステップに進みます。',
-  'autoMode.safety.stopped': '🛑 セーフティチェックによりオートモードを停止しました。',
+  'autoMode.safety.stopped': '🛑 セーフティチェックにより自律モードを停止しました。',
   'autoMode.safety.warn': '⚠️ **セーフティ警告**: {0}（パターン: `{1}`）— ループは続行します',
 
   // --- ヘルプ ---
-  'admin.help.cmdAuto': '`/auto` — オートモード（AI自律連続実行）Pro限定',
+  'admin.help.cmdAuto': '`/auto` — 自律モード（AI自律連続実行）Pro限定',
 
   // --- Phase 2: ai-select プロンプト ---
   'autoMode.aiSelectPrompt': '以下の提案が直前に表示されています。これらの中から最も適切なものを1つ選んで実行してください。選択理由も簡潔に述べてください。\n\n【提案一覧】\n{0}\n\n{1}',
@@ -961,8 +963,8 @@ export const messages = {
   'autoMode.confirm.prompt': '⏸️ **ステップ {0}/{1} 完了 — 続行しますか？**\n━━━━━━━━━━━━━━━━━━━━\n\n次のステップに進むか、ここで停止するかを選んでください。',
   'autoMode.confirm.continueBtn': '▶️ 続行',
   'autoMode.confirm.stopBtn': '🛑 停止',
-  'autoMode.confirm.continued': '▶️ オートモードを続行します。',
-  'autoMode.confirm.stopped': '🛑 確認モードによりオートモードを停止しました。',
+  'autoMode.confirm.continued': '▶️ 自律モードを続行します。',
+  'autoMode.confirm.stopped': '🛑 確認モードにより自律モードを停止しました。',
 
   // --- Phase 2: diffSummary ---
   'autoMode.diffSummary.title': '📊 **変更差分:**',

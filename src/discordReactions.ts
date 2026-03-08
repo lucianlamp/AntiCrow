@@ -46,7 +46,7 @@ export function cancelActiveConfirmation(channelId: string): boolean {
 export async function waitForConfirmation(
     message: Message,
     botUserId: string | undefined,
-): Promise<boolean> {
+): Promise<'approved' | 'rejected' | 'auto'> {
     const channelId = message.channelId;
 
     try {
@@ -55,6 +55,11 @@ export async function waitForConfirmation(
                 .setCustomId('confirm_approve')
                 .setLabel('承認')
                 .setStyle(ButtonStyle.Success),
+            new ButtonBuilder()
+                .setCustomId('confirm_auto')
+                .setLabel('自律モードで実行')
+                .setStyle(ButtonStyle.Primary)
+                .setEmoji('🤖'),
             new ButtonBuilder()
                 .setCustomId('confirm_reject')
                 .setLabel('却下')
@@ -65,16 +70,16 @@ export async function waitForConfirmation(
         logDebug('waitForConfirmation: buttons added, waiting for user click (no timeout)');
     } catch (e) {
         logError('waitForConfirmation: failed to add buttons', e);
-        return false;
+        return 'rejected';
     }
 
-    return new Promise<boolean>((resolve) => {
+    return new Promise<'approved' | 'rejected' | 'auto'>((resolve) => {
         const collector = message.createMessageComponentCollector({
             componentType: ComponentType.Button,
             filter: (i) => {
                 const isNotBot = i.user.id !== botUserId;
                 logDebug(`waitForConfirmation: button '${i.customId}' from user ${i.user.id} (bot=${!isNotBot})`);
-                return isNotBot && ['confirm_approve', 'confirm_reject'].includes(i.customId);
+                return isNotBot && ['confirm_approve', 'confirm_reject', 'confirm_auto'].includes(i.customId);
             },
             max: 1,
         });
@@ -92,7 +97,7 @@ export async function waitForConfirmation(
                 await message.edit({ components: disableAllButtons(message) });
             } catch { /* ignore */ }
 
-            resolve(i.customId === 'confirm_approve');
+            resolve(i.customId === 'confirm_approve' ? 'approved' : i.customId === 'confirm_auto' ? 'auto' : 'rejected');
         });
 
         collector.on('end', (_collected, reason) => {
@@ -101,7 +106,7 @@ export async function waitForConfirmation(
             if (reason !== 'received') {
                 // ボタンを無効化
                 message.edit({ components: disableAllButtons(message) }).catch(() => { /* ignore */ });
-                resolve(false); // 自動却下またはその他の理由
+                resolve('rejected'); // 自動却下またはその他の理由
             }
         });
     });

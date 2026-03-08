@@ -84,9 +84,10 @@ describe('instructionBuilder', () => {
             expect(progress.instruction).toContain('進捗');
             // デフォルト execution_rules
             const rules = result.execution_rules as string[];
-            expect(rules.length).toBe(2);
+            expect(rules.length).toBe(3);
             expect(rules[0]).toContain('計画済み');
             expect(rules[1]).toContain('plan_generation');
+            expect(rules[2]).toContain('VSIX');
         });
 
         it('カスタムオプションが上書きされること', () => {

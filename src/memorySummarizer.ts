@@ -14,7 +14,7 @@ import { logDebug, logWarn } from './logger';
 // -------------------------------------------------------------------------
 
 /** サマライズ発動閾値（バイト） */
-export const SUMMARIZE_THRESHOLD_BYTES = 10 * 1024; // 10KB
+export const SUMMARIZE_THRESHOLD_BYTES = 50 * 1024; // 50KB
 
 /** 直近エントリ保持件数 */
 export const RECENT_ENTRY_COUNT = 5;

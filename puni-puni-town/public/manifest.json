@@ -1,0 +1,27 @@
+{
+    "name": "ぷにぷにタウン",
+    "short_name": "ぷにぷに",
+    "description": "かわいいぷにぷにキャラクターを集めて街を育てよう！",
+    "start_url": "/",
+    "display": "standalone",
+    "background_color": "#FFF0F5",
+    "theme_color": "#FF8FAB",
+    "orientation": "portrait",
+    "icons": [
+        {
+            "src": "/icon-192.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "any maskable"
+        },
+        {
+            "src": "/favicon.svg",
+            "sizes": "any",
+            "type": "image/svg+xml"
+        }
+    ],
+    "categories": [
+        "games",
+        "entertainment"
+    ]
+}

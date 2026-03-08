@@ -248,7 +248,7 @@ export async function sendProcessedResponse(options: {
     channelId: string;
     /** Discord 送信用コールバック */
     callbacks: ResponseCallbacks;
-}): Promise<{ cleanContent: string }> {
+}): Promise<{ cleanContent: string; suggestions: SuggestionItem[] }> {
     const { response, responsePath, plan, channelId, callbacks } = options;
 
     // 1. MEMORY タグ抽出・保存
@@ -275,13 +275,18 @@ export async function sendProcessedResponse(options: {
     }
 
     // 5. 提案ボタン送信
-    if (suggestions.length > 0) {
+    // オートモード中でも onAutoModeComplete が設定されていない場合（チームモード完了など）は送信する
+    const { isAutoModeActive } = await import('./autoModeController');
+    const suppressSuggestions = isAutoModeActive() && !!callbacks.onAutoModeComplete;
+    if (suggestions.length > 0 && !suppressSuggestions) {
         try {
             await callbacks.sendSuggestionButtons(suggestions);
-            logDebug(`ResponseHandler: sent ${suggestions.length} suggestion buttons (team mode)`);
+            logDebug(`ResponseHandler: sent ${suggestions.length} suggestion buttons`);
         } catch (e) {
-            logDebug(`ResponseHandler: failed to send suggestion buttons (team mode): ${e instanceof Error ? e.message : e}`);
+            logDebug(`ResponseHandler: failed to send suggestion buttons: ${e instanceof Error ? e.message : e}`);
         }
+    } else if (suggestions.length > 0 && suppressSuggestions) {
+        logDebug(`ResponseHandler: skipping suggestion buttons (auto mode active with onAutoModeComplete)`);
     }
 
     // 6. オートモードコールバック（SUGGESTIONS + クリーンコンテンツを通知）
@@ -296,7 +301,7 @@ export async function sendProcessedResponse(options: {
 
     logDebug(`ResponseHandler: response processing complete`);
 
-    return { cleanContent };
+    return { cleanContent, suggestions };
 }
 
 /** 後方互換エイリアス */

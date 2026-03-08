@@ -174,7 +174,7 @@ function createMockBridgeContext(overrides: Record<string, unknown> = {}): Bridg
         },
         cdpPool: null,
         bot: {
-            waitForConfirmation: vi.fn().mockResolvedValue(true),
+            waitForConfirmation: vi.fn().mockResolvedValue('approved'),
             waitForChoice: vi.fn().mockResolvedValue(1),
             waitForMultiChoice: vi.fn().mockResolvedValue([1, 2]),
             createPlanChannel: vi.fn().mockResolvedValue('ch-plan'),

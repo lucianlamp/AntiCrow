@@ -820,6 +820,7 @@ export class TeamOrchestrator {
                     'plan_generation タスクを生成しないでください。実行（execution）のみを行ってください',
                     '他のサブエージェントの担当範囲には手を出さないでください。あなたの担当範囲のみを実行すること',
                     '同じファイルの同じ箇所を修正しないでください',
+                    'VSIX インストール（antigravity --install-extension）やデプロイコマンドは実行しないでください。ビルドとパッケージングまでが担当範囲です',
                 ],
             });
 
@@ -1088,11 +1089,16 @@ export class TeamOrchestrator {
             for (const [, agentName] of agentNames) {
                 const handle = this.subagentManager.getAgent(agentName);
                 if (handle && fs.existsSync(handle.worktreePath)) {
-                    try {
-                        await handle.cleanupWorktree();
-                        logDebug(`[TeamOrchestrator] アイドルプール移動前に worktree 削除: ${agentName}`);
-                    } catch (e) {
-                        logWarn(`[TeamOrchestrator] アイドルプール前 worktree 削除失敗: ${agentName}: ${e}`);
+                    // プール worktree は削除しない（再利用するため）
+                    if (handle.poolEntryIndex === undefined) {
+                        try {
+                            await handle.cleanupWorktree();
+                            logDebug(`[TeamOrchestrator] アイドルプール移動前に worktree 削除: ${agentName}`);
+                        } catch (e) {
+                            logWarn(`[TeamOrchestrator] アイドルプール前 worktree 削除失敗: ${agentName}: ${e}`);
+                        }
+                    } else {
+                        logDebug(`[TeamOrchestrator] プール worktree は再利用のため保持: ${agentName}`);
                     }
                 }
             }
@@ -1259,12 +1265,27 @@ export class TeamOrchestrator {
                 const errMsg = e instanceof Error ? e.message : String(e);
                 this.stopMonitor(agentName);
 
+                // IPC中断フォールバック: 進捗ファイルから部分完了情報を復元
+                let partialSuccess = false;
+                try {
+                    const progressContent = await this.fileIpc.readProgress(instruction.progress_path);
+                    if (progressContent && typeof progressContent.percent === 'number' && progressContent.percent >= 50) {
+                        partialSuccess = true;
+                        logWarn(`[TeamOrchestrator] Agent ${instruction.agentIndex} (${agentName}) IPC interrupted but progress was ${progressContent.percent}%. Treating as partial success.`);
+                        // メインチャンネルに通知
+                        await this.sendToDiscord(channelId,
+                            `⚠️ ${t('team.subagentLabel')}${instruction.agentIndex} の IPC 通信が中断しました（進捗: ${progressContent.percent}%）。部分完了として処理します。`);
+                    }
+                } catch { /* 進捗読み取り失敗 — 通常のエラーとして処理 */ }
+
                 logError(`[TeamOrchestrator] Agent ${instruction.agentIndex} (${agentName}) failed: ${errMsg}`, e);
 
                 // スレッドにエラー通知
                 if (threadId && this.threadOps) {
                     await this.threadOps.sendToThread(threadId,
-                        `❌ **エラー発生** (${Math.round(durationMs / 1000)}秒)\n${errMsg}`
+                        partialSuccess
+                            ? `⚠️ **IPC中断** (${Math.round(durationMs / 1000)}秒) — 部分完了として記録`
+                            : `❌ **エラー発生** (${Math.round(durationMs / 1000)}秒)\n${errMsg}`
                     ).catch(() => { });
                 }
 
@@ -1273,8 +1294,10 @@ export class TeamOrchestrator {
 
                 return {
                     agentName,
-                    success: false,
-                    response: errMsg,
+                    success: partialSuccess,
+                    response: partialSuccess
+                        ? `[IPC中断・部分完了] ${errMsg}`
+                        : errMsg,
                     durationMs,
                     threadId: threadId ?? undefined,
                 } as OrchestrationResult;
@@ -1425,6 +1448,11 @@ export class TeamOrchestrator {
                     try {
                         const stat = fs.statSync(entryPath);
                         if (stat.isDirectory()) {
+                            // pool_ プレフィックスのエントリはプール用として保護
+                            if (entry.startsWith('pool_')) {
+                                logDebug(`[TeamOrchestrator] プール worktree 保護: ${entryPath}`);
+                                continue;
+                            }
                             logInfo(`[TeamOrchestrator] orphan worktree 検出: ${entryPath}`);
                             // git worktree remove を試行
                             try {
@@ -1494,6 +1522,11 @@ export class TeamOrchestrator {
                     const entryPath = path.join(worktreesDir, entry);
                     const stat = fs.statSync(entryPath);
                     if (stat.isDirectory()) {
+                        // pool_ プレフィックスのエントリはプール用として保護
+                        if (entry.startsWith('pool_')) {
+                            logDebug(`[TeamOrchestrator] 最終検証: プール worktree 保護: ${entryPath}`);
+                            continue;
+                        }
                         logWarn(`[TeamOrchestrator] 最終検証: 未知のworktreeが残留: ${entryPath}`);
                         // リトライ付き削除（プロセスがまだロックを保持している可能性）
                         for (let retry = 0; retry < 3; retry++) {
@@ -1525,6 +1558,12 @@ export class TeamOrchestrator {
                 for (const entry of gitEntries) {
                     // サブエージェント関連のエントリのみ対象（安全チェック）
                     if (!entry.includes('subagent')) continue;
+
+                    // pool_ プレフィックスのエントリはプール用として保護
+                    if (entry.startsWith('pool_')) {
+                        logDebug(`[TeamOrchestrator] 最終検証: .git/worktrees/ プール worktree 保護: ${entry}`);
+                        continue;
+                    }
 
                     const gitEntryPath = path.join(gitWorktreesDir, entry);
                     try {

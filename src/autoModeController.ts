@@ -16,11 +16,12 @@ import { AUTO_PROMPT, getAllSuggestions, storeSuggestions } from './suggestionBu
 import { t } from './i18n';
 import { buildEmbed, EmbedColor } from './embedHelper';
 import { logDebug, logInfo, logError, logWarn } from './logger';
-import { exec } from 'child_process';
+import { cancelPlanGeneration } from './messageQueue';
 import { promisify } from 'util';
+import { exec } from 'child_process';
+import { AUTO_MODE_DEFAULTS } from './autoModeConfig';
 
 const execAsync = promisify(exec);
-import { buildHistoryEntry, saveHistory } from './autoModeHistory';
 
 // ---------------------------------------------------------------------------
 // 型定義
@@ -227,15 +228,8 @@ export const DANGEROUS_PATTERNS: DangerousPattern[] = [
 ];
 
 // ---------------------------------------------------------------------------
-// デフォルト設定
+// デフォルト設定（autoModeConfig.ts の AUTO_MODE_DEFAULTS を使用）
 // ---------------------------------------------------------------------------
-
-const DEFAULT_CONFIG: AutoModeConfig = {
-    selectionMode: 'auto-delegate',
-    confirmMode: 'auto',
-    maxSteps: 5,
-    maxDuration: 30 * 60 * 1000, // 30分
-};
 
 /** 類似度閾値（直前2ステップのレスポンスがこの割合以上似ていたら停止） */
 const SIMILARITY_THRESHOLD = 0.9;
@@ -296,7 +290,7 @@ export async function startAutoMode(
         await stopAutoMode(channel, 'new_session');
     }
 
-    const mergedConfig: AutoModeConfig = { ...DEFAULT_CONFIG, ...config };
+    const mergedConfig: AutoModeConfig = { ...AUTO_MODE_DEFAULTS, ...config };
 
     currentState = {
         active: true,
@@ -330,8 +324,7 @@ export async function startAutoMode(
         const stopButton = new ButtonBuilder()
             .setCustomId('auto_stop')
             .setLabel('停止')
-            .setStyle(ButtonStyle.Danger)
-            .setEmoji('❌');
+            .setStyle(ButtonStyle.Danger);
 
         const row = new ActionRowBuilder<ButtonBuilder>().addComponents(stopButton);
 
@@ -362,10 +355,6 @@ export async function onStepComplete(
         logDebug('autoMode: onStepComplete called but not active');
         return null;
     }
-
-    const stepStartTime = currentState.history.length > 0
-        ? currentState.history[currentState.history.length - 1].duration
-        : currentState.startedAt;
 
     currentState.currentStep++;
     const stepDuration = Date.now() - (currentState.startedAt + currentState.history.reduce((sum, s) => sum + s.duration, 0));
@@ -454,25 +443,13 @@ export async function stopAutoMode(
         return;
     }
 
+    // typing / progress interval を全クリア（planPipeline + executor 両方をカバー）
+    cancelPlanGeneration();
+
     const state = currentState;
     currentState = null;
     pauseResolve = null;
-
-    // Phase 3: 実行履歴の保存
-    try {
-        const historyEntry = buildHistoryEntry(
-            state.channelId,
-            state.wsKey,
-            state.originalPrompt,
-            state.config,
-            state.startedAt,
-            state.history,
-            reason,
-        );
-        saveHistory(historyEntry);
-    } catch (e) {
-        logError('autoMode: 履歴の保存に失敗', e);
-    }
+    confirmResolve = null;
 
     const totalDuration = Date.now() - state.startedAt;
     const safetyCount = state.history.filter(s => !s.safetyResult.safe).length;
@@ -505,6 +482,9 @@ export async function stopAutoMode(
             break;
         case 'error':
             reasonText = '⚠️ エラーが発生しました';
+            break;
+        case 'auto_reset':
+            reasonText = '⚠️ 新しい計画の実行に伴い、既存のオートモードを停止しました';
             break;
         default:
             reasonText = 'ユーザーが手動で停止しました';
@@ -580,6 +560,48 @@ export async function handleAutoModeError(
 // ---------------------------------------------------------------------------
 
 /**
+ * SUGGESTIONS が空の場合に使用する自律判断プロンプトを構築する。
+ * originalPrompt と直前のステップ結果を参照して、ゴールに向けた
+ * 次のアクションを自律的に判断するよう指示するプロンプトを生成する。
+ *
+ * @param fallbackPrompt SUGGESTIONS がない場合のフォールバックプロンプト
+ * @returns 自律判断プロンプト
+ */
+function buildAutonomousPrompt(fallbackPrompt: string): string {
+    if (!currentState) {
+        return fallbackPrompt;
+    }
+
+    const { originalPrompt, history } = currentState;
+
+    // 直前のステップ結果サマリーを取得
+    const lastStep = history.length > 0 ? history[history.length - 1] : null;
+    const lastStepSummary = lastStep
+        ? lastStep.response.substring(0, 500)
+        : '（まだステップが実行されていません）';
+
+    const autonomousPrompt = [
+        '以下のタスクの続きを自律的に実行してください。',
+        '',
+        '【元のタスク目標】',
+        originalPrompt,
+        '',
+        '【直前のステップの結果サマリー】',
+        lastStepSummary,
+        '',
+        '【指示】',
+        '- 元のタスク目標に向けて、残りの作業を洗い出してください',
+        '- 次に実行すべきアクションを決定し、実行してください',
+        '- 完了したと判断した場合は、その旨を報告してください',
+        '- チームモードが有効な場合は、tasks 配列で並列実行可能なタスクを分割してください',
+    ].join('\n');
+
+    logInfo(`autoMode: buildAutonomousPrompt — using originalPrompt + lastStep summary (step ${currentState.currentStep})`);
+
+    return autonomousPrompt;
+}
+
+/**
  * オートモード用のプロンプトを構築する。
  * Phase 2: selectionMode に応じた3分岐を実装。
  *
@@ -598,56 +620,73 @@ export function buildAutoPrompt(channelId: string, initialPrompt?: string): stri
     // channelId に紐づく直前の提案を取得
     const suggestions = getAllSuggestions(channelId);
 
+    let result: string;
+
     // 初回プロンプトが明示的に指定されている場合は selectionMode を適用しない
     if (initialPrompt) {
         if (suggestions && suggestions.length > 0) {
             const suggestionContext = suggestions
                 .map((s, i) => `${i + 1}. ${s.label}: ${s.prompt}`)
                 .join('\n');
-            return (t as any)('misc.suggest.autoPromptPrefix', suggestionContext, basePrompt);
+            result = (t as any)('misc.suggest.autoPromptPrefix', suggestionContext, basePrompt);
+        } else {
+            result = buildAutonomousPrompt(basePrompt);
         }
-        return basePrompt;
+    } else {
+        // selectionMode に応じた分岐
+        switch (selectionMode) {
+            case 'first': {
+                // SUGGESTIONS[0] のプロンプトをそのまま投入
+                if (suggestions && suggestions.length > 0) {
+                    logInfo(`autoMode: selectionMode=first — using suggestion[0]: "${suggestions[0].label}"`);
+                    result = suggestions[0].prompt;
+                } else {
+                    // フォールバック: 自律判断プロンプト
+                    logInfo('autoMode: selectionMode=first — no suggestions, falling back to autonomous prompt');
+                    result = buildAutonomousPrompt(basePrompt);
+                }
+                break;
+            }
+
+            case 'ai-select': {
+                // 全SUGGESTIONSをプロンプトに含め、AIに選ばせる
+                if (suggestions && suggestions.length > 0) {
+                    const suggestionContext = suggestions
+                        .map((s, i) => `${i + 1}. ${s.label}: ${s.prompt}`)
+                        .join('\n');
+                    logInfo(`autoMode: selectionMode=ai-select — ${suggestions.length} suggestions available`);
+                    result = (t as any)('autoMode.aiSelectPrompt', suggestionContext, basePrompt);
+                } else {
+                    // フォールバック: 自律判断プロンプト
+                    logInfo('autoMode: selectionMode=ai-select — no suggestions, falling back to autonomous prompt');
+                    result = buildAutonomousPrompt(basePrompt);
+                }
+                break;
+            }
+
+            case 'auto-delegate':
+            default: {
+                // 既存の動作: AUTO_PROMPT + SUGGESTIONSコンテキスト
+                if (suggestions && suggestions.length > 0) {
+                    const suggestionContext = suggestions
+                        .map((s, i) => `${i + 1}. ${s.label}: ${s.prompt}`)
+                        .join('\n');
+                    result = (t as any)('misc.suggest.autoPromptPrefix', suggestionContext, basePrompt);
+                } else {
+                    result = buildAutonomousPrompt(basePrompt);
+                }
+                break;
+            }
+        }
     }
 
-    // selectionMode に応じた分岐
-    switch (selectionMode) {
-        case 'first': {
-            // SUGGESTIONS[0] のプロンプトをそのまま投入
-            if (suggestions && suggestions.length > 0) {
-                logInfo(`autoMode: selectionMode=first — using suggestion[0]: "${suggestions[0].label}"`);
-                return suggestions[0].prompt;
-            }
-            // フォールバック: auto-delegate と同じ動作
-            logInfo('autoMode: selectionMode=first — no suggestions, falling back to auto-delegate');
-            return basePrompt;
-        }
-
-        case 'ai-select': {
-            // 全SUGGESTIONSをプロンプトに含め、AIに選ばせる
-            if (suggestions && suggestions.length > 0) {
-                const suggestionContext = suggestions
-                    .map((s, i) => `${i + 1}. ${s.label}: ${s.prompt}`)
-                    .join('\n');
-                logInfo(`autoMode: selectionMode=ai-select — ${suggestions.length} suggestions available`);
-                return (t as any)('autoMode.aiSelectPrompt', suggestionContext, basePrompt);
-            }
-            // フォールバック: auto-delegate と同じ動作
-            logInfo('autoMode: selectionMode=ai-select — no suggestions, falling back to auto-delegate');
-            return basePrompt;
-        }
-
-        case 'auto-delegate':
-        default: {
-            // 既存の動作: AUTO_PROMPT + SUGGESTIONSコンテキスト
-            if (suggestions && suggestions.length > 0) {
-                const suggestionContext = suggestions
-                    .map((s, i) => `${i + 1}. ${s.label}: ${s.prompt}`)
-                    .join('\n');
-                return (t as any)('misc.suggest.autoPromptPrefix', suggestionContext, basePrompt);
-            }
-            return basePrompt;
-        }
+    // チームモード時: プロンプト末尾にチーム活用の指示を追加
+    if (currentState?.isTeamMode) {
+        result += `\n\nエージェントチームモードが有効です。タスクを分割して並列実行できる場合は、\`tasks\` 配列を使ってチームで分担してください。同じファイルを複数タスクで修正しないこと。`;
+        logDebug('autoMode: buildAutoPrompt — team mode instruction appended');
     }
+
+    return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -697,20 +736,45 @@ function shouldContinue(latestResponse: string): { shouldContinue: boolean; reas
     }
 
     // ガード3: AI が「完了」と判断したかのヒューリスティック
-    const completionPhrases = [
-        '全てのタスクが完了',
-        'すべてのタスクが完了',
-        '全てのステップが完了',
-        '作業は完了',
-        'all tasks completed',
-        'all steps completed',
-        '完了しました。追加の作業はありません',
-    ];
-    const lowerResponse = latestResponse.toLowerCase();
-    for (const phrase of completionPhrases) {
-        if (lowerResponse.includes(phrase.toLowerCase())) {
-            return { shouldContinue: false, reason: 'completed' };
+    // 初回ステップ（step < 2）では完了判定をスキップ（誤検知防止）
+    // サブエージェントの個別タスク報告に「完了」系フレーズが含まれやすく、
+    // 初回レスポンスで早期終了する False Positive を防止するため最低2ステップは実行する
+    if (currentState.currentStep >= 2) {
+        // 完了フレーズは「全タスク完了」を明確に示す完全な文のみ
+        // 短い部分一致（「作業は完了」等）は誤検知しやすいため除外
+        const completionPhrases = [
+            '全てのタスクが完了しました',
+            'すべてのタスクが完了しました',
+            '全てのステップが完了しました',
+            'すべてのステップが完了しました',
+            '全タスク完了しました',
+            'all tasks have been completed',
+            'all steps have been completed',
+            '完了しました。追加の作業はありません',
+            '追加の作業は不要です',
+            'これ以上の作業はありません',
+        ];
+
+        // レスポンスから振り返り・コードブロック・引用を除去してクリーンテキストを生成
+        let cleanedResponse = latestResponse;
+        // コードブロック除去（```...```）
+        cleanedResponse = cleanedResponse.replace(/```[\s\S]*?```/g, '');
+        // 振り返りセクション除去（## 振り返り / ## 💭 以降の行）
+        cleanedResponse = cleanedResponse.replace(/^##\s*(振り返り|💭)[\s\S]*?(?=^##\s|$)/gm, '');
+        // 引用ブロック除去（> で始まる行）
+        cleanedResponse = cleanedResponse.replace(/^>.*$/gm, '');
+        // MEMORY/SUGGESTIONS コメント除去
+        cleanedResponse = cleanedResponse.replace(/<!--[\s\S]*?-->/g, '');
+
+        const lowerResponse = cleanedResponse.toLowerCase();
+        for (const phrase of completionPhrases) {
+            if (lowerResponse.includes(phrase.toLowerCase())) {
+                logInfo(`autoMode: completion phrase detected — "${phrase}"`);
+                return { shouldContinue: false, reason: 'completed' };
+            }
         }
+    } else {
+        logDebug(`autoMode: skipping completion phrase check (step ${currentState.currentStep} < 2)`);
     }
 
     // ガード4: 類似検知（直前2ステップ）
@@ -878,8 +942,7 @@ async function sendStepCompleteNotification(
         const stopButton = new ButtonBuilder()
             .setCustomId('auto_stop')
             .setLabel('停止')
-            .setStyle(ButtonStyle.Danger)
-            .setEmoji('❌');
+            .setStyle(ButtonStyle.Danger);
 
         const row = new ActionRowBuilder<ButtonBuilder>().addComponents(stopButton);
 

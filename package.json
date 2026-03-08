@@ -144,7 +144,8 @@
     "deploy": "npm run compile && npm run bundle && npm run package && antigravity --install-extension anti-crow-0.1.0.vsix --force",
     "test": "vitest run",
     "vscode:prepublish": "npm run typecheck && npm run bundle",
-    "setup:licensing": "npx tsx scripts/setup-licensing.ts"
+    "setup:licensing": "npx tsx scripts/setup-licensing.ts",
+    "upload:r2": "npx tsx scripts/upload-r2.ts"
   },
   "dependencies": {
     "@clerk/clerk-js": "^5.124.0",
