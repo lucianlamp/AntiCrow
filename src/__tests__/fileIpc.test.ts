@@ -337,10 +337,10 @@ describe('FileIpc instance methods', () => {
             const progressFile = path.join(ipcDir, `${requestId}_progress.json`);
             const responseFile = path.join(ipcDir, `${requestId}_response.json`);
 
-            // 古いファイルとして作成（35分前 — 30分の response 閾値を超過）
+            // 古いファイルとして作成（65分前 — 60分の response 閾値を超過）
             fs.writeFileSync(progressFile, '{}');
             fs.writeFileSync(responseFile, '{}');
-            const oldTime = Date.now() - 35 * 60 * 1000;
+            const oldTime = Date.now() - 65 * 60 * 1000;
             fs.utimesSync(progressFile, new Date(oldTime), new Date(oldTime));
             fs.utimesSync(responseFile, new Date(oldTime), new Date(oldTime));
 
@@ -363,41 +363,41 @@ describe('FileIpc instance methods', () => {
     });
 
     describe('cleanupOldFiles thresholds', () => {
-        it('should delete response files only after 30 minutes', async () => {
-            // 20分前のレスポンス（30分未満 → 削除されない）
+        it('should delete response files only after 60 minutes', async () => {
+            // 50分前のレスポンス（60分未満 → 削除されない）
             const recentResponse = path.join(ipcDir, 'req_111_aaa_response.json');
             fs.writeFileSync(recentResponse, '{}');
-            const twentyMinAgo = Date.now() - 20 * 60 * 1000;
-            fs.utimesSync(recentResponse, new Date(twentyMinAgo), new Date(twentyMinAgo));
+            const fiftyMinAgo = Date.now() - 50 * 60 * 1000;
+            fs.utimesSync(recentResponse, new Date(fiftyMinAgo), new Date(fiftyMinAgo));
 
-            // 35分前のレスポンス（30分超 → 削除される）
+            // 65分前のレスポンス（60分超 → 削除される）
             const oldResponse = path.join(ipcDir, 'req_222_bbb_response.md');
             fs.writeFileSync(oldResponse, '# old');
-            const thirtyFiveMinAgo = Date.now() - 35 * 60 * 1000;
-            fs.utimesSync(oldResponse, new Date(thirtyFiveMinAgo), new Date(thirtyFiveMinAgo));
+            const sixtyFiveMinAgo = Date.now() - 65 * 60 * 1000;
+            fs.utimesSync(oldResponse, new Date(sixtyFiveMinAgo), new Date(sixtyFiveMinAgo));
 
             await ipc.cleanupOldFiles();
 
-            expect(fs.existsSync(recentResponse)).toBe(true);  // 20分 < 30分閾値
-            expect(fs.existsSync(oldResponse)).toBe(false);     // 35分 > 30分閾値
+            expect(fs.existsSync(recentResponse)).toBe(true);  // 50分 < 60分閾値
+            expect(fs.existsSync(oldResponse)).toBe(false);     // 65分 > 60分閾値
         });
 
-        it('should delete progress files after 2 minutes', async () => {
+        it('should delete progress files after 30 minutes', async () => {
             const progressFile = path.join(ipcDir, 'req_333_ccc_progress.json');
             fs.writeFileSync(progressFile, '{}');
-            const threeMinAgo = Date.now() - 3 * 60 * 1000;
-            fs.utimesSync(progressFile, new Date(threeMinAgo), new Date(threeMinAgo));
+            const thirtyFiveMinAgo = Date.now() - 35 * 60 * 1000;
+            fs.utimesSync(progressFile, new Date(thirtyFiveMinAgo), new Date(thirtyFiveMinAgo));
 
             await ipc.cleanupOldFiles();
 
             expect(fs.existsSync(progressFile)).toBe(false);
         });
 
-        it('should delete tmp files after 5 minutes', async () => {
+        it('should delete tmp files after 30 minutes', async () => {
             const tmpFile = path.join(ipcDir, 'tmp_prompt_12345_abc.json');
             fs.writeFileSync(tmpFile, '{}');
-            const sixMinAgo = Date.now() - 6 * 60 * 1000;
-            fs.utimesSync(tmpFile, new Date(sixMinAgo), new Date(sixMinAgo));
+            const thirtyFiveMinAgo = Date.now() - 35 * 60 * 1000;
+            fs.utimesSync(tmpFile, new Date(thirtyFiveMinAgo), new Date(thirtyFiveMinAgo));
 
             await ipc.cleanupOldFiles();
 
