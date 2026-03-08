@@ -23,7 +23,7 @@ export const EmbedColor = {
     Suggest: 0xF5A623,
 } as const;
 
-export type EmbedColorValue = (typeof EmbedColor)[keyof typeof EmbedColor];
+type EmbedColorValue = (typeof EmbedColor)[keyof typeof EmbedColor];
 
 /**
  * 標準スタイルの Embed を生成する。

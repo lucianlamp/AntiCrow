@@ -24,7 +24,7 @@ export interface SuggestionItem {
 }
 
 /** パース結果 */
-export interface SuggestionParseResult {
+interface SuggestionParseResult {
     /** 提案一覧（0〜3個） */
     suggestions: SuggestionItem[];
     /** 提案タグを除去したクリーンなコンテンツ */
