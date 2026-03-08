@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { AlertTriangle, ShieldAlert, Code2, KeyRound } from "lucide-react";
+import { AlertTriangle, ShieldAlert, ShieldCheck, Code2, KeyRound } from "lucide-react";
 
 const risks = [
   {
@@ -7,27 +7,27 @@ const risks = [
     title: "自動操作のリスク",
     titleEn: "Automated Operation Risks",
     description:
-      "AI による自動操作は、意図しないファイルの変更・削除を引き起こす可能性があります。",
+      "Antigravity の AI による自動操作は、意図しないファイルの変更・削除を引き起こす可能性があります。",
     descriptionEn:
-      "AI-driven automation may cause unintended file modifications or deletions.",
+      "Antigravity's AI-driven automation may cause unintended file modifications or deletions.",
   },
   {
     icon: Code2,
     title: "コード変更リスク",
     titleEn: "Code Modification Risks",
     description:
-      "自動生成・自動編集されたコードが、既存のコードベースを破壊する可能性があります。",
+      "Antigravity の AI が自動生成・自動編集したコードが、既存のコードベースを破壊する可能性があります。",
     descriptionEn:
-      "Auto-generated or auto-edited code may break your existing codebase.",
+      "Code auto-generated or auto-edited by Antigravity's AI may break your existing codebase.",
   },
   {
     icon: KeyRound,
-    title: "API キーの誤使用",
-    titleEn: "API Key Misuse",
+    title: "API キーの取り扱い",
+    titleEn: "API Key Handling",
     description:
-      "API キーや認証情報が意図せずログに出力されたり、外部に露出するリスクがあります。",
+      "AntiCrow は API キーの露出を防ぐ設計ですが、Antigravity の AI の判断により、キーが意図しない形で使用される可能性があります。",
     descriptionEn:
-      "API keys or credentials may be inadvertently logged or exposed.",
+      "AntiCrow is designed to prevent API key exposure, but Antigravity's AI judgment may use keys in unintended ways.",
   },
 ];
 
@@ -59,7 +59,32 @@ export default function DisclaimerSection() {
             </h2>
           </motion.div>
 
-          {/* Warning banner */}
+          {/* Safety banner — AntiCrow is safe */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "-50px" }}
+            transition={{ duration: 0.6, delay: 0.05 }}
+            className="rounded-2xl border border-emerald-500/30 bg-emerald-500/5 backdrop-blur-sm p-6 md:p-8 mb-6"
+          >
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 rounded-xl bg-emerald-500/15 flex items-center justify-center shrink-0">
+                <ShieldCheck className="w-6 h-6 text-emerald-500" />
+              </div>
+              <div>
+                <h3 className="font-heading font-bold text-lg text-foreground mb-2">
+                  🛡️ AntiCrow の安全性
+                </h3>
+                <p className="text-muted-foreground leading-relaxed">
+                  AntiCrow 拡張機能自体には、<strong className="text-foreground">悪意のある操作や破壊的な操作は一切含まれていません</strong>。
+                  API キーやシークレット情報を外部に露出させるような仕組みも排除するよう設計しています。
+                  AntiCrow は Discord からの指示を Antigravity に中継する役割を担っています。
+                </p>
+              </div>
+            </div>
+          </motion.div>
+
+          {/* Warning banner — risks from Antigravity */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
@@ -73,12 +98,13 @@ export default function DisclaimerSection() {
               </div>
               <div>
                 <h3 className="font-heading font-bold text-lg text-foreground mb-2">
-                  ⚠️ 重要：自己責任でのご利用
+                  ⚠️ Antigravity 由来のリスクについて
                 </h3>
                 <p className="text-muted-foreground leading-relaxed">
-                  本拡張機能（Anti-Crow）の使用には重大なリスクが伴います。
-                  AI エージェントによる自動操作は、データの損失、意図しないコードの変更、
-                  セキュリティ上の問題を引き起こす可能性があります。
+                  AntiCrow が連携する <strong className="text-foreground">Antigravity（AI コーディングエディタ）</strong>の仕様として、
+                  AI の判断によりファイル操作や外部サービスへのリクエスト送信など、
+                  ユーザーの意図しないアクションが実行される可能性があります。
+                  <strong className="text-foreground">これらのリスクは AntiCrow 側の問題ではなく、Antigravity 本体の仕様に起因します。</strong>
                   ご利用は全て<strong className="text-foreground">自己責任</strong>となります。
                 </p>
               </div>
@@ -118,9 +144,10 @@ export default function DisclaimerSection() {
             className="glass-card rounded-2xl p-6 md:p-8 border-destructive/10"
           >
             <p className="text-sm text-muted-foreground leading-relaxed mb-4">
-              開発者は、本拡張機能の使用により生じたいかなる損害（データの損失、
+              開発者は、本拡張機能および連携先の Antigravity の使用により生じたいかなる損害（データの損失、
               コードの破損、セキュリティ侵害、業務の中断、その他の直接的・間接的損害を含むが
               これらに限定されない）についても、一切の責任を負いません。
+              Antigravity の AI による自律的な判断に起因するリスクについても同様です。
             </p>
             <p className="text-sm text-muted-foreground leading-relaxed mb-4">
               本拡張機能は「現状のまま（AS IS）」で提供されます。
@@ -128,10 +155,11 @@ export default function DisclaimerSection() {
               一切の保証をいたしません。
             </p>
             <p className="text-xs text-muted-foreground/70 leading-relaxed">
-              The developer assumes no liability for any damages arising from the use of this
-              extension, including but not limited to data loss, code corruption, security
-              breaches, or business interruption. This extension is provided "AS IS" without
-              warranty of any kind.
+              The AntiCrow extension itself contains no malicious or destructive code. However, risks
+              arising from Antigravity&apos;s AI-driven autonomous actions are inherent to the Antigravity
+              platform, not AntiCrow. The developer assumes no liability for any damages arising from
+              the use of this extension or the connected Antigravity platform. This extension is
+              provided &quot;AS IS&quot; without warranty of any kind.
             </p>
           </motion.div>
         </div>
