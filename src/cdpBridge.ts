@@ -30,7 +30,7 @@ import {
 } from './cdpWindowManager';
 import {
     CdpBridgeOps,
-} from './cdpHistory';
+} from './types';
 import {
     clickElement as uiClickElement,
     waitForElement as uiWaitForElement,

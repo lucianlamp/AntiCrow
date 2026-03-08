@@ -110,3 +110,15 @@ export interface ClickResult {
     error?: string;
 }
 
+/** CdpBridge の内部操作を外部ヘルパーに公開するインターフェース */
+export interface CdpBridgeOps {
+    conn: {
+        connect(): Promise<void>;
+        send(method: string, params: unknown): Promise<unknown>;
+        evaluate(expr: string, contextId?: number): Promise<unknown>;
+    };
+    evaluateInCascade(expression: string): Promise<unknown>;
+    sleep(ms: number): Promise<void>;
+    resetCascadeContext(): void;
+}
+

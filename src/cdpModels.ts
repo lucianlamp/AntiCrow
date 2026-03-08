@@ -13,7 +13,7 @@
 //     → クリック先: div[class*="cursor-pointer"][class*="px-2"][class*="py-1"]
 // ---------------------------------------------------------------------------
 
-import { CdpBridgeOps } from './cdpHistory';
+import { CdpBridgeOps } from './types';
 import { logDebug, logWarn } from './logger';
 
 // -----------------------------------------------------------------------

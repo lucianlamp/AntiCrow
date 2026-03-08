@@ -8,7 +8,7 @@
 import * as vscode from 'vscode';
 import { logDebug, logInfo } from './logger';
 import { ClickOptions, ClickResult } from './types';
-import { CdpBridgeOps } from './cdpHistory';
+import { CdpBridgeOps } from './types';
 
 // -----------------------------------------------------------------------
 // clickElement
@@ -541,7 +541,7 @@ export async function clickDropupChevron(
 
     try {
         // メインフレームで実行（getTargetDoc で iframe 内も探索）
-        const result = await ops.conn.evaluate(CHEVRON_SCRIPT) as { clicked: boolean; method?: string; [key: string]: unknown } | null;
+        const result = await ops.conn.evaluate(CHEVRON_SCRIPT) as { clicked: boolean; method?: string;[key: string]: unknown } | null;
         if (result?.clicked) {
             logInfo(`CDP: clickDropupChevron — clicked chevron button (${result.method}, tag=${result.tag})`);
             // 展開アニメーションを待機
@@ -554,7 +554,7 @@ export async function clickDropupChevron(
 
     // cascade iframe 内でも試行
     try {
-        const cascadeResult = await ops.evaluateInCascade(CHEVRON_SCRIPT) as { clicked: boolean; method?: string; [key: string]: unknown } | null;
+        const cascadeResult = await ops.evaluateInCascade(CHEVRON_SCRIPT) as { clicked: boolean; method?: string;[key: string]: unknown } | null;
         if (cascadeResult?.clicked) {
             logInfo(`CDP: clickDropupChevron(cascade) — clicked chevron button (${cascadeResult.method}, tag=${cascadeResult.tag})`);
             await ops.sleep(200);

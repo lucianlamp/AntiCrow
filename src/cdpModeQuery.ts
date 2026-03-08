@@ -5,7 +5,7 @@
 // ドロップダウンを開いてモード一覧を取得する機能を提供する。
 // ---------------------------------------------------------------------------
 
-import { CdpBridgeOps } from './cdpHistory';
+import { CdpBridgeOps } from './types';
 import { logDebug, logWarn } from './logger';
 import { FIND_MODE_BUTTON } from './cdpModeScripts';
 
