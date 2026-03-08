@@ -17,7 +17,7 @@ import { t } from './i18n';
 // ---------------------------------------------------------------------------
 
 /** CDP 固定ポート番号を取得する（デフォルト: 9333） */
-export function getCdpPort(): number {
+function getCdpPort(): number {
     return getConfig().get<number>('cdpPort') ?? 9333;
 }
 
@@ -55,7 +55,7 @@ export function getConfig(): vscode.WorkspaceConfiguration {
 }
 
 /** i18n 言語設定を取得する（デフォルト: 'ja'） */
-export function getLanguage(): string {
+function getLanguage(): string {
     return getConfig().get<string>('language') || 'ja';
 }
 

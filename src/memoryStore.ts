@@ -35,7 +35,7 @@ export function setSummarizeOps(ops: SummarizeOps | null): void {
 }
 
 /** 現在のサマライズ Ops を取得する（テスト用） */
-export function getSummarizeOps(): SummarizeOps | null {
+function getSummarizeOps(): SummarizeOps | null {
     return currentSummarizeOps;
 }
 
@@ -57,7 +57,7 @@ export interface MemoryEntry {
  * グローバル MEMORY.md を読み取る。
  * ファイルが存在しない場合は null を返す。
  */
-export function readGlobalMemory(): string | null {
+function readGlobalMemory(): string | null {
     return readMemoryFile(GLOBAL_MEMORY_PATH, 'global');
 }
 
@@ -65,7 +65,7 @@ export function readGlobalMemory(): string | null {
  * ワークスペース固有の MEMORY.md を読み取る。
  * ファイルが存在しない場合は null を返す。
  */
-export function readWorkspaceMemory(workspacePath: string): string | null {
+function readWorkspaceMemory(workspacePath: string): string | null {
     const memPath = path.join(workspacePath, ANTICROW_DIR_NAME, MEMORY_FILE_NAME);
     return readMemoryFile(memPath, `workspace(${path.basename(workspacePath)})`);
 }

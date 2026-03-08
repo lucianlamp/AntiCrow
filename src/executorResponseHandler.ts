@@ -30,7 +30,7 @@ export type SendFileFunc = (channelId: string, filePath: string, comment?: strin
 // レスポンスコンテンツ処理
 // ---------------------------------------------------------------------------
 
-export interface ProcessedResponse {
+interface ProcessedResponse {
     /** クリーンなコンテンツ（メモリタグ・提案タグ除去済み） */
     cleanContent: string;
     /** 提案リスト */
@@ -41,7 +41,7 @@ export interface ProcessedResponse {
 }
 
 /** レスポンスコンテンツを処理してクリーンなメッセージを生成 */
-export function processResponseContent(response: string, responsePath: string, plan: Plan): ProcessedResponse {
+function processResponseContent(response: string, responsePath: string, plan: Plan): ProcessedResponse {
     // Markdown レスポンスはそのまま Discord に送信（JSON の場合はフォールバック展開）
     const isMarkdown = responsePath.endsWith('.md');
     const content = isMarkdown ? response.trim() : FileIpc.extractResult(response);
@@ -67,7 +67,7 @@ export function processResponseContent(response: string, responsePath: string, p
 // ---------------------------------------------------------------------------
 
 /** レスポンスからメモリタグを抽出して MEMORY.md に書き込み */
-export function extractAndSaveMemory(response: string, responsePath: string, plan: Plan): void {
+function extractAndSaveMemory(response: string, responsePath: string, plan: Plan): void {
     const isMarkdown = responsePath.endsWith('.md');
     const content = isMarkdown ? response.trim() : FileIpc.extractResult(response);
 
@@ -97,7 +97,7 @@ export function extractAndSaveMemory(response: string, responsePath: string, pla
 // ---------------------------------------------------------------------------
 
 /** レスポンス内のファイル参照を抽出して Discord に送信し、送信済み参照を除去 */
-export async function sendFileReferences(
+async function sendFileReferences(
     resultMsg: string,
     notifyChannel: string,
     sendFile: SendFileFunc,
@@ -209,7 +209,7 @@ export function recordExecution(
 // ---------------------------------------------------------------------------
 
 /** レスポンス送信用コールバック（通常モード・チームモード共通） */
-export interface ResponseCallbacks {
+interface ResponseCallbacks {
     /** Discord チャンネルにメッセージを送信 */
     sendToChannel: (channelId: string, message: string, color?: number) => Promise<void>;
     /** Discord チャンネルにファイルを送信 */
