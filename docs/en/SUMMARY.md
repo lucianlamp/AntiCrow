@@ -11,3 +11,5 @@
 - [Pro Plan](pro-plan.md)
 - [FAQ](faq.md)
 - [Disclaimer](disclaimer.md)
+- [🔒 Privacy Policy](privacy.md)
+- [🛡️ Security Policy](security.md)
