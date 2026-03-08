@@ -4,14 +4,22 @@
 
 Use of the AntiCrow extension involves significant risks. Please read and understand the following before using this software.
 
+## Safety of AntiCrow
+
+The AntiCrow extension itself **does not contain any malicious or destructive code**. It is designed to prevent exposure of API keys and secret credentials.
+
+However, **Antigravity (the AI coding editor)** that AntiCrow connects to may, based on AI judgment, autonomously perform file operations (creation, modification, deletion), send requests to external services, or execute other potentially destructive actions. **These risks are not caused by AntiCrow, but are inherent to the behavior and specifications of the Antigravity AI platform.**
+
+AntiCrow serves as a bridge that relays instructions from Discord to Antigravity. The actual actions executed by the AI and their outcomes are determined by Antigravity's own specifications and AI decision-making.
+
 ## Risks
 
-This extension automates operations on your development environment, which may result in:
+Due to the nature of Antigravity's AI-driven operations, the following risks may occur (including but not limited to):
 
-- **Data Loss** — Automated operations may overwrite, delete, or corrupt your files and data
+- **Data Loss** — Automated AI operations may overwrite, delete, or corrupt your files and data
 - **Unintended Code Changes** — AI-generated modifications may introduce bugs, break existing functionality, or alter your codebase in unexpected ways
-- **API Key Misuse** — Credentials and API keys configured in your environment may be accessed or used in unintended ways during automated execution
-- **System Instability** — Automated processes may cause performance degradation or system instability
+- **API Key Misuse** — Based on prompt content or AI judgment, API keys may be accessed or used in unintended ways during automated execution
+- **Impact on External Services** — Automated AI operations may send unexpected requests to connected external services
 
 ## Use at Your Own Risk
 
