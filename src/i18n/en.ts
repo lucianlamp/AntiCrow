@@ -327,26 +327,6 @@ export const messages = {
   'template.saved': '📝 Template "{0}" saved.{1}',
   'template.savedArgsDetected': '\nDetected arguments: {0}',
 
-  // --- historyButtons.ts ---
-  'history.timeUnit.m': 'm ago',
-  'history.timeUnit.h': 'h ago',
-  'history.timeUnit.d': 'd ago',
-  'history.timeUnit.w': 'w ago',
-  'history.timeUnit.mo': 'mo ago',
-  'history.timeUnit.y': 'y ago',
-  'history.title': '📜 Conversation History{0}',
-  'history.empty': 'No conversation history found.\nPlease make sure the Antigravity chat panel is open.',
-  'history.page': 'Page {0}',
-  'history.count': '**{0} conversations{1}**',
-  'history.fieldName': '📋 Conversations',
-  'history.button.prev': '◀ Prev',
-  'history.button.refresh': '🔄 Refresh',
-  'history.button.next': '▶ Next',
-  'history.button.close': '❌ Close',
-  'history.switchSuccess': '✅ Switched conversation',
-  'history.switchSuccessDesc': 'Switched to **{0}**.',
-  'history.switchFail': '❌ Failed to switch conversation',
-  'history.switchFailDesc': 'Failed to switch to **{0}**.\nPlease make sure the Antigravity chat panel is open and try again.',
 
   // --- slashCommands.ts ---
   'command.status.desc': 'Show Bot, connection, and queue status',
@@ -358,7 +338,7 @@ export const messages = {
   'command.template.desc': 'Show and manage templates',
   'command.model.desc': 'Show available AI models and switch',
   'command.mode.desc': 'Switch AI mode (Planning / Fast)',
-  'command.history.desc': 'Show and switch Antigravity conversation history',
+
   'command.suggest.desc': 'Analyze project and suggest next actions',
   'command.help.desc': 'Show AntiCrow commands and usage',
   'command.pro.desc': 'Pro license management, purchase, and key input',
@@ -538,10 +518,6 @@ export const messages = {
   'admin.mode.notAvailable': '⚠️ Could not retrieve mode list. Please check Antigravity status.',
   'admin.mode.error': '❌ Mode list retrieval error: {0}',
 
-  // --- handleHistory ---
-  'admin.history.notInit': '⚠️ Antigravity connection is not initialized.',
-  'admin.history.sectionWarning': '⚠️ Section classification failed. Conversations from other workspaces may be included.',
-  'admin.history.error': '❌ Conversation history retrieval error: {0}',
 
   // --- handleHelp ---
   'admin.help.title': '📖 **AntiCrow Help**',
@@ -553,7 +529,7 @@ export const messages = {
   'admin.help.cmdNewchat': '`/newchat` — Open a new chat in Antigravity',
   'admin.help.cmdModel': '`/model` — Show/switch AI models',
   'admin.help.cmdMode': '`/mode` — Switch AI mode (Planning / Fast)',
-  'admin.help.cmdHistory': '`/history` — Show/switch conversation history',
+
   'admin.help.cmdWorkspace': '`/workspace` — Show workspace list',
   'admin.help.cmdTemplates': '`/templates` — Show/manage templates',
   'admin.help.cmdPro': '`/pro` — Pro license management, purchase, and key input',
@@ -773,13 +749,6 @@ export const messages = {
   'btnMode.indexOutOfRange': '⚠️ Mode index is out of range.',
   'btnMode.switched': '✅ Switched mode to **{0}**.',
 
-  // -----------------------------------------------------------------------
-  // slashButtonHistory.ts
-  // -----------------------------------------------------------------------
-  'btnHistory.notConnected': '⚠️ Antigravity connection is not established.',
-  'btnHistory.conversation': 'Conversation "{0}"',
-  'btnHistory.sectionWarning': '⚠️ Section classification failed. Conversations from other workspaces may be included.',
-  'btnHistory.closed': '❌ Conversation history closed.',
 
   // -----------------------------------------------------------------------
   // workspaceHandler.ts

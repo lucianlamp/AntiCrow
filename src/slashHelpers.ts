@@ -66,30 +66,3 @@ export function resolveRepoRootFromInteraction(
     }
     return { repoRoot: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath, wsName };
 }
-
-/**
- * ボタンインタラクションからワークスペースを解決し、
- * 対応する CdpBridge を取得する共通ヘルパー。
- * フォールバックとして ctx.cdp（デフォルト）を返す。
- */
-export function resolveHistoryCdp(
-    ctx: BridgeContext,
-    interaction: { channel: unknown },
-): { cdp: BridgeContext['cdp']; wsName: string | null } {
-    const channel = interaction.channel;
-    let wsName: string | null = null;
-    if (channel && typeof channel === 'object' && 'parent' in channel) {
-        wsName = resolveWorkspaceFromChannel(channel as TextChannel);
-    }
-    let cdp = ctx.cdp;
-    if (wsName && ctx.cdpPool) {
-        const poolCdp = ctx.cdpPool.getActive(wsName);
-        if (poolCdp) {
-            cdp = poolCdp;
-            logDebug(`resolveHistoryCdp: using cdpPool for workspace "${wsName}"`);
-        } else {
-            logDebug(`resolveHistoryCdp: cdp for workspace "${wsName}" not active, fallback to default`);
-        }
-    }
-    return { cdp, wsName };
-}

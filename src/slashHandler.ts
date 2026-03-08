@@ -11,7 +11,7 @@
 //   - slashButtonSchedule.ts  — スケジュール関連ボタン
 //   - slashButtonModel.ts     — モデル管理ボタン
 //   - slashButtonMode.ts      — モード管理ボタン
-//   - slashButtonHistory.ts   — 会話履歴管理ボタン
+
 //   - slashButtonTeam.ts      — チーム・サブエージェント関連ボタン
 //   - slashButtonMisc.ts      — Pro・キュー・提案ボタン
 //   - slashModalHandlers.ts   — モーダル送信ハンドラ群
@@ -38,7 +38,7 @@ import { handleManageSlash } from './adminHandler';
 import { handleScheduleButton } from './slashButtonSchedule';
 import { handleModelButton } from './slashButtonModel';
 import { handleModeButton } from './slashButtonMode';
-import { handleHistoryButton } from './slashButtonHistory';
+
 import { handleTeamButton } from './slashButtonTeam';
 import { handleMiscButton } from './slashButtonMisc';
 
@@ -55,7 +55,7 @@ import { handleModalSubmit as handleModalSubmitImpl } from './slashModalHandlers
 export { handleManageSlash } from './adminHandler';
 export { handleTemplateButton, buildTemplateListPanel } from './templateHandler';
 export { buildTeamButtons } from './slashButtonTeam';
-export { debouncedRename, resolveRepoRootFromInteraction, resolveHistoryCdp } from './slashHelpers';
+export { debouncedRename, resolveRepoRootFromInteraction } from './slashHelpers';
 
 // ---------------------------------------------------------------------------
 // スラッシュコマンドハンドラ
@@ -140,7 +140,7 @@ export async function handleButtonInteraction(
         if (await handleScheduleButton(ctx, interaction, customId)) { return; }
         if (await handleModelButton(ctx, interaction, customId)) { return; }
         if (await handleModeButton(ctx, interaction, customId)) { return; }
-        if (await handleHistoryButton(ctx, interaction, customId)) { return; }
+
         if (await handleMiscButton(ctx, interaction, customId)) { return; }
         if (await handleTeamButton(ctx, interaction, customId)) { return; }
 

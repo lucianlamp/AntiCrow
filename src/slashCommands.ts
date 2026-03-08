@@ -48,10 +48,6 @@ export const slashCommandDefinitions = [
         .setDescription(t('command.mode.desc')),
 
     new SlashCommandBuilder()
-        .setName('history')
-        .setDescription(t('command.history.desc')),
-
-    new SlashCommandBuilder()
         .setName('suggest')
         .setDescription(t('command.suggest.desc')),
 

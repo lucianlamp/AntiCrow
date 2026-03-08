@@ -23,8 +23,7 @@ import { logDebug, logError, logWarn } from './logger';
 import { isDeveloper } from './accessControl';
 import { buildEmbed, EmbedColor } from './embedHelper';
 import { buildScheduleListEmbed, buildDeleteConfirmEmbed } from './scheduleButtons';
-import { buildHistoryListEmbed } from './historyButtons';
-import { openHistoryAndGetSections, closePopup, debugConversationAttributes, type ConversationSection } from './cdpHistory';
+
 import { buildModelListEmbed, buildModelSwitchResultEmbed } from './modelButtons';
 import { getCurrentModel, getAvailableModels, selectModel } from './cdpModels';
 import { buildModeListEmbed, buildModeSwitchResultEmbed } from './modeButtons';
@@ -543,57 +542,6 @@ async function handleMode(ctx: BridgeContext, interaction: ChatInputCommandInter
     }
 }
 
-async function handleHistory(ctx: BridgeContext, interaction: ChatInputCommandInteraction): Promise<void> {
-    await interaction.deferReply();
-    try {
-        const { cdp } = resolveTargetCdp(ctx, interaction);
-        if (!cdp) {
-            await interaction.editReply({ embeds: [buildEmbed(t('admin.history.notInit'), EmbedColor.Warning)] });
-            return;
-        }
-
-        logDebug('handleHistory: starting openHistoryAndGetSections');
-        const sections = await openHistoryAndGetSections(cdp.ops);
-        logDebug(`handleHistory: got ${sections.length} sections`);
-
-        // 履歴パネルを閉じる（Antigravity UI を元に戻す）
-        await closePopup(cdp.ops);
-
-        // workspace セクションの items を取得（フォールバック: 全セクションの items を統合）
-        const wsSection = sections.find((s: ConversationSection) => s.section === 'workspace');
-        const unknownSection = sections.find((s: ConversationSection) => s.section === 'unknown');
-        const conversations = wsSection
-            ? wsSection.items
-            : sections.flatMap((s: ConversationSection) => s.items);
-
-        // セクションラベルからワークスペース名を抽出（"Recent in anti-crow" → "anti-crow"）
-        let workspaceName: string | undefined;
-        if (wsSection?.sectionLabel) {
-            const match = wsSection.sectionLabel.match(/^Recent in (.+)$/i);
-            workspaceName = match ? match[1].trim() : wsSection.sectionLabel;
-        } else {
-            // フォールバック: CDP タイトルから抽出
-            const activeTitle = cdp.getActiveTargetTitle() || '';
-            workspaceName = activeTitle.includes(' — ')
-                ? activeTitle.split(' — ')[0].trim()
-                : undefined;
-        }
-        logDebug(`handleHistory: workspaceName=${workspaceName || '(unknown)'}, conversations=${conversations.length}`);
-
-        const { embeds, components } = buildHistoryListEmbed(conversations, 0, workspaceName);
-
-        // unknown セクション（セクション分類失敗）の場合、警告をフッターに追加
-        if (unknownSection && !wsSection) {
-            embeds[0]?.setFooter({ text: t('admin.history.sectionWarning') });
-        }
-
-        await interaction.editReply({ embeds, components: components as any });
-    } catch (e) {
-        const errMsg = e instanceof Error ? e.message : String(e);
-        logError('handleHistory: failed', e);
-        await interaction.editReply({ embeds: [buildEmbed(t('admin.history.error', errMsg), EmbedColor.Error)] }).catch(() => { });
-    }
-}
 
 async function handleHelp(_ctx: BridgeContext, interaction: ChatInputCommandInteraction): Promise<void> {
     const helpMsg = [
@@ -607,7 +555,7 @@ async function handleHelp(_ctx: BridgeContext, interaction: ChatInputCommandInte
         t('admin.help.cmdNewchat'),
         t('admin.help.cmdModel'),
         t('admin.help.cmdMode'),
-        t('admin.help.cmdHistory'),
+
         t('admin.help.cmdWorkspace'),
         t('admin.help.cmdTemplates'),
         t('admin.help.cmdPro'),
@@ -1090,7 +1038,7 @@ const COMMAND_HANDLERS: Record<string, CommandHandler> = {
     template: handleTemplate,
     model: handleModels,
     mode: handleMode,
-    history: handleHistory,
+
     suggest: handleSuggest,
     help: handleHelp,
     pro: handlePro,

@@ -332,28 +332,6 @@ export const messages = {
   'template.saved': '📝 テンプレート「{0}」を保存しました。{1}',
   'template.savedArgsDetected': '\n検出された引数: {0}',
 
-  // -----------------------------------------------------------------------
-  // historyButtons.ts
-  // -----------------------------------------------------------------------
-  'history.timeUnit.m': '分前',
-  'history.timeUnit.h': '時間前',
-  'history.timeUnit.d': '日前',
-  'history.timeUnit.w': '週間前',
-  'history.timeUnit.mo': 'ヶ月前',
-  'history.timeUnit.y': '年前',
-  'history.title': '📜 会話履歴{0}',
-  'history.empty': '会話履歴が見つかりませんでした。\nAntigravity のチャットパネルが開いていることを確認してください。',
-  'history.page': '{0}ページ',
-  'history.count': '**{0}件の会話{1}**',
-  'history.fieldName': '📋 会話一覧',
-  'history.button.prev': '◀ 前',
-  'history.button.refresh': '🔄 更新',
-  'history.button.next': '▶ 次',
-  'history.button.close': '❌ 閉じる',
-  'history.switchSuccess': '✅ 会話を切り替えました',
-  'history.switchSuccessDesc': '**{0}** に切り替えました。',
-  'history.switchFail': '❌ 会話切替に失敗',
-  'history.switchFailDesc': '**{0}** への切り替えに失敗しました。\nAntigravity のチャットパネルが開いていることを確認し、もう一度お試しください。',
 
   // -----------------------------------------------------------------------
   // slashCommands.ts
@@ -367,7 +345,7 @@ export const messages = {
   'command.template.desc': 'テンプレート一覧を表示・管理',
   'command.model.desc': '利用可能な AI モデル一覧を表示・切り替え',
   'command.mode.desc': 'AI モード切替（Planning / Fast）',
-  'command.history.desc': 'Antigravity の会話履歴を表示・切り替え',
+
   'command.suggest.desc': 'プロジェクトを分析して次にやることを提案します',
   'command.help.desc': 'AntiCrow のコマンド一覧と使い方を表示',
   'command.pro.desc': 'Pro ライセンスの管理・購入・キー入力',
@@ -557,10 +535,6 @@ export const messages = {
   'admin.mode.notAvailable': '⚠️ モード一覧を取得できませんでした。Antigravity の状態を確認してください。',
   'admin.mode.error': '❌ モード一覧取得エラー: {0}',
 
-  // --- handleHistory ---
-  'admin.history.notInit': '⚠️ Antigravity との接続が初期化されていません。',
-  'admin.history.sectionWarning': '⚠️ セクション分類に失敗しました。別ワークスペースの会話が含まれている可能性があります。',
-  'admin.history.error': '❌ 会話履歴取得エラー: {0}',
 
   // --- handleHelp ---
   'admin.help.title': '📖 **AntiCrow ヘルプ**',
@@ -572,7 +546,7 @@ export const messages = {
   'admin.help.cmdNewchat': '`/newchat` — Antigravity で新しいチャットを開く',
   'admin.help.cmdModel': '`/model` — AI モデルの一覧・切替',
   'admin.help.cmdMode': '`/mode` — AI モード切替（Planning / Fast）',
-  'admin.help.cmdHistory': '`/history` — 会話履歴を表示・切り替え',
+
   'admin.help.cmdWorkspace': '`/workspace` — ワークスペース一覧を表示',
   'admin.help.cmdTemplates': '`/templates` — テンプレート一覧・管理',
   'admin.help.cmdPro': '`/pro` — Pro ライセンス管理・購入・キー入力',
@@ -808,13 +782,6 @@ export const messages = {
   'btnMode.indexOutOfRange': '⚠️ モードインデックスが範囲外です。',
   'btnMode.switched': '✅ モードを **{0}** に切り替えました。',
 
-  // -----------------------------------------------------------------------
-  // slashButtonHistory.ts
-  // -----------------------------------------------------------------------
-  'btnHistory.notConnected': '⚠️ Antigravity との接続が確立されていません。',
-  'btnHistory.conversation': '会話「{0}」',
-  'btnHistory.sectionWarning': '⚠️ セクション分類に失敗しました。別ワークスペースの会話が含まれている可能性があります。',
-  'btnHistory.closed': '❌ 会話履歴を閉じました。',
 
   // -----------------------------------------------------------------------
   // workspaceHandler.ts

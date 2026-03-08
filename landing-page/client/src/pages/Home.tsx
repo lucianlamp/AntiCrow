@@ -3,8 +3,8 @@ import ParticleField from "@/components/ParticleField";
 import HeroSection from "@/components/HeroSection";
 import FeaturesSection from "@/components/FeaturesSection";
 import SecuritySection from "@/components/SecuritySection";
-import PricingSection from "@/components/PricingSection";
 import FAQSection from "@/components/FAQSection";
+import DisclaimerSection from "@/components/DisclaimerSection";
 import CTASection from "@/components/CTASection";
 import Footer from "@/components/Footer";
 
@@ -17,8 +17,8 @@ export default function Home() {
         <HeroSection />
         <FeaturesSection />
         <SecuritySection />
-        <PricingSection />
         <FAQSection />
+        <DisclaimerSection />
         <CTASection />
       </main>
       <Footer />

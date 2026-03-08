@@ -18,7 +18,6 @@ export default function Footer() {
             <a href="#features" className="hover:text-foreground transition-colors">機能</a>
             <a href="#how-it-works" className="hover:text-foreground transition-colors">使い方</a>
             <a href="#security" className="hover:text-foreground transition-colors">セキュリティ</a>
-            <a href="#pricing" className="hover:text-foreground transition-colors">料金</a>
             <a href="#faq" className="hover:text-foreground transition-colors">FAQ</a>
           </div>
 

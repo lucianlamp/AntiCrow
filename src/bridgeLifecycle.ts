@@ -58,7 +58,11 @@ function isInvalidWorkspaceName(wsName: string): boolean {
         wsName.includes('Settings') ||       // 設定タブ
         wsName.includes('Extensions') ||     // 拡張機能タブ
         /^\..+/.test(wsName) ||              // 隠しファイル
-        /\.[a-z]{1,5}$/i.test(wsName)        // ファイル名（拡張子を含む）
+        /\.[a-z]{1,5}$/i.test(wsName) ||     // ファイル名（拡張子を含む）
+        wsName.length > 50 ||                // 異常に長い名前
+        /\d+\s*(つの|個の)/.test(wsName) ||   // 「N つの問題」パターン（SCM）
+        wsName.includes('問題') ||            // SCM: 日本語
+        wsName.includes('problem')            // SCM: 英語
     );
 }
 
@@ -168,43 +172,41 @@ async function promoteToBotOwner(
     await ctx.bot.waitForReady();
     logInfo(`Bridge: bot ready, guilds=${ctx.bot.getFirstGuild()?.name || 'none'}`);
 
-    // ワークスペースカテゴリー自動作成
+    // ワークスペースカテゴリー自動作成（信頼できるソースのみ使用）
+    // CDPターゲットのタイトルからの推測は廃止 — SCM情報等が混入してカテゴリ増殖バグの原因になるため
     {
         const guild = ctx.bot.getFirstGuild();
         if (guild) {
             try {
-                const instances = await CdpBridge.discoverInstances(getCdpPorts(context.globalStorageUri.fsPath));
-                for (const inst of instances) {
-                    const hasWorkspace = inst.title.includes(' \u2014 ') || inst.title.includes(' - ');
-                    if (!hasWorkspace) {
-                        logDebug(`Bridge: skipping category creation for initial screen: "${inst.title}"`);
-                        continue;
-                    }
-                    const wsName = CdpBridge.extractWorkspaceName(inst.title);
+                // 1. 現在のウィンドウのワークスペース名（vscode.workspace.name — 最も信頼できるソース）
+                const currentWsName = vscode.workspace.name;
+                if (currentWsName && !isInvalidWorkspaceName(currentWsName) && !SubagentReceiver.isSubagent(currentWsName)) {
+                    await ctx.bot.ensureWorkspaceStructure(guild.id, currentWsName);
+                    logDebug(`Bridge: created category for current workspace: "${currentWsName}"`);
+                }
+
+                // 2. settings.json の workspacePaths に登録済みのワークスペース
+                const wsPaths = getWorkspacePaths();
+                for (const wsName of Object.keys(wsPaths)) {
                     if (wsName && !isInvalidWorkspaceName(wsName) && !SubagentReceiver.isSubagent(wsName)) {
                         await ctx.bot.ensureWorkspaceStructure(guild.id, wsName);
-                    } else if (wsName) {
-                        const reason = SubagentReceiver.isSubagent(wsName) ? 'subagent workspace' : 'invalid workspace name';
-                        logDebug(`Bridge: skipping category creation for ${reason}: "${wsName}" (title: "${inst.title}")`);
                     }
                 }
-                logDebug(`Bridge: workspace categories ensured for ${instances.length} instance(s)`);
+                logDebug(`Bridge: workspace categories ensured from trusted sources`);
 
-                // ワークスペースパス自動保存
+                // ワークスペースパス自動保存（現在のワークスペースのみ）
                 const currentWsFolders = vscode.workspace.workspaceFolders;
-                if (currentWsFolders && currentWsFolders.length > 0 && ctx.cdp) {
-                    const wsName = ctx.cdp.getActiveWorkspaceName();
+                if (currentWsFolders && currentWsFolders.length > 0 && currentWsName) {
                     const wsPath = currentWsFolders[0].uri.fsPath;
-                    if (wsName && wsPath) {
+                    if (wsPath) {
                         // バリデーション: 壊れたワークスペース名の保存を防止
-                        if (isInvalidWorkspaceName(wsName)) {
-                            logWarn(`Bridge: skipping workspace path save — invalid workspace name: "${wsName}"`);
+                        if (isInvalidWorkspaceName(currentWsName)) {
+                            logWarn(`Bridge: skipping workspace path save — invalid workspace name: "${currentWsName}"`);
                         } else {
-                            const wsPaths = getWorkspacePaths();
-                            if (!wsPaths[wsName] || wsPaths[wsName] !== wsPath) {
-                                wsPaths[wsName] = wsPath;
+                            if (!wsPaths[currentWsName] || wsPaths[currentWsName] !== wsPath) {
+                                wsPaths[currentWsName] = wsPath;
                                 await getConfig().update('workspacePaths', wsPaths, vscode.ConfigurationTarget.Global);
-                                logDebug(`Bridge: auto-saved workspace path: "${wsName}" → "${wsPath}"`);
+                                logDebug(`Bridge: auto-saved workspace path: "${currentWsName}" → "${wsPath}"`);
                             }
                         }
                     }
@@ -313,16 +315,15 @@ async function promoteToBotOwner(
     logInfo('Bridge: Bot started (this workspace is the bot owner)');
 
     // -----------------------------------------------------------------
-    // 定期 CDP ターゲットスキャン: 新ワークスペースのカテゴリ自動生成
+    // 定期ワークスペースカテゴリーチェック: settings.json の workspacePaths のみを信頼
+    // CDPターゲットタイトルからの推測は廃止（SCM情報等が混入するため）
     // -----------------------------------------------------------------
-    const knownWorkspaces = new Set<string>();
-    try {
-        const initInstances = await CdpBridge.discoverInstances(getCdpPorts(context.globalStorageUri.fsPath));
-        for (const inst of initInstances) {
-            const wsName = CdpBridge.extractWorkspaceName(inst.title);
-            if (wsName) { knownWorkspaces.add(wsName); }
-        }
-    } catch (e) { logDebug(`promoteToBotOwner: initial instance scan failed: ${e}`); }
+    const knownCategories = new Set<string>();
+    // 初期状態として現在のワークスペースを追加
+    const initialWsName = vscode.workspace.name;
+    if (initialWsName) { knownCategories.add(initialWsName); }
+    const initialPaths = getWorkspacePaths();
+    for (const ws of Object.keys(initialPaths)) { knownCategories.add(ws); }
 
     ctx.categoryWatchTimer = setInterval(async () => {
         if (!ctx.bot || !ctx.bot.isReady()) { return; }
@@ -330,34 +331,16 @@ async function promoteToBotOwner(
         if (!guild) { return; }
 
         try {
-            const instances = await CdpBridge.discoverInstances(getCdpPorts(context.globalStorageUri.fsPath));
-            for (const inst of instances) {
-                const hasWorkspace = inst.title.includes(' \u2014 ') || inst.title.includes(' - ');
-                if (!hasWorkspace) { continue; }
-                const wsName = CdpBridge.extractWorkspaceName(inst.title);
-                if (!wsName || knownWorkspaces.has(wsName)) { continue; }
-                if (isInvalidWorkspaceName(wsName)) {
-                    logDebug(`Bridge: skipping category creation for invalid workspace name: "${wsName}" (title: "${inst.title}")`);
-                    continue;
-                }
-                // サブエージェントのワークスペースはカテゴリ自動作成しない
-                if (SubagentReceiver.isSubagent(wsName)) {
-                    logDebug(`Bridge: skipping category creation for subagent workspace: "${wsName}"`);
-                    knownWorkspaces.add(wsName);
-                    continue;
-                }
-
-                knownWorkspaces.add(wsName);
-                logDebug(`Bridge: new workspace detected: "${wsName}" — creating category...`);
+            const currentPaths = getWorkspacePaths();
+            for (const wsName of Object.keys(currentPaths)) {
+                if (!wsName || knownCategories.has(wsName)) { continue; }
+                if (isInvalidWorkspaceName(wsName) || SubagentReceiver.isSubagent(wsName)) { continue; }
+                knownCategories.add(wsName);
+                logDebug(`Bridge: new workspace detected in settings: "${wsName}" — creating category...`);
                 await ctx.bot.ensureWorkspaceStructure(guild.id, wsName);
-
-                const wsPaths = getWorkspacePaths();
-                if (!wsPaths[wsName]) {
-                    logDebug(`Bridge: workspace "${wsName}" path not yet known (will be saved when that window's extension starts)`);
-                }
             }
         } catch (e) {
-            logDebug(`Bridge: periodic CDP scan failed: ${e instanceof Error ? e.message : e}`);
+            logDebug(`Bridge: periodic workspace check failed: ${e instanceof Error ? e.message : e}`);
         }
     }, 10_000);
 }

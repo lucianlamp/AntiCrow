@@ -30,12 +30,6 @@ import {
 } from './cdpWindowManager';
 import {
     CdpBridgeOps,
-    openHistoryPopup as histOpenPopup,
-    getConversationList as histGetList,
-    openHistoryAndGetList as histOpenAndGet,
-    cleanupHistoryObserver as histCleanup,
-    selectConversation as histSelect,
-    closePopup as histClose,
 } from './cdpHistory';
 import {
     clickElement as uiClickElement,
@@ -906,43 +900,7 @@ export class CdpBridge {
         await this.clickCancelButton();
     }
 
-    // -----------------------------------------------------------------------
-    // 会話履歴ポップアップ操作（cdpHistory.ts へ委譲）
-    // -----------------------------------------------------------------------
 
-    /** 会話履歴ポップアップを開く（チャット画面右上の時計アイコンをクリック） */
-    async openHistoryPopup(): Promise<void> {
-        return histOpenPopup(this.ops);
-    }
-
-    /** 会話履歴ポップアップ内の会話一覧を取得 (Quick Pick ウィジェットの DOM スクレイピング) */
-    async getConversationList(): Promise<{ title: string; index: number }[]> {
-        return histGetList(this.ops);
-    }
-
-    /**
-     * 会話履歴ポップアップを開き、会話一覧を取得する（統合版）。
-     * Quick Pick ポップアップが一瞬で閉じても検出できるよう、
-     * MutationObserver をクリック前にメインウィンドウに設置する。
-     */
-    async openHistoryAndGetList(): Promise<{ title: string; index: number }[]> {
-        return histOpenAndGet(this.ops);
-    }
-
-    /** メインウィンドウに設置した MutationObserver をクリーンアップする */
-    private async cleanupHistoryObserver(): Promise<void> {
-        return histCleanup(this.ops);
-    }
-
-    /** ポップアップ内の N 番目の会話を選択 (Arrow Down + Enter) */
-    async selectConversation(index: number): Promise<boolean> {
-        return histSelect(this.ops, index);
-    }
-
-    /** ポップアップを閉じる (Escape) */
-    async closePopup(): Promise<void> {
-        return histClose(this.ops);
-    }
     async sendPrompt(prompt: string): Promise<void> {
         return doSendPrompt(this.promptSenderContext, prompt);
     }
