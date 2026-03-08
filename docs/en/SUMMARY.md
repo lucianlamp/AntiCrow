@@ -10,3 +10,4 @@
 - [Scheduled Execution](schedules.md)
 - [Pro Plan](pro-plan.md)
 - [FAQ](faq.md)
+- [Disclaimer](disclaimer.md)

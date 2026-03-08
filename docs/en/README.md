@@ -39,3 +39,9 @@ Whether you're on your phone or PC, as long as you have Discord, you can ask AI 
 ## Support
 
 Bug reports and feature requests are welcome on our Discord server.
+
+## ⚠️ Disclaimer
+
+This extension involves significant risks including data loss from automated operations, unintended code changes, and potential API key misuse. Use at your own risk. This software is provided "AS IS" without warranty. The developers assume no liability for any damages arising from use.
+
+For full details, see the [Disclaimer](disclaimer.md) page.

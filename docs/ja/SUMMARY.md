@@ -10,3 +10,4 @@
 - [スケジュール実行](schedules.md)
 - [Pro プラン](pro-plan.md)
 - [よくある質問](faq.md)
+- [⚠️ 免責事項](disclaimer.md)
