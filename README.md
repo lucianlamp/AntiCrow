@@ -527,29 +527,37 @@ Feel free to reach out with feedback, questions, or bug reports 💬
 
 ### 日本語
 
-> **⚠️ 重要：自己責任でのご利用**
+> **🛡️ AntiCrow の安全性**
 
-本拡張機能（Anti-Crow / AntiCrow）の使用には**重大なリスク**が伴います。以下の点を十分にご理解の上、ご利用ください。
+AntiCrow 拡張機能自体には、**悪意のある操作や破壊的な操作は一切含まれていません**。API キーやシークレット情報を外部に露出させるような仕組みも排除するよう設計しています。AntiCrow は Discord からの指示を Antigravity に中継する役割を担っています。
 
-- **自動操作のリスク** — AI による自動操作は、意図しないファイルの変更・削除を引き起こす可能性があります
-- **コード変更リスク** — 自動生成・自動編集されたコードが、既存のコードベースを破壊する可能性があります
-- **API キーの誤使用** — API キーや認証情報が意図せずログに出力されたり、外部に露出するリスクがあります
+> **⚠️ Antigravity 由来のリスクについて**
+
+ただし、AntiCrow が連携する **Antigravity（AI コーディングエディタ）** の仕様として、AI の判断により以下のリスクが発生する可能性があります。**これらは AntiCrow 側の問題ではなく、Antigravity 本体の仕様に起因します。**
+
+- **自動操作のリスク** — Antigravity の AI による自動操作は、意図しないファイルの変更・削除を引き起こす可能性があります
+- **コード変更リスク** — Antigravity の AI が自動生成・自動編集したコードが、既存のコードベースを破壊する可能性があります
+- **API キーの取り扱い** — AntiCrow は API キー露出防止設計ですが、Antigravity の AI の判断により、キーが意図しない形で使用される可能性があります
 - **自己責任** — ご利用は全て**自己責任**となります
 - **AS IS 提供** — 本拡張機能は「現状のまま（AS IS）」で提供されます。明示的・黙示的を問わず、商品性、特定目的への適合性、権利非侵害の保証を含む一切の保証をいたしません
-- **開発者免責** — 開発者は、本拡張機能の使用により生じたいかなる損害（データの損失、コードの破損、セキュリティ侵害、業務の中断、その他の直接的・間接的損害を含むがこれらに限定されない）についても、一切の責任を負いません
+- **開発者免責** — 開発者は、本拡張機能および連携先の Antigravity の使用により生じたいかなる損害（データの損失、コードの破損、セキュリティ侵害、業務の中断、その他の直接的・間接的損害を含むがこれらに限定されない）についても、一切の責任を負いません。Antigravity の AI による自律的な判断に起因するリスクについても同様です
 
 ### English
 
-> **⚠️ Important: Use at Your Own Risk**
+> **🛡️ Safety of AntiCrow**
 
-Use of this extension (Anti-Crow / AntiCrow) involves **significant risks**. Please fully understand the following before use.
+The AntiCrow extension itself **does not contain any malicious or destructive code**. It is designed to prevent exposure of API keys and secret credentials. AntiCrow serves as a bridge that relays instructions from Discord to Antigravity.
 
-- **Automated Operation Risks** — AI-driven automation may cause unintended file modifications or deletions
-- **Code Modification Risks** — Auto-generated or auto-edited code may break your existing codebase
-- **API Key Misuse** — API keys or credentials may be inadvertently logged or exposed
+> **⚠️ Risks from Antigravity**
+
+However, **Antigravity (the AI coding editor)** that AntiCrow connects to may, based on AI judgment, autonomously perform actions that carry the following risks. **These risks are not caused by AntiCrow, but are inherent to the Antigravity AI platform.**
+
+- **Automated Operation Risks** — Antigravity's AI-driven automation may cause unintended file modifications or deletions
+- **Code Modification Risks** — Code auto-generated or auto-edited by Antigravity's AI may break your existing codebase
+- **API Key Handling** — AntiCrow is designed to prevent API key exposure, but Antigravity's AI judgment may use keys in unintended ways
 - **Self-Responsibility** — All use is entirely at **your own risk**
 - **Provided "AS IS"** — This extension is provided "AS IS" without warranty of any kind, express or implied, including but not limited to the warranties of merchantability, fitness for a particular purpose, and noninfringement
-- **Developer Disclaimer** — The developer assumes no liability for any damages arising from the use of this extension, including but not limited to data loss, code corruption, security breaches, business interruption, or any other direct or indirect damages
+- **Developer Disclaimer** — The developer assumes no liability for any damages arising from the use of this extension or the connected Antigravity platform, including but not limited to data loss, code corruption, security breaches, business interruption, or any other direct or indirect damages. This includes risks arising from Antigravity's AI-driven autonomous actions
 
 ---
 
