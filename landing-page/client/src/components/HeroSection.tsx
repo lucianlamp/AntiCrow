@@ -182,7 +182,7 @@ export default function HeroSection() {
             >
               <Sparkles className="w-4 h-4 text-amber" />
               <span className="text-sm font-medium text-amber">
-                ウェイトリスト受付中
+                クローズドベータ ウェイトリスト受付中
               </span>
             </motion.div>
 
@@ -334,7 +334,7 @@ export default function HeroSection() {
                           </>
                         ) : (
                           <>
-                            参加する
+                            クローズドベータに参加
                             <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
                           </>
                         )}
@@ -370,22 +370,22 @@ export default function HeroSection() {
               )}
             </AnimatePresence>
 
-            {/* Social Proof */}
+            {/* Docs Link */}
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ duration: 0.7, delay: 0.5 }}
               className="mt-8 flex items-center gap-3 text-sm text-muted-foreground"
             >
-              <div className="flex -space-x-2">
-                {[1, 2, 3, 4].map((i) => (
-                  <div
-                    key={i}
-                    className="w-8 h-8 rounded-full border-2 border-background bg-gradient-to-br from-indigo/60 to-coral/60"
-                  />
-                ))}
-              </div>
-              <span>100+ 人が登録済み</span>
+              <a
+                href="https://anticrow.gitbook.io/anticrow-docs/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 hover:text-foreground transition-colors"
+              >
+                📖 ドキュメントを見る
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
             </motion.div>
           </div>
 
