@@ -154,6 +154,11 @@ export default function HeroSection() {
         <img
           src="https://d2xsxph8kpxj0f.cloudfront.net/310519663098678574/gUFQQZFwAHiwr6GHCExuzr/hero-bg-jLcZDYytnS2mJRk2Y2RK4P.webp"
           alt=""
+          aria-hidden="true"
+          width={1920}
+          height={1080}
+          decoding="async"
+          fetchPriority="high"
           className="w-full h-full object-cover opacity-40"
         />
         <div className="absolute inset-0 bg-gradient-to-b from-background/60 via-background/40 to-background" />
@@ -403,7 +408,11 @@ export default function HeroSection() {
             {/* Mascot */}
             <motion.img
               src="https://d2xsxph8kpxj0f.cloudfront.net/310519663098678574/gUFQQZFwAHiwr6GHCExuzr/AntiCrowFullBody_7b5bfad5.PNG"
-              alt="AntiCrow Mascot"
+              alt="AntiCrow Mascot - Discord と Antigravity を繋ぐカラスのマスコット"
+              width={420}
+              height={420}
+              loading="lazy"
+              decoding="async"
               className="relative w-[340px] h-[340px] xl:w-[420px] xl:h-[420px] object-contain drop-shadow-2xl"
               animate={{ y: [0, -15, 0] }}
               transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
