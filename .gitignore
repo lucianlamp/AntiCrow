@@ -26,5 +26,11 @@ tsc_output*.txt
 typecheck_output*.txt
 vsce-output.txt
 
+# Wrangler ローカルキャッシュ
+.wrangler/
+
+# ビルド出力
+dist/
+
 # Anti-Crow worktree プール
 .anticrow/worktrees/
