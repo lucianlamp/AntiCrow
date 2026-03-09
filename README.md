@@ -535,6 +535,10 @@ AntiCrow 拡張機能自体には、**悪意のある操作や破壊的な操作
 
 ただし、AntiCrow が連携する **Antigravity（AI コーディングエディタ）** の仕様として、AI の判断により以下のリスクが発生する可能性があります。**これらは AntiCrow 側の問題ではなく、Antigravity 本体の仕様に起因します。**
 
+> **🔧 技術的な仕組みについて**
+
+AntiCrow は Antigravity の OAuth キーや API キーを一切使用しません。**CDP（Chrome DevTools Protocol）** 経由で Antigravity エディタそのものを直接操作します。そのため OAuth トークンの不正利用による BAN のリスクはありませんが、Antigravity のアップデートにより CDP 経由の操作が制限された場合、AntiCrow の一部または全部の機能が動作しなくなる可能性があります。
+
 - **自動操作のリスク** — Antigravity の AI による自動操作は、意図しないファイルの変更・削除を引き起こす可能性があります
 - **コード変更リスク** — Antigravity の AI が自動生成・自動編集したコードが、既存のコードベースを破壊する可能性があります
 - **API キーの取り扱い** — AntiCrow は API キー露出防止設計ですが、Antigravity の AI の判断により、キーが意図しない形で使用される可能性があります
@@ -551,6 +555,10 @@ The AntiCrow extension itself **does not contain any malicious or destructive co
 > **⚠️ Risks from Antigravity**
 
 However, **Antigravity (the AI coding editor)** that AntiCrow connects to may, based on AI judgment, autonomously perform actions that carry the following risks. **These risks are not caused by AntiCrow, but are inherent to the Antigravity AI platform.**
+
+> **🔧 Technical Architecture**
+
+AntiCrow does not use Antigravity's OAuth keys or API keys. It operates the Antigravity editor directly via **CDP (Chrome DevTools Protocol)**. This means there is no risk of being banned for OAuth token misuse. However, if Antigravity updates restrict CDP-based operations, some or all AntiCrow features may stop working.
 
 - **Automated Operation Risks** — Antigravity's AI-driven automation may cause unintended file modifications or deletions
 - **Code Modification Risks** — Code auto-generated or auto-edited by Antigravity's AI may break your existing codebase
