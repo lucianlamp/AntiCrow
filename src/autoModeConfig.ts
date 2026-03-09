@@ -203,7 +203,7 @@ export function parseAutoModeArgs(argsString: string): {
  */
 export function formatConfigForDisplay(config: AutoModeConfig): string {
     const selectionLabels: Record<AutoModeConfig['selectionMode'], string> = {
-        'auto-delegate': '🤖 自律判断 (auto-delegate)',
+        'auto-delegate': '🤖 AI判断 (auto-delegate)',
         'first': '1️⃣ 最初の提案を選択 (first)',
         'ai-select': '🧠 AIに選択させる (ai-select)',
     };

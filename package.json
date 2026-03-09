@@ -7,6 +7,10 @@
   "author": "lucianlamp",
   "icon": "images/AntiCrowIcon.png",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lucianlamp/anti-crow"
+  },
   "engines": {
     "vscode": "^1.90.0"
   },

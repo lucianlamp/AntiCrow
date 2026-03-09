@@ -72,7 +72,7 @@ export const slashCommandDefinitions = [
         .setName('team')
         .setDescription(t('command.team.desc')),
 
-    // /auto — オートモード（AI自律連続実行）
+    // /auto — オートモード（AI自動連続実行）
     new SlashCommandBuilder()
         .setName('auto')
         .setDescription(t('command.auto.desc'))

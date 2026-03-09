@@ -22,7 +22,7 @@ export const SUGGEST_AUTO_ID = 'suggest_auto';
 /** 「オートモードで実行」ボタンの固定 customId（Phase 3: /suggest → /auto 連携） */
 export const SUGGEST_AUTO_MODE_ID = 'suggest_auto_mode';
 
-/** 自律判断ボタン押下時に実行されるプロンプト */
+/** AI判断ボタン押下時に実行されるプロンプト */
 export const AUTO_PROMPT = '今の状況を見て、次にやるべきことをエージェントの判断で実行してください';
 
 // ---------------------------------------------------------------------------
@@ -102,7 +102,7 @@ export function buildSuggestionRow(
     if (currentButtonCount < 5) {
         const autoModeButton = new ButtonBuilder()
             .setCustomId(SUGGEST_AUTO_MODE_ID)
-            .setLabel('自律モードで実行')
+            .setLabel('オートモードで実行')
             .setStyle(ButtonStyle.Primary)
             .setEmoji('🔄');
         row.addComponents(autoModeButton);

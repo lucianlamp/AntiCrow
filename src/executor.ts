@@ -285,12 +285,8 @@ export class Executor {
                     // 進捗ファイル読み取り失敗は無視
                 }
 
-                // AI出力を自動追従（スクロール + 展開 + レビューUI消去）
-                try {
-                    await this.cdp.autoFollowOutput();
-                } catch {
-                    // 追従失敗は無視（接続断等）
-                }
+                // NOTE: autoFollowOutput は UIWatcher が1秒間隔で実行するため、
+                // ここでの二重呼び出しは不要（CDP接続競合のリスクもある）
             }, PROGRESS_POLL_INTERVAL_MS);
 
             let response: string;
@@ -601,7 +597,7 @@ export class Executor {
                             }
                         }
                     } catch { /* ignore */ }
-                    try { await this.cdp.autoFollowOutput(); } catch { /* ignore */ }
+                    // NOTE: autoFollowOutput は UIWatcher が担当（二重呼び出し排除）
                 }, PROGRESS_POLL_INTERVAL_MS);
                 getActivePlanProgressIntervals().add(stepProgress);
 

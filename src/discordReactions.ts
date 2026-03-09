@@ -57,7 +57,7 @@ export async function waitForConfirmation(
                 .setStyle(ButtonStyle.Success),
             new ButtonBuilder()
                 .setCustomId('confirm_auto')
-                .setLabel('自律モードで実行')
+                .setLabel('オートモードで実行')
                 .setStyle(ButtonStyle.Primary)
                 .setEmoji('🤖'),
             new ButtonBuilder()

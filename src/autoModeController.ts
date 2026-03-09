@@ -560,12 +560,12 @@ export async function handleAutoModeError(
 // ---------------------------------------------------------------------------
 
 /**
- * SUGGESTIONS が空の場合に使用する自律判断プロンプトを構築する。
+ * SUGGESTIONS が空の場合に使用するAI判断プロンプトを構築する。
  * originalPrompt と直前のステップ結果を参照して、ゴールに向けた
- * 次のアクションを自律的に判断するよう指示するプロンプトを生成する。
+ * 次のアクションを自動的に判断するよう指示するプロンプトを生成する。
  *
  * @param fallbackPrompt SUGGESTIONS がない場合のフォールバックプロンプト
- * @returns 自律判断プロンプト
+ * @returns AI判断プロンプト
  */
 function buildAutonomousPrompt(fallbackPrompt: string): string {
     if (!currentState) {
@@ -581,7 +581,7 @@ function buildAutonomousPrompt(fallbackPrompt: string): string {
         : '（まだステップが実行されていません）';
 
     const autonomousPrompt = [
-        '以下のタスクの続きを自律的に実行してください。',
+        '以下のタスクの続きを自動的に実行してください。',
         '',
         '【元のタスク目標】',
         originalPrompt,
@@ -641,7 +641,7 @@ function buildAutoPrompt(channelId: string, initialPrompt?: string): string {
                     logInfo(`autoMode: selectionMode=first — using suggestion[0]: "${suggestions[0].label}"`);
                     result = suggestions[0].prompt;
                 } else {
-                    // フォールバック: 自律判断プロンプト
+                    // フォールバック: AI判断プロンプト
                     logInfo('autoMode: selectionMode=first — no suggestions, falling back to autonomous prompt');
                     result = buildAutonomousPrompt(basePrompt);
                 }
@@ -657,7 +657,7 @@ function buildAutoPrompt(channelId: string, initialPrompt?: string): string {
                     logInfo(`autoMode: selectionMode=ai-select — ${suggestions.length} suggestions available`);
                     result = (t as any)('autoMode.aiSelectPrompt', suggestionContext, basePrompt);
                 } else {
-                    // フォールバック: 自律判断プロンプト
+                    // フォールバック: AI判断プロンプト
                     logInfo('autoMode: selectionMode=ai-select — no suggestions, falling back to autonomous prompt');
                     result = buildAutonomousPrompt(basePrompt);
                 }
