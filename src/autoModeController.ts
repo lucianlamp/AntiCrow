@@ -12,7 +12,7 @@
 import type { TextChannel } from 'discord.js';
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import type { SuggestionItem } from './suggestionParser';
-import { AUTO_PROMPT, getAllSuggestions, storeSuggestions } from './suggestionButtons';
+import { AUTO_PROMPT, buildSuggestionRow, getAllSuggestions, storeSuggestions } from './suggestionButtons';
 import { t } from './i18n';
 import { buildEmbed, EmbedColor } from './embedHelper';
 import { logDebug, logInfo, logError, logWarn } from './logger';
@@ -509,7 +509,19 @@ export async function stopAutoMode(
             true,
         );
 
-        await channel.send({ embeds: [embed] });
+        // 最後のステップの提案ボタンを追加（完了後の次アクション提案）
+        const lastStep = state.history.length > 0 ? state.history[state.history.length - 1] : null;
+        const lastSuggestions = lastStep?.suggestions ?? [];
+        const components: ActionRowBuilder<ButtonBuilder>[] = [];
+        if (lastSuggestions.length > 0) {
+            storeSuggestions(state.channelId, lastSuggestions);
+            const suggestionRow = buildSuggestionRow(lastSuggestions);
+            if (suggestionRow) {
+                components.push(suggestionRow);
+            }
+        }
+
+        await channel.send({ embeds: [embed], components });
     } catch (e) {
         logError('autoMode: failed to send stop notification', e);
     }
