@@ -108,6 +108,18 @@ Information displayed when auto mode completes:
 - ⏱️ Total time
 - 🛡️ Safety trigger count
 
+### Suggestion Buttons
+
+When auto mode completes, if the AI generated suggestions in the last step, **suggestion buttons** are displayed alongside the completion summary. Click a button to immediately execute that action.
+
+| Button | Description |
+|--------|-------------|
+| 💡🔧🚀 Suggestions | AI-suggested next actions (up to 3) |
+| 🤖 Let Agent Decide | AI autonomously picks the best action |
+| 🔄 Run in Auto Mode | Re-run auto mode based on suggestions |
+
+If no suggestions were generated, no buttons are shown.
+
 ## How to Stop
 
 To stop auto mode mid-execution:
