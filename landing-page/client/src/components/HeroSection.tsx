@@ -417,7 +417,7 @@ export default function HeroSection() {
             >
               <div className="flex items-center gap-2">
                 <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-                <span className="text-xs font-medium text-foreground">AI 実行中...</span>
+                <span className="text-xs font-medium text-foreground">{t('hero.floatingAiRunning')}</span>
               </div>
             </motion.div>
 
@@ -428,7 +428,7 @@ export default function HeroSection() {
             >
               <div className="flex items-center gap-2">
                 <span className="text-xs">💬</span>
-                <span className="text-xs font-medium text-foreground">Discord → Antigravity</span>
+                <span className="text-xs font-medium text-foreground">{t('hero.floatingRelay')}</span>
               </div>
             </motion.div>
           </motion.div>

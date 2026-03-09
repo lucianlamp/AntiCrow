@@ -27,7 +27,9 @@
         "shareXText": "Just joined the AntiCrow waitlist! 🐦‍⬛ A new AI × Discord coding experience. Join too!",
         "shareText": "Just joined the AntiCrow closed beta! Remote AI coding from your phone is amazing 🚀",
         "docsLink": "📖 View Documentation",
-        "docsUrl": "https://anticrow.gitbook.io/anticrow-docs/docs-en/"
+        "docsUrl": "https://anticrow.gitbook.io/anticrow-docs/docs-en/",
+        "floatingAiRunning": "AI Running...",
+        "floatingRelay": "Discord → Antigravity"
     },
     "features": {
         "label": "Features",

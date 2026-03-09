@@ -27,7 +27,9 @@
         "shareXText": "Anti-Crow のウェイトリストに参加したよ！🐦‍⬛ AI×Discordの新しいコーディング体験。あなたも参加しよう！",
         "shareText": "AntiCrow のクローズドベータに登録したよ！スマホから AI コーディングできるの最高 🚀",
         "docsLink": "📖 ドキュメントを見る",
-        "docsUrl": "https://anticrow.gitbook.io/anticrow-docs/"
+        "docsUrl": "https://anticrow.gitbook.io/anticrow-docs/",
+        "floatingAiRunning": "AI 実行中...",
+        "floatingRelay": "Discord → Antigravity"
     },
     "features": {
         "label": "Features",
