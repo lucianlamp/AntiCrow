@@ -161,6 +161,8 @@
         "safetyDescription": "AntiCrow 拡張機能自体には、悪意のある操作や破壊的な操作は一切含まれていません。API キーやシークレット情報を外部に露出させるような仕組みも排除するよう設計しています。AntiCrow は Discord からの指示を Antigravity に中継する役割を担っています。",
         "warningTitle": "⚠️ Antigravity 由来のリスクについて",
         "warningDescription": "AntiCrow が連携する Antigravity（AI コーディングエディタ）の仕様として、AI の判断によりファイル操作や外部サービスへのリクエスト送信など、ユーザーの意図しないアクションが実行される可能性があります。これらのリスクは AntiCrow 側の問題ではなく、Antigravity 本体の仕様に起因します。ご利用は全て自己責任となります。",
+        "cdpTitle": "🔧 技術的な仕組みについて",
+        "cdpDescription": "AntiCrow は Antigravity の OAuth キーや API キーを一切使用しません。CDP（Chrome DevTools Protocol）経由で Antigravity エディタそのものを直接操作します。そのため OAuth トークンの不正利用による BAN のリスクはありませんが、Antigravity のアップデートにより CDP 経由の操作が制限された場合、AntiCrow の一部または全部の機能が動作しなくなる可能性があります。自己責任のもとでご使用ください。",
         "risks": [
             {
                 "title": "自動操作のリスク",

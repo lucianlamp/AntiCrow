@@ -161,6 +161,8 @@
         "safetyDescription": "The AntiCrow extension itself contains no malicious or destructive operations. It is designed to prevent API keys and secret information from being exposed externally. AntiCrow serves as a relay from Discord instructions to Antigravity.",
         "warningTitle": "⚠️ Risks from Antigravity",
         "warningDescription": "Due to the nature of Antigravity (AI coding editor) that AntiCrow integrates with, the AI may execute unintended actions such as file operations or external service requests. These risks stem from Antigravity's design, not AntiCrow. Use is entirely at your own risk.",
+        "cdpTitle": "🔧 Technical Architecture",
+        "cdpDescription": "AntiCrow does not use Antigravity's OAuth keys or API keys. It operates the Antigravity editor directly via CDP (Chrome DevTools Protocol). This means there is no risk of being banned for OAuth token misuse. However, if Antigravity updates restrict CDP-based operations, some or all AntiCrow features may stop working. Use at your own risk.",
         "risks": [
             {
                 "title": "Automated Operation Risks",

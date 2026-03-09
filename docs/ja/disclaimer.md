@@ -12,6 +12,14 @@ AntiCrow（以下「本拡張機能」）をご利用いただくにあたり、
 
 AntiCrow は Discord からの指示を Antigravity に中継する役割を担っており、AI が実際に実行するアクションの内容や結果については、Antigravity 本体の仕様に依存します。
 
+## 🔧 技術的な仕組みについて
+
+AntiCrow は Antigravity の OAuth キーや API キーを一切使用しません。CDP（Chrome DevTools Protocol）経由で Antigravity エディタそのものを直接操作します。
+
+- **OAuth BAN のリスクなし** — AntiCrow は OAuth トークンを使用しないため、トークンの不正利用による BAN のリスクはありません
+- **アップデートによる影響** — Antigravity のアップデートにより CDP 経由の操作が制限された場合、AntiCrow の一部または全部の機能が動作しなくなる可能性があります
+- **自己責任** — 上記を理解した上で、自己責任のもとでご使用ください
+
 ## リスクについて
 
 Antigravity の仕様により、以下を含む（ただしこれらに限定されない）リスクが発生する可能性があります。

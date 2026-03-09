@@ -12,6 +12,14 @@ However, **Antigravity (the AI coding editor)** that AntiCrow connects to may, b
 
 AntiCrow serves as a bridge that relays instructions from Discord to Antigravity. The actual actions executed by the AI and their outcomes are determined by Antigravity's own specifications and AI decision-making.
 
+## 🔧 Technical Architecture
+
+AntiCrow does not use Antigravity's OAuth keys or API keys. It operates the Antigravity editor directly via CDP (Chrome DevTools Protocol).
+
+- **No OAuth BAN Risk** — AntiCrow does not use OAuth tokens, so there is no risk of being banned for token misuse
+- **Update Impact** — If Antigravity updates restrict CDP-based operations, some or all AntiCrow features may stop working
+- **Use at Your Own Risk** — Please understand the above before installing and use at your own risk
+
 ## Risks
 
 Due to the nature of Antigravity's AI-driven operations, the following risks may occur (including but not limited to):

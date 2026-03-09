@@ -64,7 +64,7 @@ export default function DisclaimerSection() {
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: "-50px" }}
             transition={{ duration: 0.6, delay: 0.1 }}
-            className="rounded-2xl border border-destructive/30 bg-destructive/5 backdrop-blur-sm p-6 md:p-8 mb-10"
+            className="rounded-2xl border border-destructive/30 bg-destructive/5 backdrop-blur-sm p-6 md:p-8 mb-6"
           >
             <div className="flex items-start gap-4">
               <div className="w-12 h-12 rounded-xl bg-destructive/15 flex items-center justify-center shrink-0">
@@ -76,6 +76,29 @@ export default function DisclaimerSection() {
                 </h3>
                 <p className="text-muted-foreground leading-relaxed">
                   {t("disclaimer.warningDescription")}
+                </p>
+              </div>
+            </div>
+          </motion.div>
+
+          {/* CDP Technical Architecture */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "-50px" }}
+            transition={{ duration: 0.6, delay: 0.15 }}
+            className="rounded-2xl border border-blue-500/30 bg-blue-500/5 backdrop-blur-sm p-6 md:p-8 mb-10"
+          >
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 rounded-xl bg-blue-500/15 flex items-center justify-center shrink-0">
+                <Code2 className="w-6 h-6 text-blue-500" />
+              </div>
+              <div>
+                <h3 className="font-heading font-bold text-lg text-foreground mb-2">
+                  {t("disclaimer.cdpTitle")}
+                </h3>
+                <p className="text-muted-foreground leading-relaxed">
+                  {t("disclaimer.cdpDescription")}
                 </p>
               </div>
             </div>
