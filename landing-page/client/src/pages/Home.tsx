@@ -1,14 +1,17 @@
+import { lazy, Suspense } from "react";
 import { Helmet } from "react-helmet-async";
 import { useTranslation } from "react-i18next";
 import Navbar from "@/components/Navbar";
-import ParticleField from "@/components/ParticleField";
 import HeroSection from "@/components/HeroSection";
-import FeaturesSection from "@/components/FeaturesSection";
-import SecuritySection from "@/components/SecuritySection";
-import FAQSection from "@/components/FAQSection";
-import DisclaimerSection from "@/components/DisclaimerSection";
-import CTASection from "@/components/CTASection";
 import Footer from "@/components/Footer";
+
+// Below-the-fold コンポーネントを lazy loading（初期バンドルサイズ削減）
+const ParticleField = lazy(() => import("@/components/ParticleField"));
+const FeaturesSection = lazy(() => import("@/components/FeaturesSection"));
+const SecuritySection = lazy(() => import("@/components/SecuritySection"));
+const FAQSection = lazy(() => import("@/components/FAQSection"));
+const DisclaimerSection = lazy(() => import("@/components/DisclaimerSection"));
+const CTASection = lazy(() => import("@/components/CTASection"));
 
 export default function Home() {
   const { t, i18n } = useTranslation();
@@ -39,15 +42,19 @@ export default function Home() {
         <meta name="robots" content="index, follow" />
         <link rel="canonical" href={canonicalUrl} />
       </Helmet>
-      <ParticleField />
+      <Suspense fallback={null}>
+        <ParticleField />
+      </Suspense>
       <Navbar />
       <main className="relative z-10">
         <HeroSection />
-        <FeaturesSection />
-        <SecuritySection />
-        <FAQSection />
-        <DisclaimerSection />
-        <CTASection />
+        <Suspense fallback={<div className="min-h-[50vh]" />}>
+          <FeaturesSection />
+          <SecuritySection />
+          <FAQSection />
+          <DisclaimerSection />
+          <CTASection />
+        </Suspense>
       </main>
       <Footer />
     </div>
