@@ -21,7 +21,7 @@ import { BridgeContext } from './bridgeContext';
 const execAsync = promisify(exec);
 
 // R2 パブリック URL（環境変数で上書き可能）
-const R2_PUBLIC_URL = process.env.ANTICROW_R2_PUBLIC_URL || 'https://releases.anticrow.dev';
+const R2_PUBLIC_URL = process.env.ANTICROW_R2_PUBLIC_URL || 'https://pub-43d0b2eef4734fc8b00c014791e17d8a.r2.dev';
 const RELEASES_PATH = 'anti-crow/releases';
 
 interface LatestInfo {
