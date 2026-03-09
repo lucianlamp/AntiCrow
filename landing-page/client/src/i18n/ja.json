@@ -1,4 +1,10 @@
 {
+    "meta": {
+        "title": "AntiCrow - Discord と Antigravity を繋ぐ AI コーディングパートナー",
+        "description": "Discord でメッセージを送るだけで AI がコーディング。AntiCrow は Discord と Antigravity を繋ぐ VSCode 拡張機能です。スマホからでも、どこからでも。",
+        "ogTitle": "AntiCrow - あなたの AI コーディングパートナー",
+        "ogDescription": "Discord × Antigravity。スマホから AI にコーディングを依頼。結果は Discord に届く。それだけ。"
+    },
     "nav": {
         "features": "機能",
         "howItWorks": "使い方",

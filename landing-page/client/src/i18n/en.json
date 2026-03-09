@@ -1,4 +1,10 @@
 {
+    "meta": {
+        "title": "AntiCrow - AI Coding Partner Connecting Discord and Antigravity",
+        "description": "Just send a message on Discord and AI codes for you. AntiCrow is a VSCode extension that bridges Discord and Antigravity. From your phone, anywhere.",
+        "ogTitle": "AntiCrow - Your AI Coding Partner",
+        "ogDescription": "Discord × Antigravity. Delegate coding to AI from your phone. Results arrive on Discord. That's it."
+    },
     "nav": {
         "features": "Features",
         "howItWorks": "How it works",
