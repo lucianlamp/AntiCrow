@@ -5,36 +5,12 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-
-const faqs = [
-  {
-    question: "外出先からも使える？",
-    answer:
-      "Discord さえ使えればどこからでも。PC がオンラインであれば OK です。スマホ、タブレット、別の PC — どのデバイスからでも Discord 経由でタスクを依頼できます。",
-  },
-  {
-    question: "Bot Token は安全？",
-    answer:
-      "SecretStorage で暗号化保存されます。設定ファイルに平文記録されることはありません。また、Token はローカル環境でのみ使用され、外部サーバーに送信されることはありません。",
-  },
-  {
-    question: "複数プロジェクトを同時に管理できる？",
-    answer:
-      "自動で Discord カテゴリーが作られ、プロジェクトごとに独立管理できます。各プロジェクトには専用のチャンネルが割り当てられ、タスクの進捗や結果が整理されます。",
-  },
-  {
-    question: "Pro トライアルはある？",
-    answer:
-      "14日間無料でお試し可能です。エージェントチームモードや自動承認など、Pro 限定の機能をすべてお試しいただけます。",
-  },
-  {
-    question: "Antigravity 以外の AI ツールにも対応する？",
-    answer:
-      "現在は Antigravity に特化していますが、今後のアップデートで他の AI コーディングツールへの対応も予定しています。ウェイトリストに登録いただくと、最新情報をお届けします。",
-  },
-];
+import { useTranslation } from "react-i18next";
 
 export default function FAQSection() {
+  const { t } = useTranslation();
+  const faqItems = t("faq.items", { returnObjects: true }) as Array<{ question: string; answer: string }>;
+
   return (
     <section id="faq" className="relative py-24 md:py-32 overflow-hidden">
       <div className="container relative z-10">
@@ -48,11 +24,11 @@ export default function FAQSection() {
             className="text-center mb-12"
           >
             <span className="text-sm font-semibold text-indigo tracking-widest uppercase mb-4 block font-mono">
-              FAQ
+              {t("faq.label")}
             </span>
             <h2 className="font-heading text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight">
-              よくある
-              <span className="text-gradient-primary">質問</span>
+              {t("faq.title1")}
+              <span className="text-gradient-primary">{t("faq.title2")}</span>
             </h2>
           </motion.div>
 
@@ -64,7 +40,7 @@ export default function FAQSection() {
             transition={{ duration: 0.6, delay: 0.1 }}
           >
             <Accordion type="single" collapsible className="space-y-3">
-              {faqs.map((faq, index) => (
+              {faqItems.map((faq, index) => (
                 <AccordionItem
                   key={index}
                   value={`item-${index}`}

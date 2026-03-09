@@ -1,6 +1,7 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowRight, Sparkles, Copy, Check, Loader2, ExternalLink } from "lucide-react";
 import { useState, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 
 interface WaitlistResponse {
   success: boolean;
@@ -77,6 +78,7 @@ function XLogo({ className }: { className?: string }) {
 }
 
 export default function HeroSection() {
+  const { t } = useTranslation();
   const [email, setEmail] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
@@ -108,8 +110,8 @@ export default function HeroSection() {
 
       if (!res.ok) {
         setError(data.error === "Valid email is required"
-          ? "有効なメールアドレスを入力してください"
-          : "登録中にエラーが発生しました。もう一度お試しください");
+          ? t("hero.invalidEmail")
+          : t("hero.genericError"));
         return;
       }
 
@@ -117,7 +119,7 @@ export default function HeroSection() {
       setShowConfetti(true);
       setTimeout(() => setShowConfetti(false), 3000);
     } catch {
-      setError("接続エラーが発生しました。もう一度お試しください");
+      setError(t("hero.genericError"));
     } finally {
       setIsLoading(false);
     }
@@ -182,7 +184,7 @@ export default function HeroSection() {
             >
               <Sparkles className="w-4 h-4 text-amber" />
               <span className="text-sm font-medium text-amber">
-                クローズドベータ ウェイトリスト受付中
+                {t("hero.badge")}
               </span>
             </motion.div>
 
@@ -193,11 +195,11 @@ export default function HeroSection() {
               transition={{ duration: 0.7, delay: 0.1 }}
               className="font-heading text-4xl sm:text-5xl lg:text-6xl xl:text-7xl font-extrabold leading-[1.1] tracking-tight mb-6"
             >
-              <span className="text-foreground">Discord と</span>
+              <span className="text-foreground">{t("hero.headline1")}</span>
               <br />
-              <span className="text-foreground">Antigravity を繋ぐ</span>
+              <span className="text-foreground">{t("hero.headline2")}</span>
               <br />
-              <span className="text-gradient-primary">あなたの相棒</span>
+              <span className="text-gradient-primary">{t("hero.headline3")}</span>
             </motion.h1>
 
             {/* Subtitle */}
@@ -207,8 +209,7 @@ export default function HeroSection() {
               transition={{ duration: 0.7, delay: 0.2 }}
               className="text-lg sm:text-xl text-muted-foreground leading-relaxed mb-10 max-w-lg"
             >
-              Discord でメッセージを送る。Antigravity がコーディング。
-              結果が Discord に届く。それだけ。
+              {t("hero.subtitle")}
             </motion.p>
 
             {/* Waitlist Form or Result */}
@@ -240,11 +241,11 @@ export default function HeroSection() {
                       </motion.div>
                       <h3 className="text-lg font-bold text-foreground">
                         {result.alreadyRegistered
-                          ? "すでに登録済みです！"
-                          : "ウェイトリスト登録完了！"}
+                          ? t("hero.alreadyRegistered")
+                          : t("hero.successTitle")}
                       </h3>
                       <p className="text-sm text-muted-foreground mt-1">
-                        友達を招待して待機順位を上げよう！
+                        {t("hero.referralHint")}
                       </p>
                     </div>
 
@@ -257,7 +258,7 @@ export default function HeroSection() {
                         <button
                           onClick={handleCopy}
                           className="flex-shrink-0 p-2 rounded-lg bg-indigo/20 hover:bg-indigo/30 text-indigo transition-colors"
-                          title="コピー"
+                          title="Copy"
                         >
                           {copied ? (
                             <Check className="w-4 h-4" />
@@ -272,21 +273,21 @@ export default function HeroSection() {
                           animate={{ opacity: 1, y: 0 }}
                           className="text-xs text-green-400 text-center"
                         >
-                          コピーしました！
+                          {t("hero.referralCopied")}
                         </motion.p>
                       )}
 
                       {/* Xシェアボタン */}
                       <a
                         href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(
-                          "Anti-Crow のウェイトリストに参加したよ！🐦\u200d⬛ AI×Discordの新しいコーディング体験。あなたも参加しよう！"
+                          t("hero.shareXText")
                         )}&url=${encodeURIComponent(result.referralLink)}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl bg-black hover:bg-neutral-800 text-white text-sm font-semibold transition-colors"
                       >
                         <XLogo className="w-4 h-4" />
-                        シェアする
+                        {t("hero.share")}
                         <ExternalLink className="w-3 h-3 opacity-60" />
                       </a>
                     </div>
@@ -313,7 +314,7 @@ export default function HeroSection() {
                           setEmail(e.target.value);
                           if (error) setError("");
                         }}
-                        placeholder="メールアドレスを入力"
+                        placeholder={t("hero.placeholder")}
                         className="w-full px-5 py-3.5 rounded-xl bg-[oklch(0.18_0.035_260_/_60%)] backdrop-blur-sm border border-[oklch(0.35_0.04_260_/_30%)] text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-indigo/50 focus:ring-2 focus:ring-indigo/20 transition-all text-sm"
                         required
                         disabled={isLoading}
@@ -330,11 +331,11 @@ export default function HeroSection() {
                         {isLoading ? (
                           <>
                             <Loader2 className="w-4 h-4 animate-spin" />
-                            送信中...
+                            {t("hero.loading")}
                           </>
                         ) : (
                           <>
-                            クローズドベータに参加
+                            {t("hero.submit")}
                             <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
                           </>
                         )}
@@ -363,7 +364,7 @@ export default function HeroSection() {
                       animate={{ opacity: 1 }}
                       className="text-xs text-indigo pl-1"
                     >
-                      ✨ 紹介コード適用中: {referralCode}
+                      {t("hero.referralApplied")} {referralCode}
                     </motion.p>
                   )}
                 </motion.form>
@@ -378,12 +379,12 @@ export default function HeroSection() {
               className="mt-8 flex items-center gap-3 text-sm text-muted-foreground"
             >
               <a
-                href="https://anticrow.gitbook.io/anticrow-docs/"
+                href={t("hero.docsUrl")}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1.5 hover:text-foreground transition-colors"
               >
-                📖 ドキュメントを見る
+                {t("hero.docsLink")}
                 <ExternalLink className="w-3.5 h-3.5" />
               </a>
             </motion.div>

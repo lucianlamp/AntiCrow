@@ -1,17 +1,23 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Menu, X } from "lucide-react";
-
-const navLinks = [
-  { label: "機能", href: "#features" },
-  { label: "使い方", href: "#features" },
-  { label: "セキュリティ", href: "#security" },
-  { label: "FAQ", href: "#faq" },
-];
+import { Menu, X, Globe } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 export default function Navbar() {
+  const { t, i18n } = useTranslation();
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  const navLinks = [
+    { label: t("nav.features"), href: "#features" },
+    { label: t("nav.howItWorks"), href: "#features" },
+    { label: t("nav.security"), href: "#security" },
+    { label: t("nav.faq"), href: "#faq" },
+  ];
+
+  const toggleLanguage = () => {
+    i18n.changeLanguage(i18n.language === "ja" ? "en" : "ja");
+  };
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 40);
@@ -46,7 +52,7 @@ export default function Navbar() {
         <div className="hidden md:flex items-center gap-7">
           {navLinks.map((link) => (
             <a
-              key={link.href}
+              key={link.href + link.label}
               href={link.href}
               className="relative text-sm font-medium text-muted-foreground hover:text-foreground transition-colors duration-300 group"
             >
@@ -56,14 +62,22 @@ export default function Navbar() {
           ))}
         </div>
 
-        {/* CTA */}
-        <div className="hidden md:flex items-center gap-4">
+        {/* CTA + Lang Toggle */}
+        <div className="hidden md:flex items-center gap-3">
+          <button
+            onClick={toggleLanguage}
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-muted-foreground hover:text-foreground rounded-full border border-[oklch(0.3_0.03_260_/_40%)] hover:border-[oklch(0.4_0.04_260_/_50%)] transition-all"
+            aria-label="Toggle language"
+          >
+            <Globe className="w-3.5 h-3.5" />
+            {i18n.language === "ja" ? "EN" : "JA"}
+          </button>
           <a
             href="#waitlist"
             className="relative px-5 py-2.5 text-sm font-semibold rounded-full overflow-hidden group"
           >
             <span className="absolute inset-0 bg-gradient-to-r from-indigo to-coral opacity-90 group-hover:opacity-100 transition-opacity" />
-            <span className="relative text-white">ウェイトリスト登録</span>
+            <span className="relative text-white">{t("nav.waitlist")}</span>
           </a>
         </div>
 
@@ -89,7 +103,7 @@ export default function Navbar() {
             <div className="container py-6 flex flex-col gap-4">
               {navLinks.map((link) => (
                 <a
-                  key={link.href}
+                  key={link.href + link.label}
                   href={link.href}
                   onClick={() => setMobileOpen(false)}
                   className="text-base font-medium text-muted-foreground hover:text-foreground transition-colors py-2"
@@ -97,13 +111,22 @@ export default function Navbar() {
                   {link.label}
                 </a>
               ))}
-              <a
-                href="#waitlist"
-                onClick={() => setMobileOpen(false)}
-                className="mt-2 inline-flex items-center justify-center px-5 py-3 text-sm font-semibold rounded-full bg-gradient-to-r from-indigo to-coral text-white"
-              >
-                ウェイトリスト登録
-              </a>
+              <div className="flex items-center gap-3 mt-2">
+                <button
+                  onClick={toggleLanguage}
+                  className="flex items-center gap-1.5 px-4 py-3 text-sm font-semibold text-muted-foreground rounded-full border border-[oklch(0.3_0.03_260_/_40%)]"
+                >
+                  <Globe className="w-4 h-4" />
+                  {i18n.language === "ja" ? "EN" : "JA"}
+                </button>
+                <a
+                  href="#waitlist"
+                  onClick={() => setMobileOpen(false)}
+                  className="flex-1 inline-flex items-center justify-center px-5 py-3 text-sm font-semibold rounded-full bg-gradient-to-r from-indigo to-coral text-white"
+                >
+                  {t("nav.waitlist")}
+                </a>
+              </div>
             </div>
           </motion.div>
         )}

@@ -1,4 +1,8 @@
+import { useTranslation } from "react-i18next";
+
 export default function Footer() {
+  const { t } = useTranslation();
+
   return (
     <footer className="relative border-t border-[oklch(0.25_0.03_260_/_40%)] py-12">
       <div className="container">
@@ -15,13 +19,13 @@ export default function Footer() {
 
           {/* Links */}
           <div className="flex items-center gap-6 text-sm text-muted-foreground">
-            <a href="#features" className="hover:text-foreground transition-colors">機能</a>
-            <a href="#how-it-works" className="hover:text-foreground transition-colors">使い方</a>
-            <a href="#security" className="hover:text-foreground transition-colors">セキュリティ</a>
-            <a href="#faq" className="hover:text-foreground transition-colors">FAQ</a>
+            <a href="#features" className="hover:text-foreground transition-colors">{t("footer.features")}</a>
+            <a href="#how-it-works" className="hover:text-foreground transition-colors">{t("footer.howItWorks")}</a>
+            <a href="#security" className="hover:text-foreground transition-colors">{t("footer.security")}</a>
+            <a href="#faq" className="hover:text-foreground transition-colors">{t("footer.faq")}</a>
             <span className="text-[oklch(0.35_0.02_260)]">|</span>
-            <a href="https://anticrow.gitbook.io/anticrow-docs/privacy" target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors">プライバシーポリシー</a>
-            <a href="https://anticrow.gitbook.io/anticrow-docs/security" target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors">セキュリティポリシー</a>
+            <a href={t("footer.privacyUrl")} target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors">{t("footer.privacy")}</a>
+            <a href={t("footer.securityUrl")} target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors">{t("footer.securityPolicy")}</a>
           </div>
 
           {/* Copyright */}
