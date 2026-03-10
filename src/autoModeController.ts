@@ -39,6 +39,7 @@ interface AutoModeState {
     config: AutoModeConfig;
     history: StepResult[];
     paused: boolean;           // セーフティ一時停止
+    totalPausedMs: number;     // 一時停止の累積時間（ms）
     originalPrompt: string;    // ユーザーの初期プロンプト
     autoApproveWasEnabled: boolean; // 元の autoApprove 状態を保持
     isTeamMode: boolean;       // チームモードでの実行かどうか（Phase 3）
@@ -72,6 +73,7 @@ interface SafetyCheckResult {
     reason?: string;
     severity?: 'block' | 'warn';
     pattern?: string;
+    matchedLine?: string;  // マッチした行のテキスト（操作対象の特定用）
 }
 
 // ---------------------------------------------------------------------------
@@ -83,6 +85,7 @@ interface DangerousPattern {
     reason: string;
     severity: 'block' | 'warn';
     category: string;
+    allowPatterns?: RegExp[];  // これにマッチする場合はセーフ判定（除外リスト）
 }
 
 /**
@@ -96,6 +99,9 @@ export const DANGEROUS_PATTERNS: DangerousPattern[] = [
         reason: '再帰的ファイル削除',
         severity: 'block',
         category: 'filesystem',
+        allowPatterns: [
+            /rm\s+-rf\s+(?:\.?\/?)?(node_modules|dist|build|\.cache|\.next|\.nuxt|coverage|__pycache__|tmp|\.turbo)\b/i,
+        ],
     },
     {
         pattern: />\s*\/dev\/null|truncate/i,
@@ -128,6 +134,9 @@ export const DANGEROUS_PATTERNS: DangerousPattern[] = [
         reason: '未追跡ファイルの強制削除',
         severity: 'warn',
         category: 'git',
+        allowPatterns: [
+            /git\s+clean\s+-fd\s*$/i,
+        ],
     },
 
     // ----- DB破壊（2パターン） -----
@@ -303,6 +312,7 @@ export async function startAutoMode(
         config: mergedConfig,
         history: [],
         paused: false,
+        totalPausedMs: 0,
         originalPrompt: prompt,
         autoApproveWasEnabled: false, // 実際の値は呼び出し元で設定
         isTeamMode,
@@ -452,9 +462,10 @@ export async function stopAutoMode(
     confirmResolve = null;
 
     const totalDuration = Date.now() - state.startedAt;
+    const activeDuration = totalDuration - state.totalPausedMs;
     const safetyCount = state.history.filter(s => !s.safetyResult.safe).length;
 
-    logInfo(`autoMode: stopped — reason=${reason} steps=${state.currentStep} duration=${formatDuration(totalDuration)}`);
+    logInfo(`autoMode: stopped — reason=${reason} steps=${state.currentStep} duration=${formatDuration(totalDuration)} paused=${formatDuration(state.totalPausedMs)}`);
 
     // 終了理由の決定
     let reasonText: string;
@@ -501,7 +512,7 @@ export async function stopAutoMode(
         const embed = buildEmbed(
             `📊 **オートモード完了**\n━━━━━━━━━━━━━━━━━━━━\n\n`
             + `✅ **完了ステップ:** ${state.currentStep}/${state.maxSteps}\n`
-            + `⏱️ **合計時間:** ${formatDuration(totalDuration)}\n`
+            + `⏱️ **合計時間:** ${formatDuration(totalDuration)}${state.totalPausedMs > 0 ? ` (⏸️ 一時停止: ${formatDuration(state.totalPausedMs)})` : ''}\n`
             + `🛡️ **セーフティ発動:** ${safetyCount}回\n\n`
             + (historyLines ? `📋 **実行履歴:**\n${historyLines}\n\n` : '')
             + reasonText,
@@ -708,12 +719,36 @@ function buildAutoPrompt(channelId: string, initialPrompt?: string): string {
 /**
  * レスポンスに対してセーフティチェックを実行する（レイヤーA: プリフライト）。
  * DANGEROUS_PATTERNS の各パターンとマッチングし、最初にヒットしたものを返す。
+ * マッチした行のテキストを matchedLine として返し、操作対象の特定に使用する。
  */
 function checkSafety(text: string): SafetyCheckResult {
-    for (const { pattern, reason, severity } of DANGEROUS_PATTERNS) {
+    const lines = text.split('\n');
+    for (const { pattern, reason, severity, allowPatterns } of DANGEROUS_PATTERNS) {
+        // 行単位でマッチングし、マッチした行のコンテキストを抽出
+        let lineMatched = false;
+        for (const line of lines) {
+            if (pattern.test(line)) {
+                // allowPatterns チェック: セーフリストにマッチすればスキップ
+                if (allowPatterns?.some(ap => ap.test(line))) {
+                    logDebug(`autoMode: safety allow-listed — pattern="${pattern.source}" line="${line.trim().substring(0, 80)}"`);
+                    lineMatched = true;
+                    continue;
+                }
+                const matchedLine = line.trim().substring(0, 200);
+                logWarn(`autoMode: safety check FAILED — pattern="${pattern.source}" reason="${reason}" severity=${severity} matched="${matchedLine.substring(0, 80)}"`);
+                return { safe: false, reason, severity, pattern: pattern.source, matchedLine };
+            }
+        }
+        if (lineMatched) continue;  // 行単位で全てallow-listedなら次のパターンへ
+        // フォールバック: 行分割でマッチしない場合（改行なしテキスト等）
         if (pattern.test(text)) {
-            logWarn(`autoMode: safety check FAILED — pattern="${pattern.source}" reason="${reason}" severity=${severity}`);
-            return { safe: false, reason, severity, pattern: pattern.source };
+            const match = pattern.exec(text);
+            const matchIdx = match?.index ?? 0;
+            const start = Math.max(0, matchIdx - 50);
+            const end = Math.min(text.length, matchIdx + 150);
+            const matchedLine = text.substring(start, end).replace(/\n/g, ' ').trim();
+            logWarn(`autoMode: safety check FAILED (fallback) — pattern="${pattern.source}" reason="${reason}" severity=${severity}`);
+            return { safe: false, reason, severity, pattern: pattern.source, matchedLine };
         }
     }
     logDebug('autoMode: safety check passed');
@@ -741,8 +776,8 @@ function shouldContinue(latestResponse: string): { shouldContinue: boolean; reas
         return { shouldContinue: false, reason: 'max_steps' };
     }
 
-    // ガード2: 時間上限
-    const elapsed = Date.now() - currentState.startedAt;
+    // ガード2: 時間上限（一時停止中の待機時間は除外する）
+    const elapsed = Date.now() - currentState.startedAt - currentState.totalPausedMs;
     if (elapsed >= currentState.maxDuration) {
         return { shouldContinue: false, reason: 'max_duration' };
     }
@@ -841,11 +876,15 @@ async function pauseForSafety(
 
     // Discord セーフティ警告通知
     try {
+        const matchedLineText = safetyResult.matchedLine
+            ? `📄 **対象:** \`${safetyResult.matchedLine.substring(0, 150)}\`\n\n`
+            : '';
         const embed = buildEmbed(
             `🚨 **セーフティガード発動**\n━━━━━━━━━━━━━━━━━━━━\n\n`
             + `⚠️ **危険なアクションを検知しました**\n\n`
             + `🔍 **検知内容:** ${safetyResult.reason}\n`
-            + `📝 **パターン:** \`${safetyResult.pattern}\`\n\n`
+            + `📝 **パターン:** \`${safetyResult.pattern}\`\n`
+            + matchedLineText
             + `⏸️ オートモードを一時停止しました`,
             EmbedColor.Warning,
             true,
@@ -878,11 +917,13 @@ async function pauseForSafety(
         return 'stop';
     }
 
-    // ユーザーの応答を Promise で待機
+    // ユーザーの応答を Promise で待機（一時停止時間を計測）
+    const pauseStartMs = Date.now();
     return new Promise<'approve' | 'skip' | 'stop'>((resolve) => {
         pauseResolve = (action) => {
             if (currentState) {
                 currentState.paused = false;
+                currentState.totalPausedMs += Date.now() - pauseStartMs;
             }
             resolve(action);
         };
@@ -894,6 +935,7 @@ async function pauseForSafety(
                 pauseResolve = null;
                 if (currentState) {
                     currentState.paused = false;
+                    currentState.totalPausedMs += Date.now() - pauseStartMs;
                 }
                 resolve('stop');
             }
@@ -917,7 +959,7 @@ async function sendStepCompleteNotification(
 ): Promise<void> {
     if (!currentState) return;
 
-    const elapsed = Date.now() - currentState.startedAt;
+    const elapsed = Date.now() - currentState.startedAt - currentState.totalPausedMs;
     const progressPercent = Math.round((currentState.currentStep / currentState.maxSteps) * 100);
     const progressBar = buildProgressBar(progressPercent);
 
@@ -974,10 +1016,14 @@ async function sendSafetyWarning(
     safetyResult: SafetyCheckResult,
 ): Promise<void> {
     try {
+        const matchedLineText = safetyResult.matchedLine
+            ? `📄 **対象:** \`${safetyResult.matchedLine.substring(0, 150)}\`\n\n`
+            : '';
         const embed = buildEmbed(
             `⚠️ **セーフティ警告**\n\n`
             + `🔍 **検知内容:** ${safetyResult.reason}\n`
-            + `📝 **パターン:** \`${safetyResult.pattern}\`\n\n`
+            + `📝 **パターン:** \`${safetyResult.pattern}\`\n`
+            + matchedLineText
             + `ℹ️ 重大度が低いため、ループは続行します。`,
             EmbedColor.Warning,
         );
@@ -1032,11 +1078,13 @@ async function pauseForConfirmation(
         return 'stop';
     }
 
-    // ユーザーの応答を Promise で待機
+    // ユーザーの応答を Promise で待機（一時停止時間を計測）
+    const pauseStartMs = Date.now();
     return new Promise<'continue' | 'stop'>((resolve) => {
         confirmResolve = (action) => {
             if (currentState) {
                 currentState.paused = false;
+                currentState.totalPausedMs += Date.now() - pauseStartMs;
             }
             resolve(action);
         };
@@ -1048,6 +1096,7 @@ async function pauseForConfirmation(
                 confirmResolve = null;
                 if (currentState) {
                     currentState.paused = false;
+                    currentState.totalPausedMs += Date.now() - pauseStartMs;
                 }
                 resolve('stop');
             }

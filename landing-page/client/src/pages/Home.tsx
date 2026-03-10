@@ -48,9 +48,11 @@ export default function Home() {
       <Navbar />
       <main className="relative z-10">
         <HeroSection />
-        <Suspense fallback={<div className="min-h-[50vh]" />}>
+        <Suspense fallback={<div className="min-h-[40vh]" />}>
           <FeaturesSection />
           <SecuritySection />
+        </Suspense>
+        <Suspense fallback={<div className="min-h-[30vh]" />}>
           <FAQSection />
           <DisclaimerSection />
           <CTASection />
