@@ -9,6 +9,7 @@ import { t } from './i18n';
 import { buildModeListEmbed, buildModeSwitchResultEmbed } from './modeButtons';
 import { getAvailableModes, selectMode } from './cdpModes';
 import { BridgeContext } from './bridgeContext';
+import { resolveTargetCdp } from './slashHelpers';
 
 /**
  * モード関連ボタンを処理する。
@@ -23,7 +24,7 @@ export async function handleModeButton(
         const modeIndex = parseInt(customId.replace('mode_select_', ''), 10);
         await interaction.deferUpdate();
 
-        const cdp = ctx.cdp;
+        const { cdp } = resolveTargetCdp(ctx, interaction);
         if (!cdp) {
             await interaction.followUp({ embeds: [buildEmbed(t('btnMode.notConnected'), EmbedColor.Warning)] });
             return true;
@@ -59,7 +60,7 @@ export async function handleModeButton(
     if (customId === 'mode_refresh') {
         await interaction.deferUpdate();
 
-        const cdp = ctx.cdp;
+        const { cdp } = resolveTargetCdp(ctx, interaction);
         if (!cdp) {
             await interaction.followUp({ embeds: [buildEmbed(t('btnMode.notConnected'), EmbedColor.Warning)] });
             return true;

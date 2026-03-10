@@ -43,36 +43,13 @@ import { t } from './i18n';
 import { loadAutoModeConfig, saveAutoModeConfig, parseAutoModeArgs, formatConfigForDisplay, setConfigStoragePath } from './autoModeConfig';
 import { isAutoModeActive, stopAutoMode } from './autoModeController';
 import { handleUpdate } from './slashButtonUpdate';
+import { resolveTargetCdp } from './slashHelpers';
 
 // ---------------------------------------------------------------------------
 // コマンドハンドラ（各コマンドの処理を独立関数に分離）
 // ---------------------------------------------------------------------------
 
 type CommandHandler = (ctx: BridgeContext, interaction: ChatInputCommandInteraction) => Promise<void>;
-
-/**
- * チャンネルカテゴリーから対象ワークスペースを解決し、
- * cdpPool から正しい CdpBridge を取得する共通ヘルパー。
- * フォールバックとして ctx.cdp（デフォルト）を返す。
- */
-function resolveTargetCdp(
-    ctx: BridgeContext,
-    interaction: ChatInputCommandInteraction,
-): { cdp: BridgeContext['cdp']; wsKey: string | null } {
-    const channel = interaction.channel as TextChannel | null;
-    const wsKey = channel ? DiscordBot.resolveWorkspaceFromChannel(channel) : null;
-    let cdp = ctx.cdp;
-    if (wsKey && ctx.cdpPool) {
-        const poolCdp = ctx.cdpPool.getActive(wsKey);
-        if (poolCdp) {
-            cdp = poolCdp;
-            logDebug(`resolveTargetCdp: using cdpPool for workspace "${wsKey}"`);
-        } else {
-            logDebug(`resolveTargetCdp: cdp for workspace "${wsKey}" not active, fallback to default`);
-        }
-    }
-    return { cdp, wsKey };
-}
 
 async function handleStatus(ctx: BridgeContext, interaction: ChatInputCommandInteraction): Promise<void> {
     await interaction.deferReply();

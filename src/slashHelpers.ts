@@ -6,7 +6,7 @@ import * as vscode from 'vscode';
 import { logDebug, logError } from './logger';
 import { BridgeContext } from './bridgeContext';
 import { resolveWorkspaceFromChannel } from './discordChannels';
-import type { TextChannel } from 'discord.js';
+import type { TextChannel, ChatInputCommandInteraction, ButtonInteraction } from 'discord.js';
 
 // ---------------------------------------------------------------------------
 // モジュール状態
@@ -65,4 +65,31 @@ export function resolveRepoRootFromInteraction(
         }
     }
     return { repoRoot: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath, wsName };
+}
+
+/**
+ * チャンネルカテゴリーから対象ワークスペースを解決し、
+ * cdpPool から正しい CdpBridge を取得する共通ヘルパー。
+ * フォールバックとして ctx.cdp（デフォルト）を返す。
+ *
+ * ChatInputCommandInteraction（スラッシュコマンド）と
+ * ButtonInteraction（ボタン）の両方に対応。
+ */
+export function resolveTargetCdp(
+    ctx: BridgeContext,
+    interaction: ChatInputCommandInteraction | ButtonInteraction,
+): { cdp: BridgeContext['cdp']; wsKey: string | null } {
+    const channel = interaction.channel as TextChannel | null;
+    const wsKey = channel ? resolveWorkspaceFromChannel(channel) : null;
+    let cdp = ctx.cdp;
+    if (wsKey && ctx.cdpPool) {
+        const poolCdp = ctx.cdpPool.getActive(wsKey);
+        if (poolCdp) {
+            cdp = poolCdp;
+            logDebug(`resolveTargetCdp: using cdpPool for workspace "${wsKey}"`);
+        } else {
+            logDebug(`resolveTargetCdp: cdp for workspace "${wsKey}" not active, fallback to default`);
+        }
+    }
+    return { cdp, wsKey };
 }

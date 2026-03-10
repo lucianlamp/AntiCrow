@@ -10,6 +10,7 @@ import { buildModelListEmbed, buildModelSwitchResultEmbed } from './modelButtons
 import { getAvailableModels, selectModel } from './cdpModels';
 import { BridgeContext } from './bridgeContext';
 import { fetchQuota } from './quotaProvider';
+import { resolveTargetCdp } from './slashHelpers';
 
 /**
  * モデル関連ボタンを処理する。
@@ -24,7 +25,7 @@ export async function handleModelButton(
         const modelIndex = parseInt(customId.replace('model_select_', ''), 10);
         await interaction.deferUpdate();
 
-        const cdp = ctx.cdp;
+        const { cdp } = resolveTargetCdp(ctx, interaction);
         if (!cdp) {
             await interaction.followUp({ embeds: [buildEmbed(t('btnModel.notConnected'), EmbedColor.Warning)] });
             return true;
@@ -49,7 +50,7 @@ export async function handleModelButton(
     if (customId === 'model_refresh') {
         await interaction.deferUpdate();
 
-        const cdp = ctx.cdp;
+        const { cdp } = resolveTargetCdp(ctx, interaction);
         if (!cdp) {
             await interaction.followUp({ embeds: [buildEmbed(t('btnModel.notConnected'), EmbedColor.Warning)] });
             return true;
