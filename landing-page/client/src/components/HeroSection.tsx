@@ -320,6 +320,7 @@ export default function HeroSection() {
                           if (error) setError("");
                         }}
                         placeholder={t("hero.placeholder")}
+                        aria-label={t("hero.placeholder")}
                         className="w-full px-5 py-3.5 rounded-xl bg-[oklch(0.18_0.035_260_/_60%)] backdrop-blur-sm border border-[oklch(0.35_0.04_260_/_30%)] text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-indigo/50 focus:ring-2 focus:ring-indigo/20 transition-all text-sm"
                         required
                         disabled={isLoading}
