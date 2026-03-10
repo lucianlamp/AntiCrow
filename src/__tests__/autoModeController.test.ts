@@ -98,6 +98,7 @@ import {
     startAutoMode,
     stopAutoMode,
     isAutoModeActive,
+    onStepComplete,
 } from '../autoModeController';
 
 // ---------------------------------------------------------------------------
@@ -307,6 +308,86 @@ describe('autoModeController — stopAutoMode', () => {
             await stopAutoMode(channel, 'manual');
 
             expect(cancelPlanGeneration).toHaveBeenCalledTimes(1);
+        });
+    });
+
+    // -----------------------------------------------------------------------
+    // フォールバックSUGGESTIONS — 最後のステップにsuggestionsがない場合
+    // -----------------------------------------------------------------------
+
+    describe('フォールバック SUGGESTIONS', () => {
+        const mockSuggestions = [
+            { label: 'テスト1', description: '説明1', prompt: 'prompt1' },
+            { label: 'テスト2', description: '説明2', prompt: 'prompt2' },
+        ];
+
+        it('最後のステップにsuggestionsがない場合、前のステップのsuggestionsが使われる', async () => {
+            const channel = createMockChannel();
+            mockBuildSuggestionRow.mockReturnValue({ type: 1, components: [] });
+
+            await startAutoMode(channel, 'test-ws', 'テストプロンプト');
+
+            // ステップ1: suggestionsあり
+            await onStepComplete(channel, mockSuggestions, 'レスポンス1');
+            // ステップ2: suggestionsなし
+            await onStepComplete(channel, [], 'レスポンス2');
+
+            vi.clearAllMocks();
+            mockBuildSuggestionRow.mockReturnValue({ type: 1, components: [] });
+
+            await stopAutoMode(channel, 'manual');
+
+            // フォールバックでステップ1のsuggestionsが使われる
+            expect(mockStoreSuggestions).toHaveBeenCalledWith(
+                'test-channel-id',
+                mockSuggestions,
+            );
+            expect(mockBuildSuggestionRow).toHaveBeenCalledWith(mockSuggestions);
+        });
+
+        it('最後のステップにsuggestionsがある場合、そのまま使われる', async () => {
+            const channel = createMockChannel();
+            const lastSuggestions = [
+                { label: '最新', description: '最新の提案', prompt: 'latest' },
+            ];
+            mockBuildSuggestionRow.mockReturnValue({ type: 1, components: [] });
+
+            await startAutoMode(channel, 'test-ws', 'テストプロンプト');
+
+            // ステップ1: suggestionsあり
+            await onStepComplete(channel, mockSuggestions, 'レスポンス1');
+            // ステップ2: 別のsuggestionsあり
+            await onStepComplete(channel, lastSuggestions, 'レスポンス2');
+
+            vi.clearAllMocks();
+            mockBuildSuggestionRow.mockReturnValue({ type: 1, components: [] });
+
+            await stopAutoMode(channel, 'manual');
+
+            // 最後のステップのsuggestionsが使われる
+            expect(mockStoreSuggestions).toHaveBeenCalledWith(
+                'test-channel-id',
+                lastSuggestions,
+            );
+            expect(mockBuildSuggestionRow).toHaveBeenCalledWith(lastSuggestions);
+        });
+
+        it('全ステップにsuggestionsがない場合、ボタンは表示されない', async () => {
+            const channel = createMockChannel();
+
+            await startAutoMode(channel, 'test-ws', 'テストプロンプト');
+
+            // ステップ1: suggestionsなし
+            await onStepComplete(channel, [], 'レスポンス1');
+            // ステップ2: suggestionsなし
+            await onStepComplete(channel, [], 'レスポンス2');
+
+            vi.clearAllMocks();
+
+            await stopAutoMode(channel, 'manual');
+
+            expect(mockStoreSuggestions).not.toHaveBeenCalled();
+            expect(mockBuildSuggestionRow).not.toHaveBeenCalled();
         });
     });
 });
