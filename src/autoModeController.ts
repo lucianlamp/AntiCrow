@@ -521,12 +521,21 @@ export async function stopAutoMode(
         );
 
         // 最後のステップの提案ボタンを追加（完了後の次アクション提案）
-        const lastStep = state.history.length > 0 ? state.history[state.history.length - 1] : null;
-        const lastSuggestions = lastStep?.suggestions ?? [];
+        // 最後のステップに suggestions がない場合、history を逆順に遡ってフォールバック
+        let finalSuggestions: SuggestionItem[] = [];
+        for (let i = state.history.length - 1; i >= 0; i--) {
+            if (state.history[i].suggestions.length > 0) {
+                finalSuggestions = state.history[i].suggestions;
+                if (i < state.history.length - 1) {
+                    logDebug(`autoMode: stopAutoMode — fallback suggestions from step ${i + 1} (last step had none)`);
+                }
+                break;
+            }
+        }
         const components: ActionRowBuilder<ButtonBuilder>[] = [];
-        if (lastSuggestions.length > 0) {
-            storeSuggestions(state.channelId, lastSuggestions);
-            const suggestionRow = buildSuggestionRow(lastSuggestions);
+        if (finalSuggestions.length > 0) {
+            storeSuggestions(state.channelId, finalSuggestions);
+            const suggestionRow = buildSuggestionRow(finalSuggestions);
             if (suggestionRow) {
                 components.push(suggestionRow);
             }
