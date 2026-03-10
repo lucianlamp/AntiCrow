@@ -22,6 +22,7 @@ test-*.txt
 test_*.txt
 
 # コンパイル・パッケージ出力
+tsc_errors.txt
 tsc_output*.txt
 typecheck_output*.txt
 vsce-output.txt
