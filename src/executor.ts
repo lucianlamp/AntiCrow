@@ -361,7 +361,7 @@ export class Executor {
                         }
                     },
                     // オートモード: ステップ完了時に次のプロンプトを自動投入
-                    onAutoModeComplete: isAutoModeActive()
+                    onAutoModeComplete: isAutoModeActive(plan.workspace_name)
                         ? (suggestions: SuggestionItem[], cleanContent: string) => {
                             this.autoModeContinueLoop(notifyChannel, suggestions, cleanContent, plan)
                                 .catch(err => {
@@ -542,7 +542,7 @@ export class Executor {
         while (true) {
             try {
                 // onStepComplete: セーフティチェック → Discord通知 → ループ継続判定 → 次プロンプト構築
-                const nextPrompt = await onStepComplete(channel, currentSuggestions, currentCleanContent);
+                const nextPrompt = await onStepComplete(channel, currentSuggestions, currentCleanContent, plan.workspace_name);
                 if (!nextPrompt) {
                     // ループ終了（stopAutoMode が呼ばれた）
                     logInfo('Executor: autoModeContinueLoop — loop ended (onStepComplete returned null)');
@@ -669,7 +669,7 @@ export class Executor {
 
             } catch (err) {
                 logError('Executor: autoModeContinueLoop — error in loop', err);
-                await handleAutoModeError(channel, err);
+                await handleAutoModeError(channel, err, plan.workspace_name);
                 return;
             }
         }

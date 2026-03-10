@@ -15,6 +15,7 @@ import { t } from './i18n';
 import { loadTeamConfig, saveTeamConfig } from './teamConfig';
 import { BridgeContext } from './bridgeContext';
 import { resolveRepoRootFromInteraction } from './slashHelpers';
+import * as path from 'path';
 
 // ---------------------------------------------------------------------------
 // チームモードボタンパネル構築ヘルパー
@@ -52,6 +53,11 @@ export async function handleTeamButton(
     interaction: ButtonInteraction,
     customId: string,
 ): Promise<boolean> {
+    // subagent_* ボタンも処理する
+    if (customId.startsWith('subagent_')) {
+        return handleSubagentButton(ctx, interaction, customId);
+    }
+
     if (!customId.startsWith('team_')) { return false; }
 
     const teamAction = customId.replace('team_', '');
@@ -61,7 +67,8 @@ export async function handleTeamButton(
         return true;
     }
     const config = loadTeamConfig(repoRoot);
-    const agentCount = ctx.subagentManager?.list().length ?? 0;
+    const wsName = path.basename(repoRoot);
+    const agentCount = ctx.subagentManager?.list(wsName).length ?? 0;
 
     switch (teamAction) {
         case 'on': {
@@ -77,7 +84,7 @@ export async function handleTeamButton(
             config.enabled = false;
             saveTeamConfig(repoRoot, config);
             if (ctx.subagentManager) {
-                const agents = ctx.subagentManager.list();
+                const agents = ctx.subagentManager.list(wsName);
                 for (const agent of agents) {
                     try { await ctx.subagentManager.killAgent(agent.name); } catch { /* skip */ }
                 }
@@ -95,7 +102,7 @@ export async function handleTeamButton(
                 + `📊 **${t('btnTeam.running')}**: ${agentCount} / ${config.maxAgents}\n`
                 + `⏱️ **${t('btnTeam.timeout')}**: ${Math.round(config.responseTimeoutMs / 60_000)}${t('btnTeam.minutes')}`;
             if (agentCount > 0 && ctx.subagentManager) {
-                const agents = ctx.subagentManager.list();
+                const agents = ctx.subagentManager.list(wsName);
                 desc += `\n\n🤖 **${t('btnTeam.agentList')}**\n` + agents.map(a => `  • **${a.name}** — ${a.state}`).join('\n');
             }
             await interaction.update({
@@ -110,6 +117,74 @@ export async function handleTeamButton(
                 embeds: [buildEmbed(`⚙️ **${t('btnTeam.teamConfig')}**\n\`\`\`json\n${configJson}\n\`\`\``, EmbedColor.Info)],
                 components: buildTeamButtons(config) as any,
             });
+            return true;
+        }
+        default:
+            return false;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// サブエージェント管理ボタンハンドラ（admin パネル用）
+// ---------------------------------------------------------------------------
+
+async function handleSubagentButton(
+    ctx: BridgeContext,
+    interaction: ButtonInteraction,
+    customId: string,
+): Promise<boolean> {
+    if (!ctx.subagentManager) {
+        await interaction.reply({ embeds: [buildEmbed('⚠️ SubagentManager が初期化されていません', EmbedColor.Warning)] });
+        return true;
+    }
+
+    // WS を特定（チャンネルカテゴリーから解決）
+    const { repoRoot } = resolveRepoRootFromInteraction(interaction, ctx.cdpPool);
+    const wsName = repoRoot ? path.basename(repoRoot) : undefined;
+
+    switch (customId) {
+        case 'subagent_killall': {
+            if (wsName) {
+                // WS 別フィルタ: 該当 WS のエージェントのみ kill
+                const agents = ctx.subagentManager.list(wsName);
+                if (agents.length === 0) {
+                    await interaction.reply({ embeds: [buildEmbed(`ℹ️ **${wsName}** に実行中のサブエージェントはありません`, EmbedColor.Info)] });
+                    return true;
+                }
+                let killed = 0;
+                for (const agent of agents) {
+                    try {
+                        await ctx.subagentManager.killAgent(agent.name);
+                        killed++;
+                    } catch { /* skip */ }
+                }
+                await interaction.reply({ embeds: [buildEmbed(`🛑 **${wsName}** のサブエージェントを ${killed}/${agents.length} 件停止しました`, EmbedColor.Warning)] });
+            } else {
+                // WS 特定不能: 後方互換として全エージェント kill
+                await ctx.subagentManager.killAll();
+                await interaction.reply({ embeds: [buildEmbed('🛑 全サブエージェントを停止しました', EmbedColor.Warning)] });
+            }
+            return true;
+        }
+        case 'subagent_list': {
+            const agents = wsName
+                ? ctx.subagentManager.list(wsName)
+                : ctx.subagentManager.list();
+            if (agents.length === 0) {
+                const scope = wsName ? `**${wsName}** に` : '';
+                await interaction.reply({ embeds: [buildEmbed(`ℹ️ ${scope}実行中のサブエージェントはありません`, EmbedColor.Info)] });
+                return true;
+            }
+            const scope = wsName ? ` (${wsName})` : '';
+            const desc = `🤖 **サブエージェント一覧${scope}**\n\n`
+                + agents.map(a => `• **${a.name}** — ${a.state}`).join('\n');
+            await interaction.reply({ embeds: [buildEmbed(desc, EmbedColor.Info)] });
+            return true;
+        }
+        case 'subagent_spawn': {
+            // サブエージェントのスポーンは TeamOrchestrator 経由で行われるため、
+            // ボタンからの直接スポーンは現時点では未対応
+            await interaction.reply({ embeds: [buildEmbed('ℹ️ サブエージェントの起動はチームモードのタスク実行時に自動で行われます', EmbedColor.Info)] });
             return true;
         }
         default:
