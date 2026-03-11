@@ -47,8 +47,36 @@ import { t } from './i18n';
 import { isAutoModeActive } from './autoModeController';
 import * as fs from 'fs';
 
+/** 既知のコード/設定ファイル拡張子 — これらで終わる名前はファイル名と見なす */
+const CODE_EXTENSIONS = new Set([
+    // スクリプト / コンパイル言語
+    'ts', 'tsx', 'js', 'jsx', 'mjs', 'cjs', 'py', 'pyw', 'rb', 'php',
+    'java', 'kt', 'kts', 'swift', 'rs', 'go', 'c', 'cpp', 'cc', 'h', 'hpp',
+    'cs', 'fs', 'vb', 'lua', 'r', 'pl', 'pm', 'scala', 'clj', 'ex', 'exs',
+    'dart', 'nim', 'zig', 'v', 'sol', 'move',
+    // データ / 設定
+    'json', 'jsonc', 'yaml', 'yml', 'toml', 'xml', 'csv', 'tsv', 'ini', 'cfg',
+    'env', 'lock', 'conf',
+    // マークアップ / スタイル
+    'html', 'htm', 'css', 'scss', 'sass', 'less', 'styl', 'vue', 'svelte',
+    // ドキュメント
+    'md', 'mdx', 'txt', 'rst', 'tex', 'adoc',
+    // シェル / スクリプト
+    'sh', 'bash', 'zsh', 'fish', 'bat', 'cmd', 'ps1', 'psm1',
+    // その他
+    'sql', 'graphql', 'gql', 'proto', 'wasm', 'log', 'diff', 'patch',
+]);
+
+/** ファイル名っぽいかどうかを判定する（既知のコード拡張子を持つ場合のみ true） */
+export function looksLikeFileName(name: string): boolean {
+    const dotIdx = name.lastIndexOf('.');
+    if (dotIdx <= 0) return false; // ドットなし or 先頭ドット
+    const ext = name.slice(dotIdx + 1).toLowerCase();
+    return CODE_EXTENSIONS.has(ext);
+}
+
 /** ワークスペース名としてカテゴリ作成すべきでない名前を判定する */
-function isInvalidWorkspaceName(wsName: string): boolean {
+export function isInvalidWorkspaceName(wsName: string): boolean {
     if (!wsName) { return true; }
     let reason = '';
     if (wsName.includes('://')) { reason = 'URL形式'; }
@@ -58,7 +86,7 @@ function isInvalidWorkspaceName(wsName: string): boolean {
     else if (wsName.includes('Settings')) { reason = '設定タブ'; }
     else if (wsName.includes('Extensions')) { reason = '拡張機能タブ'; }
     else if (/^\..*/.test(wsName)) { reason = '隠しファイル'; }
-    else if (/\.[a-z]{1,5}$/i.test(wsName)) { reason = 'ファイル名'; }
+    else if (looksLikeFileName(wsName)) { reason = 'ファイル名'; }
     else if (wsName.length > 50) { reason = '長すぎる名前'; }
     else if (/\d+\s*(つの|個の)/.test(wsName)) { reason = 'SCMパターン(つの/個の)'; }
     else if (wsName.includes('問題')) { reason = 'SCM: 問題'; }
