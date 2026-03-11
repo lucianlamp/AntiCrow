@@ -8,6 +8,7 @@
 - [チームモード](team-mode.md)
 - [テンプレート機能](templates.md)
 - [スケジュール実行](schedules.md)
+- [料金プランと制限](pricing.md)
 - [Pro プラン](pro-plan.md)
 - [環境別セットアップ](platform-differences.md)
 - [よくある質問](faq.md)

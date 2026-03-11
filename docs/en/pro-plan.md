@@ -1,5 +1,7 @@
 # Pro Plan
 
+> 📊 For a comparison of Free and Pro plans and task limit details, see [Pricing & Limits](pricing.md).
+
 > 💎 Unlock all features with unlimited usage
 
 ## Plan Comparison

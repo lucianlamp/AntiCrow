@@ -8,6 +8,7 @@
 * [Team Mode](team-mode.md)
 * [Templates](templates.md)
 * [Scheduled Execution](schedules.md)
+* [Pricing & Limits](pricing.md)
 * [Pro Plan](pro-plan.md)
 * [Platform Differences](platform-differences.md)
 * [FAQ](faq.md)
