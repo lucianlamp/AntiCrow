@@ -9,6 +9,7 @@
 - [テンプレート機能](templates.md)
 - [スケジュール実行](schedules.md)
 - [Pro プラン](pro-plan.md)
+- [環境別セットアップ](platform-differences.md)
 - [よくある質問](faq.md)
 - [⚠️ 免責事項](disclaimer.md)
 - [🔒 プライバシーポリシー](privacy.md)

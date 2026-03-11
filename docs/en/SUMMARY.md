@@ -9,6 +9,7 @@
 * [Templates](templates.md)
 * [Scheduled Execution](schedules.md)
 * [Pro Plan](pro-plan.md)
+* [Platform Differences](platform-differences.md)
 * [FAQ](faq.md)
 * [⚠️ Disclaimer](disclaimer.md)
 * [🔒 Privacy Policy](privacy.md)

@@ -10,8 +10,8 @@ const GLOBAL_STATE_KEY = 'shortcutCreated';
  * 初回起動チェック：ショートカット未作成なら自動で設置する。
  */
 export async function checkAndOfferShortcut(context: vscode.ExtensionContext): Promise<void> {
-    // Windows と macOS のみ対応（Linux は将来対応）
-    if (process.platform !== 'win32' && process.platform !== 'darwin') { return; }
+    // Windows, macOS, Linux に対応
+    if (process.platform !== 'win32' && process.platform !== 'darwin' && process.platform !== 'linux') { return; }
 
     const alreadyCreated = context.globalState.get<boolean>(GLOBAL_STATE_KEY);
     if (alreadyCreated) { return; }
@@ -38,8 +38,13 @@ export function createDesktopShortcut(extensionPath: string): void {
         return;
     }
 
+    if (process.platform === 'linux') {
+        createLinuxShortcut(extensionPath);
+        return;
+    }
+
     if (process.platform !== 'win32') {
-        logWarn('shortcutInstaller: not on Windows or macOS, skipping');
+        logWarn('shortcutInstaller: not on Windows, macOS, or Linux, skipping');
         return;
     }
 
@@ -115,3 +120,48 @@ function createMacShortcut(extensionPath: string): void {
         logWarn(`shortcutInstaller: macOS .command creation failed — ${e instanceof Error ? e.message : e}`);
     }
 }
+
+/**
+ * Linux: ~/.local/share/applications/ に .desktop ファイルを作成する。
+ * アプリケーションメニューから AntiCrow を起動できるようにする。
+ */
+function createLinuxShortcut(extensionPath: string): void {
+    const fs = require('fs') as typeof import('fs');
+    const applicationsDir = path.join(os.homedir(), '.local', 'share', 'applications');
+    const desktopFilePath = path.join(applicationsDir, 'AntiCrow.desktop');
+
+    // CDP 固定ポートを設定から取得（デフォルト 9333）
+    let cdpPort = 9333;
+    try {
+        const vsc = require('vscode') as typeof import('vscode');
+        cdpPort = vsc.workspace.getConfiguration('antiCrow').get<number>('cdpPort') ?? 9333;
+    } catch { /* テスト環境では vscode が読めない場合がある */ }
+
+    // アイコンファイルの存在チェック
+    const iconPng = path.join(extensionPath, 'images', 'AntiCrowIcon.png');
+    const hasIcon = fs.existsSync(iconPng);
+
+    const lines = [
+        '[Desktop Entry]',
+        'Type=Application',
+        'Name=AntiCrow',
+        'Comment=Launch Antigravity with CDP',
+        `Exec=antigravity --remote-debugging-port=${cdpPort}`,
+        'Terminal=false',
+        'Categories=Development;',
+    ];
+
+    if (hasIcon) {
+        lines.push(`Icon=${iconPng}`);
+    }
+
+    try {
+        // ディレクトリが存在しない場合は再帰作成
+        fs.mkdirSync(applicationsDir, { recursive: true });
+        fs.writeFileSync(desktopFilePath, lines.join('\n') + '\n', { mode: 0o644 });
+        logDebug(`shortcutInstaller: created Linux .desktop file at ${desktopFilePath} (cdpPort=${cdpPort})`);
+    } catch (e) {
+        logWarn(`shortcutInstaller: Linux .desktop creation failed — ${e instanceof Error ? e.message : e}`);
+    }
+}
+
