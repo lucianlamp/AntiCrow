@@ -619,6 +619,7 @@ export const messages = {
   'bridge.tooltipLicenseIssue': 'Plan: License issue — Click to resolve',
   'bridge.tooltipActive': 'AntiCrow — Active (Processing messages)\n{0}',
   'bridge.tooltipStandby': 'AntiCrow — Standby (Another workspace owns the bot)\n{0}',
+  'bridge.tooltipDisconnected': 'AntiCrow — Disconnected (Click to start)\n{0}',
   'bridge.tooltipStopped': 'AntiCrow — Stopped\n{0}',
 
   // --- cdpPool.ts ---

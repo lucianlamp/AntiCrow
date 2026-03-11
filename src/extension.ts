@@ -115,7 +115,7 @@ export async function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(ctx.statusBarItem);
 
     // Auto Accept ステータスバーボタン
-    const autoAcceptBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 99);
+    const autoAcceptBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
     autoAcceptBar.command = 'anti-crow.toggleAutoAccept';
     ctx.autoAcceptStatusBarItem = autoAcceptBar;
     updateAutoAcceptStatusBar(autoAcceptBar);
@@ -128,20 +128,24 @@ export async function activate(context: vscode.ExtensionContext) {
     // Bot Owner の定期チェックでカテゴリが自動作成されるようにする
     // -----------------------------------------------------------------
     {
-        const currentWsName = vscode.workspace.name;
-        const currentWsFolders = vscode.workspace.workspaceFolders;
-        if (currentWsName && currentWsFolders && currentWsFolders.length > 0) {
-            const { isInvalidWorkspaceName } = await import('./bridgeLifecycle');
-            if (!isInvalidWorkspaceName(currentWsName)) {
-                const { getConfig } = await import('./configHelper');
-                const wsPath = currentWsFolders[0].uri.fsPath;
-                const wsPaths = getConfig().get<Record<string, string>>('workspacePaths') || {};
-                if (!wsPaths[currentWsName] || wsPaths[currentWsName] !== wsPath) {
-                    wsPaths[currentWsName] = wsPath;
-                    await getConfig().update('workspacePaths', wsPaths, vscode.ConfigurationTarget.Global);
-                    logDebug(`Extension: auto-saved workspace path: "${currentWsName}" → "${wsPath}"`);
+        try {
+            const currentWsName = vscode.workspace.name;
+            const currentWsFolders = vscode.workspace.workspaceFolders;
+            if (currentWsName && currentWsFolders && currentWsFolders.length > 0) {
+                const { isInvalidWorkspaceName } = await import('./bridgeLifecycle');
+                if (!isInvalidWorkspaceName(currentWsName)) {
+                    const { getConfig } = await import('./configHelper');
+                    const wsPath = currentWsFolders[0].uri.fsPath;
+                    const wsPaths = getConfig().get<Record<string, string>>('workspacePaths') || {};
+                    if (!wsPaths[currentWsName] || wsPaths[currentWsName] !== wsPath) {
+                        wsPaths[currentWsName] = wsPath;
+                        await getConfig().update('workspacePaths', wsPaths, vscode.ConfigurationTarget.Global);
+                        logDebug(`Extension: auto-saved workspace path: "${currentWsName}" → "${wsPath}"`);
+                    }
                 }
             }
+        } catch (e) {
+            logWarn(`Extension: failed to auto-save workspace path (non-fatal): ${e}`);
         }
     }
 

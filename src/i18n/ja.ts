@@ -640,6 +640,7 @@ export const messages = {
   'bridge.tooltipLicenseIssue': 'プラン: ライセンス問題あり — クリックして対処',
   'bridge.tooltipActive': 'AntiCrow — Active (メッセージを処理中)\n{0}',
   'bridge.tooltipStandby': 'AntiCrow — Standby (別ワークスペースが Bot 管理中)\n{0}',
+  'bridge.tooltipDisconnected': 'AntiCrow — 未接続 (クリックして起動)\n{0}',
   'bridge.tooltipStopped': 'AntiCrow — Stopped\n{0}',
 
   // -----------------------------------------------------------------------

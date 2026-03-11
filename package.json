@@ -113,7 +113,7 @@
         "antiCrow.cdpPort": {
           "type": "number",
           "default": 9000,
-          "markdownDescription": "CDP（Chrome DevTools Protocol）接続に使用する固定ポート番号。Antigravity 起動時に `--remote-debugging-port` に使用されます。"
+          "markdownDescription": "CDP（Chrome DevTools Protocol）接続に使用する固定ポート番号。Antigravity 起動時に `--remote-debugging-port` に使用されます。\n\nこのポートで Antigravity を起動するデスクトップショートカットを作成するには、**[Create Desktop Shortcut](command:anti-crow.createShortcut)** を実行してください。"
         },
         "antiCrow.workspaceParentDirs": {
           "type": "array",

@@ -95,7 +95,6 @@ export function createDesktopShortcut(extensionPath: string): void {
 function createMacShortcut(extensionPath: string): void {
     const fs = require('fs') as typeof import('fs');
     const desktop = path.join(os.homedir(), 'Desktop');
-    const scriptPath = path.join(desktop, 'AntiCrow.command');
 
     // CDP 固定ポートを設定から取得（デフォルト 9000）
     let cdpPort = 9000;
@@ -103,6 +102,8 @@ function createMacShortcut(extensionPath: string): void {
         const vsc = require('vscode') as typeof import('vscode');
         cdpPort = vsc.workspace.getConfiguration('antiCrow').get<number>('cdpPort') ?? 9000;
     } catch { /* テスト環境では vscode が読めない場合がある */ }
+
+    const scriptPath = path.join(desktop, 'AntiCrow.command');
 
     // .command シェルスクリプトを作成（macOS でダブルクリック実行可能）
     const script = [

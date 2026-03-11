@@ -112,3 +112,27 @@
 ### 2026-02-26
 
 [2026-02-26] handleCancel の wsKey=null フォールバック修正: forceStopAll() による全WS巻き添え停止を廃止。Pool サイズ1なら自動解決、複数WS時は対象特定不能エラーを返す安全なフォールバックに変更。wsKey が null になるのはチャンネルにカテゴリーがないか、カテゴリー名に WORKSPACE_CATEGORY_PREFIX がない場合。
+
+
+### 2026-03-11
+2026-03-11 課金プラン変更: LicenseType を 'lifetime' | 'trial' | 'free' の3種に簡素化。monthly 廃止済み。既存月額ユーザーは API の valid: true を信頼し lifetime にマッピング。変更対象は licensing/ 4ファイル + adminHandler.ts + bridgeLifecycle.ts + i18n 2ファイル + テスト1ファイルの計9ファイル
+
+
+### 2026-03-11
+無料版タスク制限の方針: canExecuteTask() チェックは generatePlan() の後・dispatchPlan() の前に配置。プラン生成は無制限、タスク実行のみ制限。「制限チェック前倒し（generatePlan前に移動）」は不採用 — プラン生成無制限の方針と矛盾するため
+
+
+### 2026-03-11
+2026-03-11 CDPポートデフォルト変更: 9333→9000。対象ファイルは configHelper.ts(3箇所), shortcutInstaller.ts(9箇所), package.json(1箇所), subagentHandle.test.ts(3箇所), subagentManager.test.ts(2箇所)の計5ファイル18箇所
+
+
+### 2026-03-11
+updateStatusBar() は Bot 接続状態（ctx.bot?.isReady()）で $(check) / $(plug) アイコンを切り替える。未接続時は anti-crow.start コマンドにフォールバック。bridge.tooltipDisconnected キー追加済み
+
+
+### 2026-03-11
+VSIX インストールは必ずレスポンス書き込みの「後」に実行する。前回はレスポンスのみ書いてインストールを忘れたため、コード変更が反映されなかった。レスポンスの write_to_file の直後に antigravity --install-extension を確実に実行すること
+
+
+### 2026-03-11
+updateStatusBar() を3状態に変更: $(check)=アクティブ(botReady), $(eye)=スタンバイ(lockWatchTimer存在), $(plug)=未接続。スタンバイWSでは ctx.bot が null のため botReady は常に false だが、lockWatchTimer が非null = ロック監視中 = スタンバイと判定

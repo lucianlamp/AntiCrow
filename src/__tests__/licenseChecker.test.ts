@@ -410,3 +410,357 @@ describe('LicenseChecker — トライアル機能', () => {
         });
     });
 });
+
+// =====================================================================
+// Lemonsqueezy API レスポンスハンドリング
+// =====================================================================
+
+describe('LicenseChecker — Lemonsqueezy API レスポンスハンドリング', () => {
+    let checker: LicenseChecker;
+    const BASE_TIME = new Date('2026-02-21T00:00:00Z').getTime();
+
+    beforeEach(() => {
+        vi.useFakeTimers();
+        vi.setSystemTime(BASE_TIME);
+        checker = new LicenseChecker();
+        mockFetch.mockReset();
+    });
+
+    afterEach(() => {
+        checker.dispose();
+        vi.useRealTimers();
+    });
+
+    it('valid: true + active ライセンス → lifetime/active', async () => {
+        mockFetch.mockResolvedValueOnce({
+            json: async () => ({
+                valid: true,
+                license_key: {
+                    id: 1, status: 'active', key: 'k',
+                    activation_limit: 5, activation_usage: 1, expires_at: null,
+                },
+                meta: { store_id: 1, product_id: 1, product_name: 'Anti-Crow', variant_id: 1, variant_name: 'Lifetime' },
+            }),
+        });
+
+        checker.setLicenseKey('test-key');
+        const s = await checker.check(true);
+        expect(s.valid).toBe(true);
+        expect(s.type).toBe('lifetime');
+        expect(s.reason).toBe('active');
+    });
+
+    it('valid: false + expired ステータス → expired', async () => {
+        mockFetch.mockResolvedValueOnce({
+            json: async () => ({
+                valid: false,
+                license_key: {
+                    id: 1, status: 'expired', key: 'k',
+                    activation_limit: 5, activation_usage: 1, expires_at: '2026-01-01T00:00:00Z',
+                },
+            }),
+        });
+
+        checker.setLicenseKey('expired-key');
+        const s = await checker.check(true);
+        expect(s.valid).toBe(false);
+        expect(s.type).toBe('free');
+        expect(s.reason).toBe('expired');
+    });
+
+    it('valid: false + disabled ステータス → invalid_key', async () => {
+        mockFetch.mockResolvedValueOnce({
+            json: async () => ({
+                valid: false,
+                license_key: {
+                    id: 1, status: 'disabled', key: 'k',
+                    activation_limit: 5, activation_usage: 1, expires_at: null,
+                },
+            }),
+        });
+
+        checker.setLicenseKey('disabled-key');
+        const s = await checker.check(true);
+        expect(s.valid).toBe(false);
+        expect(s.reason).toBe('invalid_key');
+    });
+
+    it('valid: false + license_key なし → invalid_key', async () => {
+        mockFetch.mockResolvedValueOnce({
+            json: async () => ({
+                valid: false,
+                error: 'The license key was not found.',
+            }),
+        });
+
+        checker.setLicenseKey('nonexistent-key');
+        const s = await checker.check(true);
+        expect(s.valid).toBe(false);
+        expect(s.reason).toBe('invalid_key');
+    });
+
+    it('fetch が例外を投げる → check_failed（キャッシュなし）', async () => {
+        mockFetch.mockRejectedValueOnce(new Error('Network error'));
+
+        checker.setLicenseKey('some-key');
+        const s = await checker.check(true);
+        expect(s.valid).toBe(false);
+        expect(s.reason).toBe('check_failed');
+    });
+
+    it('expires_at が設定されている場合、expiresAt がパースされる', async () => {
+        const expiry = '2027-01-01T00:00:00Z';
+        mockFetch.mockResolvedValueOnce({
+            json: async () => ({
+                valid: true,
+                license_key: {
+                    id: 1, status: 'active', key: 'k',
+                    activation_limit: 5, activation_usage: 1, expires_at: expiry,
+                },
+                meta: { store_id: 1, product_id: 1, product_name: 'Anti-Crow', variant_id: 1, variant_name: 'Lifetime' },
+            }),
+        });
+
+        checker.setLicenseKey('expiry-key');
+        const s = await checker.check(true);
+        expect(s.valid).toBe(true);
+        expect(s.expiresAt).toBe(new Date(expiry).getTime());
+    });
+
+    it('instance ID がレスポンスに含まれる場合、instanceId が設定される', async () => {
+        mockFetch.mockResolvedValueOnce({
+            json: async () => ({
+                valid: true,
+                license_key: {
+                    id: 1, status: 'active', key: 'k',
+                    activation_limit: 5, activation_usage: 1, expires_at: null,
+                },
+                instance: { id: 'inst-abc-123', name: 'test' },
+                meta: { store_id: 1, product_id: 1, product_name: 'Anti-Crow', variant_id: 1, variant_name: 'Lifetime' },
+            }),
+        });
+
+        checker.setLicenseKey('instance-key');
+        const s = await checker.check(true);
+        expect(s.instanceId).toBe('inst-abc-123');
+    });
+});
+
+// =====================================================================
+// オフライン猶予期間（3日間）
+// =====================================================================
+
+describe('LicenseChecker — オフライン猶予期間', () => {
+    let checker: LicenseChecker;
+    const BASE_TIME = new Date('2026-02-21T00:00:00Z').getTime();
+    const DAY_MS = 24 * 60 * 60 * 1000;
+    const STATE_KEY = 'antiCrow.licenseCache';
+
+    beforeEach(() => {
+        vi.useFakeTimers();
+        vi.setSystemTime(BASE_TIME);
+        checker = new LicenseChecker();
+        mockFetch.mockReset();
+    });
+
+    afterEach(() => {
+        checker.dispose();
+        vi.useRealTimers();
+    });
+
+    it('オフライン + キャッシュあり + 1日以内 → offline_grace（有効維持）', async () => {
+        // キャッシュに有効なライセンスが残っている状態をシミュレート
+        const cachedData = {
+            status: {
+                valid: true, type: 'lifetime', reason: 'active',
+                checkedAt: BASE_TIME - 1 * 60 * 60 * 1000, // 1時間前
+            },
+            lastOnlineCheck: BASE_TIME - 12 * 60 * 60 * 1000, // 12時間前
+        };
+        const store: Record<string, unknown> = { [STATE_KEY]: cachedData };
+        const gs = createMockGlobalState(store);
+        checker.setGlobalState(gs);
+
+        // fetch が失敗（オフライン）
+        mockFetch.mockRejectedValueOnce(new Error('Network error'));
+
+        checker.setLicenseKey('cached-key');
+        // キャッシュ TTL を超過させるため force=true
+        const s = await checker.check(true);
+
+        expect(s.valid).toBe(true);
+        expect(s.reason).toBe('offline_grace');
+    });
+
+    it('オフライン + キャッシュあり + 3日超過 → check_failed（無効化）', async () => {
+        const cachedData = {
+            status: {
+                valid: true, type: 'lifetime', reason: 'active',
+                checkedAt: BASE_TIME - 4 * DAY_MS,
+            },
+            lastOnlineCheck: BASE_TIME - 4 * DAY_MS, // 4日前（猶予期間超過）
+        };
+        const store: Record<string, unknown> = { [STATE_KEY]: cachedData };
+        const gs = createMockGlobalState(store);
+        checker.setGlobalState(gs);
+
+        mockFetch.mockRejectedValueOnce(new Error('Network error'));
+
+        checker.setLicenseKey('expired-cache-key');
+        const s = await checker.check(true);
+
+        expect(s.valid).toBe(false);
+        expect(s.reason).toBe('check_failed');
+    });
+
+    it('オフライン + キャッシュなし → check_failed', async () => {
+        // globalState なし（キャッシュなし）
+        mockFetch.mockRejectedValueOnce(new Error('Network error'));
+
+        checker.setLicenseKey('no-cache-key');
+        const s = await checker.check(true);
+
+        expect(s.valid).toBe(false);
+        expect(s.reason).toBe('check_failed');
+    });
+
+    it('オフライン + キャッシュあり + 2日59時間 → offline_grace（ギリギリ有効）', async () => {
+        const almostExpired = BASE_TIME - (3 * DAY_MS - 1 * 60 * 60 * 1000); // 2日23時間前
+        const cachedData = {
+            status: {
+                valid: true, type: 'lifetime', reason: 'active',
+                checkedAt: almostExpired,
+            },
+            lastOnlineCheck: almostExpired,
+        };
+        const store: Record<string, unknown> = { [STATE_KEY]: cachedData };
+        const gs = createMockGlobalState(store);
+        checker.setGlobalState(gs);
+
+        mockFetch.mockRejectedValueOnce(new Error('Network error'));
+
+        checker.setLicenseKey('almost-expired-key');
+        const s = await checker.check(true);
+
+        expect(s.valid).toBe(true);
+        expect(s.reason).toBe('offline_grace');
+    });
+});
+
+// =====================================================================
+// キャッシュ TTL（5分）
+// =====================================================================
+
+describe('LicenseChecker — キャッシュ TTL', () => {
+    let checker: LicenseChecker;
+    const BASE_TIME = new Date('2026-02-21T00:00:00Z').getTime();
+    const CACHE_TTL = 5 * 60 * 1000; // 5分
+
+    beforeEach(() => {
+        vi.useFakeTimers();
+        vi.setSystemTime(BASE_TIME);
+        checker = new LicenseChecker();
+        mockFetch.mockReset();
+    });
+
+    afterEach(() => {
+        checker.dispose();
+        vi.useRealTimers();
+    });
+
+    it('TTL 以内の2回目チェック → API を呼ばずキャッシュを返す', async () => {
+        // 1回目: API呼び出し
+        mockFetch.mockResolvedValueOnce({
+            json: async () => ({
+                valid: true,
+                license_key: {
+                    id: 1, status: 'active', key: 'k',
+                    activation_limit: 5, activation_usage: 1, expires_at: null,
+                },
+                meta: { store_id: 1, product_id: 1, product_name: 'Anti-Crow', variant_id: 1, variant_name: 'Lifetime' },
+            }),
+        });
+
+        checker.setLicenseKey('ttl-test-key');
+        const s1 = await checker.check(true); // force=true で初回チェック
+        expect(s1.valid).toBe(true);
+        expect(mockFetch).toHaveBeenCalledTimes(1);
+
+        // 2回目: 3分後（TTL 以内）→ API 呼ばない
+        vi.advanceTimersByTime(3 * 60 * 1000);
+        const s2 = await checker.check(); // force=false
+        expect(s2.valid).toBe(true);
+        expect(s2.type).toBe('lifetime');
+        expect(mockFetch).toHaveBeenCalledTimes(1); // 追加呼び出しなし
+    });
+
+    it('TTL 超過後の2回目チェック → API を再呼び出し', async () => {
+        // 1回目
+        mockFetch.mockResolvedValueOnce({
+            json: async () => ({
+                valid: true,
+                license_key: {
+                    id: 1, status: 'active', key: 'k',
+                    activation_limit: 5, activation_usage: 1, expires_at: null,
+                },
+                meta: { store_id: 1, product_id: 1, product_name: 'Anti-Crow', variant_id: 1, variant_name: 'Lifetime' },
+            }),
+        });
+
+        checker.setLicenseKey('ttl-test-key-2');
+        await checker.check(true);
+        expect(mockFetch).toHaveBeenCalledTimes(1);
+
+        // 2回目: 6分後（TTL 超過）→ API 再呼び出し
+        vi.advanceTimersByTime(6 * 60 * 1000);
+
+        mockFetch.mockResolvedValueOnce({
+            json: async () => ({
+                valid: true,
+                license_key: {
+                    id: 1, status: 'active', key: 'k',
+                    activation_limit: 5, activation_usage: 1, expires_at: null,
+                },
+                meta: { store_id: 1, product_id: 1, product_name: 'Anti-Crow', variant_id: 1, variant_name: 'Lifetime' },
+            }),
+        });
+
+        await checker.check(); // force=false だが TTL 超過なので API 呼び出し
+        expect(mockFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('force=true → TTL 以内でも API を呼び出す', async () => {
+        // 1回目
+        mockFetch.mockResolvedValueOnce({
+            json: async () => ({
+                valid: true,
+                license_key: {
+                    id: 1, status: 'active', key: 'k',
+                    activation_limit: 5, activation_usage: 1, expires_at: null,
+                },
+                meta: { store_id: 1, product_id: 1, product_name: 'Anti-Crow', variant_id: 1, variant_name: 'Lifetime' },
+            }),
+        });
+
+        checker.setLicenseKey('force-test-key');
+        await checker.check(true);
+        expect(mockFetch).toHaveBeenCalledTimes(1);
+
+        // 2回目: 1分後 + force=true → API 呼び出し
+        vi.advanceTimersByTime(1 * 60 * 1000);
+
+        mockFetch.mockResolvedValueOnce({
+            json: async () => ({
+                valid: true,
+                license_key: {
+                    id: 1, status: 'active', key: 'k',
+                    activation_limit: 5, activation_usage: 1, expires_at: null,
+                },
+                meta: { store_id: 1, product_id: 1, product_name: 'Anti-Crow', variant_id: 1, variant_name: 'Lifetime' },
+            }),
+        });
+
+        await checker.check(true); // force=true
+        expect(mockFetch).toHaveBeenCalledTimes(2);
+    });
+});

@@ -10,7 +10,7 @@
 // ---------------------------------------------------------------------------
 
 import * as vscode from 'vscode';
-import { Message, TextChannel } from 'discord.js';
+import { Message, TextChannel, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import { CdpBridge } from './cdpBridge';
 import { WorkspaceConnectionError } from './cdpPool';
 import { ChannelIntent } from './types';
@@ -28,7 +28,7 @@ import { startAutoMode, stopAutoMode, isAutoModeActive } from './autoModeControl
 import { loadAutoModeConfig } from './autoModeConfig';
 import { FileIpc } from './fileIpc';
 import { getLicenseGate } from './extension';
-import { FREE_DAILY_TASK_LIMIT, FREE_WEEKLY_TASK_LIMIT } from './licensing/licenseGate';
+import { FREE_DAILY_TASK_LIMIT, FREE_WEEKLY_TASK_LIMIT, PURCHASE_URL_LIFETIME } from './licensing/licenseGate';
 import { t } from './i18n';
 
 // 委譲先モジュール
@@ -285,7 +285,12 @@ export async function handleDiscordMessage(
             const msg = exceeded === 'daily'
                 ? t('pipeline.taskLimitReached', String(FREE_DAILY_TASK_LIMIT))
                 : t('pipeline.weeklyLimitReached', String(FREE_WEEKLY_TASK_LIMIT));
-            await channel.send({ embeds: [buildEmbed(msg, EmbedColor.Warning)] });
+            const proButton = new ButtonBuilder()
+                .setLabel('💎 Pro にアップグレード')
+                .setStyle(ButtonStyle.Link)
+                .setURL(PURCHASE_URL_LIFETIME);
+            const row = new ActionRowBuilder<ButtonBuilder>().addComponents(proButton);
+            await channel.send({ embeds: [buildEmbed(msg, EmbedColor.Warning)], components: [row] });
             return;
         }
 
@@ -295,7 +300,22 @@ export async function handleDiscordMessage(
         });
 
         // タスクカウントをインクリメント
-        if (taskGate) { await taskGate.incrementTaskCount(); }
+        if (taskGate) {
+            await taskGate.incrementTaskCount();
+            if (!taskGate.isPro()) {
+                const counts = taskGate.getTaskCounts();
+                const dailyRemain = Math.max(0, FREE_DAILY_TASK_LIMIT - counts.daily);
+                const weeklyRemain = Math.max(0, FREE_WEEKLY_TASK_LIMIT - counts.weekly);
+                try {
+                    await channel.send({
+                        embeds: [buildEmbed(
+                            `📊 残り: ${dailyRemain}/${FREE_DAILY_TASK_LIMIT} 回（本日）| ${weeklyRemain}/${FREE_WEEKLY_TASK_LIMIT} 回（今週）`,
+                            EmbedColor.Info
+                        )]
+                    });
+                } catch { /* ignore */ }
+            }
+        }
 
         // オートモード開始: startAutoMode() で currentState を初期化
         // これにより executor.ts の isAutoModeActive() が true を返し、
@@ -458,7 +478,12 @@ export async function processSuggestionPrompt(
                 const msg = exceeded === 'daily'
                     ? t('pipeline.taskLimitReached', String(FREE_DAILY_TASK_LIMIT))
                     : t('pipeline.weeklyLimitReached', String(FREE_WEEKLY_TASK_LIMIT));
-                await channel.send({ embeds: [buildEmbed(msg, EmbedColor.Warning)] });
+                const proButton = new ButtonBuilder()
+                    .setLabel('💎 Pro にアップグレード')
+                    .setStyle(ButtonStyle.Link)
+                    .setURL(PURCHASE_URL_LIFETIME);
+                const row = new ActionRowBuilder<ButtonBuilder>().addComponents(proButton);
+                await channel.send({ embeds: [buildEmbed(msg, EmbedColor.Warning)], components: [row] });
                 return;
             }
 
@@ -469,7 +494,22 @@ export async function processSuggestionPrompt(
             });
 
             // タスクカウントをインクリメント
-            if (taskGate) { await taskGate.incrementTaskCount(); }
+            if (taskGate) {
+                await taskGate.incrementTaskCount();
+                if (!taskGate.isPro()) {
+                    const counts = taskGate.getTaskCounts();
+                    const dailyRemain = Math.max(0, FREE_DAILY_TASK_LIMIT - counts.daily);
+                    const weeklyRemain = Math.max(0, FREE_WEEKLY_TASK_LIMIT - counts.weekly);
+                    try {
+                        await channel.send({
+                            embeds: [buildEmbed(
+                                `📊 残り: ${dailyRemain}/${FREE_DAILY_TASK_LIMIT} 回（本日）| ${weeklyRemain}/${FREE_WEEKLY_TASK_LIMIT} 回（今週）`,
+                                EmbedColor.Info
+                            )]
+                        });
+                    } catch { /* ignore */ }
+                }
+            }
 
             await dispatchPlan(ctx, plan, channel, activeCdp, wsNameFromCategory ?? undefined, guild);
         } catch (e) {
