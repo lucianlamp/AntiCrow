@@ -244,16 +244,32 @@ export const DANGEROUS_PATTERNS: DangerousPattern[] = [
 const SIMILARITY_THRESHOLD = 0.9;
 
 // ---------------------------------------------------------------------------
-// 状態管理（シングルトン — 同時実行は1つのみ）
+// 状態管理（WS別Map — 複数WSで同時実行可能）
 // ---------------------------------------------------------------------------
 
-let currentState: AutoModeState | null = null;
+/** WS別のオートモード状態 */
+const stateMap = new Map<string, AutoModeState>();
 
-/** 一時停止中の resolve コールバック（セーフティ応答待ち） */
-let pauseResolve: ((action: 'approve' | 'skip' | 'stop') => void) | null = null;
+/** WS別のセーフティ一時停止 resolve コールバック */
+const pauseResolveMap = new Map<string, (action: 'approve' | 'skip' | 'stop') => void>();
 
-/** 確認モード一時停止中の resolve コールバック（continue/stop 応答待ち） */
-let confirmResolve: ((action: 'continue' | 'stop') => void) | null = null;
+/** WS別の確認モード一時停止 resolve コールバック */
+const confirmResolveMap = new Map<string, (action: 'continue' | 'stop') => void>();
+
+/**
+ * 後方互換用ヘルパー: wsKey 省略時にアクティブな最初の状態を取得する。
+ * wsKey 指定時はそのWSの状態を返す。
+ */
+function resolveState(wsKey?: string): AutoModeState | null {
+    if (wsKey) {
+        return stateMap.get(wsKey) ?? null;
+    }
+    // 省略時: 最初にアクティブなものを返す
+    for (const state of stateMap.values()) {
+        if (state.active) return state;
+    }
+    return null;
+}
 
 // ---------------------------------------------------------------------------
 // 公開 API
@@ -261,17 +277,24 @@ let confirmResolve: ((action: 'continue' | 'stop') => void) | null = null;
 
 /**
  * 現在のオートモード状態を取得する。
- * オートモードが非アクティブの場合は null を返す。
+ * @param wsKey 省略時は最初にアクティブなWSの状態を返す
  */
-function getAutoModeState(): AutoModeState | null {
-    return currentState;
+function getAutoModeState(wsKey?: string): AutoModeState | null {
+    return resolveState(wsKey);
 }
 
 /**
  * オートモードがアクティブかどうかを返す。
+ * @param wsKey 省略時はいずれかのWSがアクティブなら true
  */
-export function isAutoModeActive(): boolean {
-    return currentState?.active === true;
+export function isAutoModeActive(wsKey?: string): boolean {
+    if (wsKey) {
+        return stateMap.get(wsKey)?.active === true;
+    }
+    for (const state of stateMap.values()) {
+        if (state.active) return true;
+    }
+    return false;
 }
 
 /**
@@ -293,15 +316,15 @@ export async function startAutoMode(
     config?: Partial<AutoModeConfig>,
     isTeamMode: boolean = false,
 ): Promise<string> {
-    // 既にアクティブなら停止
-    if (currentState?.active) {
-        logWarn('autoMode: already active, stopping previous session');
-        await stopAutoMode(channel, 'new_session');
+    // 同じWSで既にアクティブなら停止
+    if (stateMap.get(wsKey)?.active) {
+        logWarn(`autoMode: already active for wsKey=${wsKey}, stopping previous session`);
+        await stopAutoMode(channel, 'new_session', wsKey);
     }
 
     const mergedConfig: AutoModeConfig = { ...AUTO_MODE_DEFAULTS, ...config };
 
-    currentState = {
+    const newState: AutoModeState = {
         active: true,
         channelId: channel.id,
         wsKey,
@@ -317,6 +340,7 @@ export async function startAutoMode(
         autoApproveWasEnabled: false, // 実際の値は呼び出し元で設定
         isTeamMode,
     };
+    stateMap.set(wsKey, newState);
 
     logInfo(`autoMode: started — prompt="${prompt.substring(0, 50)}..." maxSteps=${mergedConfig.maxSteps} teamMode=${isTeamMode}`);
 
@@ -344,7 +368,7 @@ export async function startAutoMode(
     }
 
     // 初回プロンプトを構築
-    return buildAutoPrompt(channel.id, prompt);
+    return buildAutoPrompt(channel.id, prompt, wsKey);
 }
 
 /**
@@ -360,7 +384,9 @@ export async function onStepComplete(
     channel: TextChannel,
     suggestions: SuggestionItem[],
     responseContent: string,
+    wsKey?: string,
 ): Promise<string | null> {
+    const currentState = resolveState(wsKey);
     if (!currentState?.active) {
         logDebug('autoMode: onStepComplete called but not active');
         return null;
@@ -396,9 +422,9 @@ export async function onStepComplete(
     if (!safetyResult.safe) {
         if (safetyResult.severity === 'block') {
             // 一時停止 + Discord 承認待ち
-            const action = await pauseForSafety(channel, safetyResult);
+            const action = await pauseForSafety(channel, safetyResult, currentState.wsKey);
             if (action === 'stop') {
-                await stopAutoMode(channel, 'safety_stop');
+                await stopAutoMode(channel, 'safety_stop', currentState.wsKey);
                 return null;
             }
             if (action === 'skip') {
@@ -416,28 +442,28 @@ export async function onStepComplete(
     const diffSummary = await buildDiffSummary(currentState.wsKey);
 
     // ステップ完了通知（diffSummary を含む）
-    await sendStepCompleteNotification(channel, stepResult, suggestions, diffSummary);
+    await sendStepCompleteNotification(channel, stepResult, suggestions, diffSummary, currentState.wsKey);
 
     // ループ継続判定
-    const continueResult = shouldContinue(responseContent);
+    const continueResult = shouldContinue(responseContent, currentState);
     if (!continueResult.shouldContinue) {
-        await stopAutoMode(channel, continueResult.reason);
+        await stopAutoMode(channel, continueResult.reason, currentState.wsKey);
         return null;
     }
 
     // Phase 2: confirmMode による確認待ち
     const { confirmMode } = currentState.config;
     if (confirmMode === 'manual' || (confirmMode === 'semi' && currentState.currentStep % 2 === 0)) {
-        const confirmAction = await pauseForConfirmation(channel);
+        const confirmAction = await pauseForConfirmation(channel, currentState.wsKey);
         if (confirmAction === 'stop') {
-            await stopAutoMode(channel, 'confirm_stop');
+            await stopAutoMode(channel, 'confirm_stop', currentState.wsKey);
             return null;
         }
         // 'continue' ならそのまま続行
     }
 
     // 次ステップのプロンプトを構築
-    return buildAutoPrompt(currentState.channelId);
+    return buildAutoPrompt(currentState.channelId, undefined, currentState.wsKey);
 }
 
 /**
@@ -447,25 +473,54 @@ export async function onStepComplete(
 export async function stopAutoMode(
     channel: TextChannel,
     reason: string = 'manual',
+    wsKey?: string,
 ): Promise<void> {
-    if (!currentState) {
+    // wsKey指定時はそのWSのみ、省略時は全WSを停止
+    if (wsKey) {
+        const state = stateMap.get(wsKey);
+        if (!state) {
+            logDebug(`autoMode: stopAutoMode called but no state for wsKey=${wsKey}`);
+            return;
+        }
+        cancelPlanGeneration();
+        stateMap.delete(wsKey);
+        pauseResolveMap.delete(wsKey);
+        confirmResolveMap.delete(wsKey);
+        await sendStopSummary(channel, state, reason);
+        return;
+    }
+
+    // wsKey省略: 全WSの停止（後方互換）
+    if (stateMap.size === 0) {
         logDebug('autoMode: stopAutoMode called but no state');
         return;
     }
 
-    // typing / progress interval を全クリア（planPipeline + executor 両方をカバー）
     cancelPlanGeneration();
 
-    const state = currentState;
-    currentState = null;
-    pauseResolve = null;
-    confirmResolve = null;
+    // 全WSを停止
+    const allStates = Array.from(stateMap.entries());
+    stateMap.clear();
+    pauseResolveMap.clear();
+    confirmResolveMap.clear();
 
+    // 最後のstateでサマリーを送信（後方互換のため1回だけ）
+    const [, state] = allStates[allStates.length - 1];
+    await sendStopSummary(channel, state, reason);
+}
+
+/**
+ * 終了サマリーをDiscordに送信する（内部ヘルパー）。
+ */
+async function sendStopSummary(
+    channel: TextChannel,
+    state: AutoModeState,
+    reason: string,
+): Promise<void> {
     const totalDuration = Date.now() - state.startedAt;
-    const activeDuration = totalDuration - state.totalPausedMs;
     const safetyCount = state.history.filter(s => !s.safetyResult.safe).length;
 
-    logInfo(`autoMode: stopped — reason=${reason} steps=${state.currentStep} duration=${formatDuration(totalDuration)} paused=${formatDuration(state.totalPausedMs)}`);
+    logInfo(`autoMode: stopped — reason=${reason} wsKey=${state.wsKey} steps=${state.currentStep} duration=${formatDuration(totalDuration)} paused=${formatDuration(state.totalPausedMs)}`);
 
     // 終了理由の決定
     let reasonText: string;
@@ -551,13 +606,28 @@ export async function stopAutoMode(
  * セーフティ一時停止からの応答を処理する。
  * slashHandler.ts のボタンハンドラから呼び出される。
  */
-export function handleSafetyResponse(action: 'approve' | 'skip' | 'stop'): void {
-    if (pauseResolve) {
-        logInfo(`autoMode: safety response received — action=${action}`);
-        pauseResolve(action);
-        pauseResolve = null;
+export function handleSafetyResponse(action: 'approve' | 'skip' | 'stop', wsKey?: string): void {
+    // wsKey指定時はそのWSのみ、省略時は最初に見つかったものを処理（後方互換）
+    if (wsKey) {
+        const resolve = pauseResolveMap.get(wsKey);
+        if (resolve) {
+            logInfo(`autoMode: safety response received — action=${action} wsKey=${wsKey}`);
+            resolve(action);
+            pauseResolveMap.delete(wsKey);
+        } else {
+            logWarn(`autoMode: safety response received but no pause for wsKey=${wsKey}`);
+        }
     } else {
-        logWarn('autoMode: safety response received but no pause in progress');
+        // 後方互換: 最初のエントリを処理
+        const firstEntry = pauseResolveMap.entries().next();
+        if (!firstEntry.done) {
+            const [key, resolve] = firstEntry.value;
+            logInfo(`autoMode: safety response received — action=${action} (fallback wsKey=${key})`);
+            resolve(action);
+            pauseResolveMap.delete(key);
+        } else {
+            logWarn('autoMode: safety response received but no pause in progress');
+        }
     }
 }
 
@@ -565,13 +635,26 @@ export function handleSafetyResponse(action: 'approve' | 'skip' | 'stop'): void 
  * Phase 2: 確認モードの応答を処理する。
  * slashHandler.ts のボタンハンドラから呼び出される。
  */
-export function handleConfirmResponse(action: 'continue' | 'stop'): void {
-    if (confirmResolve) {
-        logInfo(`autoMode: confirm response received — action=${action}`);
-        confirmResolve(action);
-        confirmResolve = null;
+export function handleConfirmResponse(action: 'continue' | 'stop', wsKey?: string): void {
+    if (wsKey) {
+        const resolve = confirmResolveMap.get(wsKey);
+        if (resolve) {
+            logInfo(`autoMode: confirm response received — action=${action} wsKey=${wsKey}`);
+            resolve(action);
+            confirmResolveMap.delete(wsKey);
+        } else {
+            logWarn(`autoMode: confirm response received but no confirm pause for wsKey=${wsKey}`);
+        }
     } else {
-        logWarn('autoMode: confirm response received but no confirm pause in progress');
+        const firstEntry = confirmResolveMap.entries().next();
+        if (!firstEntry.done) {
+            const [key, resolve] = firstEntry.value;
+            logInfo(`autoMode: confirm response received — action=${action} (fallback wsKey=${key})`);
+            resolve(action);
+            confirmResolveMap.delete(key);
+        } else {
+            logWarn('autoMode: confirm response received but no confirm pause in progress');
+        }
     }
 }
 
@@ -582,9 +665,10 @@ export function handleConfirmResponse(action: 'continue' | 'stop'): void {
 export async function handleAutoModeError(
     channel: TextChannel,
     error: unknown,
+    wsKey?: string,
 ): Promise<void> {
     logError('autoMode: error occurred', error);
-    await stopAutoMode(channel, 'error');
+    await stopAutoMode(channel, 'error', wsKey);
 }
 
 // ---------------------------------------------------------------------------
@@ -599,7 +683,8 @@ export async function handleAutoModeError(
  * @param fallbackPrompt SUGGESTIONS がない場合のフォールバックプロンプト
  * @returns AI判断プロンプト
  */
-function buildAutonomousPrompt(fallbackPrompt: string): string {
+function buildAutonomousPrompt(fallbackPrompt: string, wsKey?: string): string {
+    const currentState = resolveState(wsKey);
     if (!currentState) {
         return fallbackPrompt;
     }
@@ -645,7 +730,8 @@ function buildAutonomousPrompt(fallbackPrompt: string): string {
  * @param initialPrompt 初回プロンプト（省略時は AUTO_PROMPT ベース）
  * @returns 構築されたプロンプトテキスト
  */
-function buildAutoPrompt(channelId: string, initialPrompt?: string): string {
+function buildAutoPrompt(channelId: string, initialPrompt?: string, wsKey?: string): string {
+    const currentState = resolveState(wsKey);
     const basePrompt = initialPrompt || AUTO_PROMPT;
     const selectionMode = currentState?.config.selectionMode ?? 'auto-delegate';
 
@@ -662,7 +748,7 @@ function buildAutoPrompt(channelId: string, initialPrompt?: string): string {
                 .join('\n');
             result = (t as any)('misc.suggest.autoPromptPrefix', suggestionContext, basePrompt);
         } else {
-            result = buildAutonomousPrompt(basePrompt);
+            result = buildAutonomousPrompt(basePrompt, wsKey);
         }
     } else {
         // selectionMode に応じた分岐
@@ -675,7 +761,7 @@ function buildAutoPrompt(channelId: string, initialPrompt?: string): string {
                 } else {
                     // フォールバック: AI判断プロンプト
                     logInfo('autoMode: selectionMode=first — no suggestions, falling back to autonomous prompt');
-                    result = buildAutonomousPrompt(basePrompt);
+                    result = buildAutonomousPrompt(basePrompt, wsKey);
                 }
                 break;
             }
@@ -691,7 +777,7 @@ function buildAutoPrompt(channelId: string, initialPrompt?: string): string {
                 } else {
                     // フォールバック: AI判断プロンプト
                     logInfo('autoMode: selectionMode=ai-select — no suggestions, falling back to autonomous prompt');
-                    result = buildAutonomousPrompt(basePrompt);
+                    result = buildAutonomousPrompt(basePrompt, wsKey);
                 }
                 break;
             }
@@ -705,7 +791,7 @@ function buildAutoPrompt(channelId: string, initialPrompt?: string): string {
                         .join('\n');
                     result = (t as any)('misc.suggest.autoPromptPrefix', suggestionContext, basePrompt);
                 } else {
-                    result = buildAutonomousPrompt(basePrompt);
+                    result = buildAutonomousPrompt(basePrompt, wsKey);
                 }
                 break;
             }
@@ -775,11 +861,7 @@ function checkSafety(text: string): SafetyCheckResult {
  *   2. maxDuration: 時間上限
  *   3. 類似検知: 直前2ステップのレスポンスが閾値以上類似
  */
-function shouldContinue(latestResponse: string): { shouldContinue: boolean; reason: string } {
-    if (!currentState) {
-        return { shouldContinue: false, reason: 'no_state' };
-    }
-
+function shouldContinue(latestResponse: string, currentState: AutoModeState): { shouldContinue: boolean; reason: string } {
     // ガード1: ステップ数上限
     if (currentState.currentStep >= currentState.maxSteps) {
         return { shouldContinue: false, reason: 'max_steps' };
@@ -877,11 +959,13 @@ function calculateSimilarity(a: string, b: string): number {
 async function pauseForSafety(
     channel: TextChannel,
     safetyResult: SafetyCheckResult,
+    wsKey?: string,
 ): Promise<'approve' | 'skip' | 'stop'> {
+    const currentState = resolveState(wsKey);
     if (!currentState) return 'stop';
 
     currentState.paused = true;
-    logInfo(`autoMode: paused for safety — reason="${safetyResult.reason}"`);
+    logInfo(`autoMode: paused for safety — reason="${safetyResult.reason}" wsKey=${wsKey ?? '(none)'}`);
 
     // Discord セーフティ警告通知
     try {
@@ -928,23 +1012,26 @@ async function pauseForSafety(
 
     // ユーザーの応答を Promise で待機（一時停止時間を計測）
     const pauseStartMs = Date.now();
+    const effectiveWsKey = wsKey ?? currentState.wsKey;
     return new Promise<'approve' | 'skip' | 'stop'>((resolve) => {
-        pauseResolve = (action) => {
-            if (currentState) {
-                currentState.paused = false;
-                currentState.totalPausedMs += Date.now() - pauseStartMs;
+        pauseResolveMap.set(effectiveWsKey, (action) => {
+            const state = resolveState(effectiveWsKey);
+            if (state) {
+                state.paused = false;
+                state.totalPausedMs += Date.now() - pauseStartMs;
             }
             resolve(action);
-        };
+        });
 
         // タイムアウト: 5分間応答がなければ自動停止
         setTimeout(() => {
-            if (pauseResolve) {
+            if (pauseResolveMap.has(effectiveWsKey)) {
                 logWarn('autoMode: safety response timeout — auto-stopping');
-                pauseResolve = null;
-                if (currentState) {
-                    currentState.paused = false;
-                    currentState.totalPausedMs += Date.now() - pauseStartMs;
+                pauseResolveMap.delete(effectiveWsKey);
+                const state = resolveState(effectiveWsKey);
+                if (state) {
+                    state.paused = false;
+                    state.totalPausedMs += Date.now() - pauseStartMs;
                 }
                 resolve('stop');
             }
@@ -965,7 +1052,9 @@ async function sendStepCompleteNotification(
     stepResult: StepResult,
     suggestions: SuggestionItem[],
     diffSummary?: string,
+    wsKey?: string,
 ): Promise<void> {
+    const currentState = resolveState(wsKey);
     if (!currentState) return;
 
     const elapsed = Date.now() - currentState.startedAt - currentState.totalPausedMs;
@@ -1052,11 +1141,13 @@ async function sendSafetyWarning(
  */
 async function pauseForConfirmation(
     channel: TextChannel,
+    wsKey?: string,
 ): Promise<'continue' | 'stop'> {
+    const currentState = resolveState(wsKey);
     if (!currentState) return 'stop';
 
     currentState.paused = true;
-    logInfo(`autoMode: paused for confirmation — step=${currentState.currentStep} confirmMode=${currentState.config.confirmMode}`);
+    logInfo(`autoMode: paused for confirmation — step=${currentState.currentStep} confirmMode=${currentState.config.confirmMode} wsKey=${wsKey ?? '(none)'}`);
 
     // Discord 確認通知
     try {
@@ -1089,23 +1180,26 @@ async function pauseForConfirmation(
 
     // ユーザーの応答を Promise で待機（一時停止時間を計測）
     const pauseStartMs = Date.now();
+    const effectiveWsKey = wsKey ?? currentState.wsKey;
     return new Promise<'continue' | 'stop'>((resolve) => {
-        confirmResolve = (action) => {
-            if (currentState) {
-                currentState.paused = false;
-                currentState.totalPausedMs += Date.now() - pauseStartMs;
+        confirmResolveMap.set(effectiveWsKey, (action) => {
+            const state = resolveState(effectiveWsKey);
+            if (state) {
+                state.paused = false;
+                state.totalPausedMs += Date.now() - pauseStartMs;
             }
             resolve(action);
-        };
+        });
 
         // タイムアウト: 10分間応答がなければ自動停止
         setTimeout(() => {
-            if (confirmResolve) {
+            if (confirmResolveMap.has(effectiveWsKey)) {
                 logWarn('autoMode: confirm response timeout — auto-stopping');
-                confirmResolve = null;
-                if (currentState) {
-                    currentState.paused = false;
-                    currentState.totalPausedMs += Date.now() - pauseStartMs;
+                confirmResolveMap.delete(effectiveWsKey);
+                const state = resolveState(effectiveWsKey);
+                if (state) {
+                    state.paused = false;
+                    state.totalPausedMs += Date.now() - pauseStartMs;
                 }
                 resolve('stop');
             }

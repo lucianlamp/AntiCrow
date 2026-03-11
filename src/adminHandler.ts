@@ -204,10 +204,10 @@ async function handleCancel(ctx: BridgeContext, interaction: ChatInputCommandInt
         }
 
         // オートモード停止（Executor 停止後にループも止める）
-        if (isAutoModeActive()) {
+        if (isAutoModeActive(wsKey ?? undefined)) {
             const channel = interaction.channel as TextChannel;
-            await stopAutoMode(channel, 'manual_stop');
-            logDebug('handleCancel: auto mode stopped via /stop command');
+            await stopAutoMode(channel, 'manual_stop', wsKey ?? undefined);
+            logDebug(`handleCancel: auto mode stopped via /stop command (wsKey=${wsKey ?? 'default'})`);
         }
 
         let cancelResult = t('admin.cancel.cdpNotConnected');
