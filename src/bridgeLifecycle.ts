@@ -50,20 +50,25 @@ import * as fs from 'fs';
 /** ワークスペース名としてカテゴリ作成すべきでない名前を判定する */
 function isInvalidWorkspaceName(wsName: string): boolean {
     if (!wsName) { return true; }
-    return (
-        wsName.includes('://') ||           // URL 形式
-        wsName === 'Antigravity' ||          // 初期状態のタイトル
-        wsName.includes('workbench.html') || // 内部 URL の一部
-        wsName.includes('Welcome') ||        // Welcome タブ
-        wsName.includes('Settings') ||       // 設定タブ
-        wsName.includes('Extensions') ||     // 拡張機能タブ
-        /^\..+/.test(wsName) ||              // 隠しファイル
-        /\.[a-z]{1,5}$/i.test(wsName) ||     // ファイル名（拡張子を含む）
-        wsName.length > 50 ||                // 異常に長い名前
-        /\d+\s*(つの|個の)/.test(wsName) ||   // 「N つの問題」パターン（SCM）
-        wsName.includes('問題') ||            // SCM: 日本語
-        wsName.includes('problem')            // SCM: 英語
-    );
+    let reason = '';
+    if (wsName.includes('://')) { reason = 'URL形式'; }
+    else if (wsName === 'Antigravity') { reason = '初期タイトル'; }
+    else if (wsName.includes('workbench.html')) { reason = '内部URL'; }
+    else if (wsName.includes('Welcome')) { reason = 'Welcomeタブ'; }
+    else if (wsName.includes('Settings')) { reason = '設定タブ'; }
+    else if (wsName.includes('Extensions')) { reason = '拡張機能タブ'; }
+    else if (/^\..*/.test(wsName)) { reason = '隠しファイル'; }
+    else if (/\.[a-z]{1,5}$/i.test(wsName)) { reason = 'ファイル名'; }
+    else if (wsName.length > 50) { reason = '長すぎる名前'; }
+    else if (/\d+\s*(つの|個の)/.test(wsName)) { reason = 'SCMパターン(つの/個の)'; }
+    else if (wsName.includes('問題')) { reason = 'SCM: 問題'; }
+    else if (wsName.includes('problem')) { reason = 'SCM: problem'; }
+
+    if (reason) {
+        logDebug(`isInvalidWorkspaceName: "${wsName}" → invalid (${reason})`);
+        return true;
+    }
+    return false;
 }
 
 // ---------------------------------------------------------------------------
@@ -664,6 +669,30 @@ async function startBridgeInternal(
             }
         });
         logInfo('Bridge: SubagentReceiver handler updated to Cascade integration (enhanced logging)');
+    }
+
+    // ワークスペースパス自動保存（全ウィンドウ共通 — Bot Owner 以外でも実行）
+    // Bot Owner の定期チェック（10秒間隔）が新しいWSを検知するために必要
+    {
+        const wsName = vscode.workspace.name;
+        const wsFolders = vscode.workspace.workspaceFolders;
+        if (wsName && wsFolders && wsFolders.length > 0) {
+            const wsPath = wsFolders[0].uri.fsPath;
+            if (wsPath && !isInvalidWorkspaceName(wsName)) {
+                const wsPaths = getWorkspacePaths();
+                if (!wsPaths[wsName] || wsPaths[wsName] !== wsPath) {
+                    wsPaths[wsName] = wsPath;
+                    try {
+                        await getConfig().update('workspacePaths', wsPaths, vscode.ConfigurationTarget.Global);
+                        logInfo(`Bridge: auto-saved workspace path (pre-lock): "${wsName}" → "${wsPath}"`);
+                    } catch (e) {
+                        logWarn(`Bridge: workspace path auto-save failed: ${e instanceof Error ? e.message : e}`);
+                    }
+                }
+            } else if (wsName && isInvalidWorkspaceName(wsName)) {
+                logDebug(`Bridge: skipping workspace path save — invalid name: "${wsName}"`);
+            }
+        }
     }
 
     // Bot 起動ロック
