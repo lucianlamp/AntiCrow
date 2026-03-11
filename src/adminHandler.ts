@@ -556,14 +556,13 @@ async function handleHelp(_ctx: BridgeContext, interaction: ChatInputCommandInte
 
 async function handlePro(ctx: BridgeContext, interaction: ChatInputCommandInteraction): Promise<void> {
     try {
-        const { FREE_DAILY_TASK_LIMIT, FREE_WEEKLY_TASK_LIMIT, PRO_ONLY_FEATURES, PURCHASE_URL_MONTHLY, PURCHASE_URL_LIFETIME } = await import('./licensing');
+        const { FREE_DAILY_TASK_LIMIT, FREE_WEEKLY_TASK_LIMIT, PRO_ONLY_FEATURES, PURCHASE_URL_LIFETIME } = await import('./licensing');
 
         const lines: string[] = [
             t('admin.pro.title'),
             '',
             t('admin.pro.priceTitle'),
             t('admin.pro.free', String(FREE_DAILY_TASK_LIMIT), String(FREE_WEEKLY_TASK_LIMIT)),
-            t('admin.pro.monthly'),
             t('admin.pro.lifetime'),
             '',
             t('admin.pro.featuresTitle'),
@@ -584,10 +583,6 @@ async function handlePro(ctx: BridgeContext, interaction: ChatInputCommandIntera
 
         // --- ActionRow: 購入リンクボタン ---
         const purchaseRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
-            new ButtonBuilder()
-                .setLabel(t('admin.pro.monthlyButton'))
-                .setStyle(ButtonStyle.Link)
-                .setURL(PURCHASE_URL_MONTHLY),
             new ButtonBuilder()
                 .setLabel(t('admin.pro.lifetimeButton'))
                 .setStyle(ButtonStyle.Link)

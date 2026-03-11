@@ -97,7 +97,6 @@ export function registerLicenseCommands(
 
 function getPlanDisplayName(type: LicenseType | null): string {
     switch (type) {
-        case 'monthly': return t('license.plan.monthly');
         case 'lifetime': return t('license.plan.lifetime');
         case 'free': return t('license.plan.free');
         default: return t('license.plan.free');

@@ -353,7 +353,7 @@ describe('LicenseChecker — トライアル機能', () => {
             expect(checker.isPro()).toBe(false);
         });
 
-        it('有効なライセンスキー（monthly）→ true', async () => {
+        it('有効なライセンスキー（lifetime）→ true', async () => {
             // Lemonsqueezy API のモック
             mockFetch.mockResolvedValueOnce({
                 json: async () => ({
@@ -371,7 +371,7 @@ describe('LicenseChecker — トライアル機能', () => {
                         product_id: 1,
                         product_name: 'Anti-Crow',
                         variant_id: 1,
-                        variant_name: 'Monthly',
+                        variant_name: 'Lifetime',
                     },
                 }),
             });
@@ -380,7 +380,7 @@ describe('LicenseChecker — トライアル機能', () => {
             const status = await checker.check(true);
 
             expect(status.valid).toBe(true);
-            expect(status.type).toBe('monthly');
+            expect(status.type).toBe('lifetime');
             expect(checker.isPro()).toBe(true);
         });
     });

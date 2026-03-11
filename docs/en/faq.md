@@ -90,10 +90,9 @@ There are limits on daily and weekly task execution counts. Auto Mode and Team M
 
 Your license key is in the Lemonsqueezy purchase confirmation email.
 
-### Q: Should I choose Monthly or Lifetime?
+### Q: What is the Pro plan pricing?
 
-- **Monthly ($5/mo)**: Better value if you'll use it for less than 10 months
-- **Lifetime ($50)**: Better value if you'll use it for 10+ months
+♾️ **Lifetime ($50)** — a one-time purchase. Once purchased, all features are unlocked permanently with unlimited usage.
 
 ---
 

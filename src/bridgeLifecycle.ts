@@ -993,7 +993,6 @@ export async function stopBridge(ctx: BridgeContext): Promise<void> {
 /** ライセンスタイプからユーザー向けプラン名を返す */
 function getPlanName(type: LicenseType, trialDaysRemaining?: number): string {
     switch (type) {
-        case 'monthly': return 'Pro';
         case 'lifetime': return 'Pro';
         case 'trial': {
             const days = trialDaysRemaining ?? 0;

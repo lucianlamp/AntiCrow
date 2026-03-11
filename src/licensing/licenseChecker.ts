@@ -16,7 +16,7 @@ import { logDebug, logWarn, logError } from '../logger';
 // -----------------------------------------------------------------------
 
 /** ライセンスタイプ（Lemonsqueezy プラン） */
-export type LicenseType = 'monthly' | 'lifetime' | 'trial' | 'free';
+export type LicenseType = 'lifetime' | 'trial' | 'free';
 
 /** ライセンス有効性の理由 */
 export type LicenseReason =
@@ -225,10 +225,10 @@ export class LicenseChecker {
         return this.cachedStatus;
     }
 
-    /** Pro ライセンスかどうか（monthly, lifetime, or trial で valid） */
+    /** Pro ライセンスかどうか（lifetime or trial で valid） */
     isPro(): boolean {
         const s = this.cachedStatus;
-        return s.valid && (s.type === 'monthly' || s.type === 'lifetime' || s.type === 'trial');
+        return s.valid && (s.type === 'lifetime' || s.type === 'trial');
     }
 
     // -------------------------------------------------------------------
@@ -308,12 +308,8 @@ export class LicenseChecker {
             };
         }
 
-        // variant_name からプランタイプを判定
-        const variantName = data.meta?.variant_name?.toLowerCase() || '';
-        let type: LicenseType = 'monthly';
-        if (variantName.includes('lifetime') || variantName.includes('買い切り')) {
-            type = 'lifetime';
-        }
+        // プランタイプは常に lifetime（月額プラン廃止済み）
+        const type: LicenseType = 'lifetime';
 
         const expiresAt = data.license_key.expires_at
             ? new Date(data.license_key.expires_at).getTime()

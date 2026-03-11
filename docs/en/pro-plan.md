@@ -21,7 +21,6 @@
 | Plan | Price | Description |
 |------|-------|-------------|
 | 🆓 **Free** | Free | Basic features + task limits |
-| 📅 **Monthly** | $5 / month | All features unlimited (monthly subscription) |
 | ♾️ **Lifetime** | $50 | All features unlimited (one-time purchase) |
 
 ## Pro Trial
@@ -33,7 +32,7 @@ A Pro trial period is available on first installation. During the trial, all fea
 ### From Discord
 
 1. Execute the `/pro` command
-2. Click "📅 Monthly ($5/mo)" or "♾️ Lifetime ($50)"
+2. Click "♾️ Lifetime ($50)"
 3. Complete payment on the purchase page
 4. Receive your license key via email
 
@@ -58,7 +57,6 @@ A Pro trial period is available on first installation. During the trial, all fea
 Displays:
 
 - Current plan name
-- Expiry date (for Monthly)
 - License key status
 
 ## Reset License

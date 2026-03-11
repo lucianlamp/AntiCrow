@@ -90,10 +90,9 @@ git init && git add -A && git commit -m "initial commit"
 
 Lemonsqueezy の購入確認メールにライセンスキーが記載されています。
 
-### Q: Monthly と Lifetime どちらが良いですか？
+### Q: Pro プランの料金は？
 
-- **Monthly ($5/月)**: 10ヶ月未満なら Monthly がお得
-- **Lifetime ($50)**: 10ヶ月以上使うなら Lifetime がお得
+♾️ **Lifetime ($50)** の買い切りプランのみです。一度購入すれば永久に全機能を無制限に使用できます。
 
 ---
 

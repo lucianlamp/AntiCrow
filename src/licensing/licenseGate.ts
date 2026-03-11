@@ -40,8 +40,7 @@ export const PRO_ONLY_FEATURES: ReadonlySet<string> = new Set([
 /** 購入ページ URL（.env で設定可能） */
 export const PURCHASE_URL = process.env.PURCHASE_URL || 'https://anti-crow.lemonsqueezy.com';
 
-/** Monthly プラン専用チェックアウト URL（.env で設定可能、未設定時は PURCHASE_URL） */
-export const PURCHASE_URL_MONTHLY = process.env.PURCHASE_URL_MONTHLY || PURCHASE_URL;
+/** （月額プランは廃止済み） */
 
 /** Lifetime プラン専用チェックアウト URL（.env で設定可能、未設定時は PURCHASE_URL） */
 export const PURCHASE_URL_LIFETIME = process.env.PURCHASE_URL_LIFETIME || PURCHASE_URL;
