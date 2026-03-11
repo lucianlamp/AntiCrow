@@ -54,11 +54,11 @@ export function createDesktopShortcut(extensionPath: string): void {
     );
     const iconIco = path.join(extensionPath, 'images', 'AntiCrowIcon.ico');
 
-    // CDP 固定ポートを設定から取得（デフォルト 9333）
-    let cdpPort = 9333;
+    // CDP 固定ポートを設定から取得（デフォルト 9000）
+    let cdpPort = 9000;
     try {
         const vsc = require('vscode') as typeof import('vscode');
-        cdpPort = vsc.workspace.getConfiguration('antiCrow').get<number>('cdpPort') ?? 9333;
+        cdpPort = vsc.workspace.getConfiguration('antiCrow').get<number>('cdpPort') ?? 9000;
     } catch { /* テスト環境では vscode が読めない場合がある */ }
 
     // PowerShell で WScript.Shell COM 経由で .lnk を作成
@@ -97,11 +97,11 @@ function createMacShortcut(extensionPath: string): void {
     const desktop = path.join(os.homedir(), 'Desktop');
     const scriptPath = path.join(desktop, 'AntiCrow.command');
 
-    // CDP 固定ポートを設定から取得（デフォルト 9333）
-    let cdpPort = 9333;
+    // CDP 固定ポートを設定から取得（デフォルト 9000）
+    let cdpPort = 9000;
     try {
         const vsc = require('vscode') as typeof import('vscode');
-        cdpPort = vsc.workspace.getConfiguration('antiCrow').get<number>('cdpPort') ?? 9333;
+        cdpPort = vsc.workspace.getConfiguration('antiCrow').get<number>('cdpPort') ?? 9000;
     } catch { /* テスト環境では vscode が読めない場合がある */ }
 
     // .command シェルスクリプトを作成（macOS でダブルクリック実行可能）
@@ -130,11 +130,11 @@ function createLinuxShortcut(extensionPath: string): void {
     const applicationsDir = path.join(os.homedir(), '.local', 'share', 'applications');
     const desktopFilePath = path.join(applicationsDir, 'AntiCrow.desktop');
 
-    // CDP 固定ポートを設定から取得（デフォルト 9333）
-    let cdpPort = 9333;
+    // CDP 固定ポートを設定から取得（デフォルト 9000）
+    let cdpPort = 9000;
     try {
         const vsc = require('vscode') as typeof import('vscode');
-        cdpPort = vsc.workspace.getConfiguration('antiCrow').get<number>('cdpPort') ?? 9333;
+        cdpPort = vsc.workspace.getConfiguration('antiCrow').get<number>('cdpPort') ?? 9000;
     } catch { /* テスト環境では vscode が読めない場合がある */ }
 
     // アイコンファイルの存在チェック

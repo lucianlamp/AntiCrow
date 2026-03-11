@@ -112,7 +112,7 @@
         },
         "antiCrow.cdpPort": {
           "type": "number",
-          "default": 9333,
+          "default": 9000,
           "markdownDescription": "CDP（Chrome DevTools Protocol）接続に使用する固定ポート番号。Antigravity 起動時に `--remote-debugging-port` に使用されます。"
         },
         "antiCrow.workspaceParentDirs": {
@@ -135,6 +135,11 @@
             "English"
           ],
           "description": "AntiCrow の UI・プロンプト表示言語 / UI and prompt display language"
+        },
+        "antiCrow.workspacePaths": {
+          "type": "object",
+          "default": {},
+          "description": "ワークスペース名からフォルダパスへの自動マッピング（内部使用）。手動編集不要。"
         }
       }
     }

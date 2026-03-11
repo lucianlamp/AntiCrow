@@ -82,9 +82,9 @@ function createMockCdpBridge() {
         launchAntigravity: vi.fn().mockResolvedValue(undefined),
         closeWindow: vi.fn().mockResolvedValue(undefined),
         minimizeWindow: vi.fn().mockResolvedValue(true),
-        getPorts: vi.fn(() => [9333]),
+        getPorts: vi.fn(() => [9000]),
         getActiveTargetTitle: vi.fn(() => 'Test — Antigravity'),
-        getActiveTargetPort: vi.fn(() => 9333),
+        getActiveTargetPort: vi.fn(() => 9000),
     };
 }
 

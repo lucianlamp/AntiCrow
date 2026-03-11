@@ -79,7 +79,7 @@ function createMockCdpBridge() {
         launchAntigravity: vi.fn().mockResolvedValue(undefined),
         closeWindow: vi.fn().mockResolvedValue(undefined),
         minimizeWindow: vi.fn().mockResolvedValue(true),
-        getPorts: vi.fn(() => [9333]),
+        getPorts: vi.fn(() => [9000]),
         getActiveTargetTitle: vi.fn(() => 'Test — Antigravity'),
     };
 }
@@ -364,7 +364,7 @@ describe('SubagentHandle', () => {
             const { handle } = createHandle({ name: 'alive-agent' });
 
             mockDiscoverInstances.mockResolvedValue([
-                { title: 'alive-agent — Antigravity', port: 9333 },
+                { title: 'alive-agent — Antigravity', port: 9000 },
             ]);
             mockExtractWorkspaceName.mockReturnValue('alive-agent');
 
@@ -376,7 +376,7 @@ describe('SubagentHandle', () => {
             const { handle } = createHandle({ name: 'dead-agent' });
 
             mockDiscoverInstances.mockResolvedValue([
-                { title: 'other-agent — Antigravity', port: 9333 },
+                { title: 'other-agent — Antigravity', port: 9000 },
             ]);
             mockExtractWorkspaceName.mockReturnValue('other-agent');
 
