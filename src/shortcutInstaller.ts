@@ -83,12 +83,14 @@ export function createDesktopShortcut(extensionPath: string): void {
 }
 
 /**
- * macOS: デスクトップに Antigravity.app のシンボリックリンクを作成する。
+ * macOS: デスクトップに CDP ポート付きの .command スクリプトを作成する。
+ * シンボリックリンクでは .app バンドルに引数を渡せないため、
+ * `open -a` コマンドでポート引数を渡すシェルスクリプトを配置する。
  */
 function createMacShortcut(extensionPath: string): void {
+    const fs = require('fs') as typeof import('fs');
     const desktop = path.join(os.homedir(), 'Desktop');
-    const antigravityApp = '/Applications/Antigravity.app';
-    const linkPath = path.join(desktop, 'Antigravity');
+    const scriptPath = path.join(desktop, 'AntiCrow.command');
 
     // CDP 固定ポートを設定から取得（デフォルト 9333）
     let cdpPort = 9333;
@@ -97,13 +99,19 @@ function createMacShortcut(extensionPath: string): void {
         cdpPort = vsc.workspace.getConfiguration('antiCrow').get<number>('cdpPort') ?? 9333;
     } catch { /* テスト環境では vscode が読めない場合がある */ }
 
+    // .command シェルスクリプトを作成（macOS でダブルクリック実行可能）
+    const script = [
+        '#!/bin/bash',
+        `open -a Antigravity --args --remote-debugging-port=${cdpPort}`,
+        '',
+    ].join('\n');
+
     try {
-        // シンボリックリンク作成（既存があれば上書き）
-        execSync(`ln -sf "${antigravityApp}" "${linkPath}"`, {
-            timeout: 5000,
-        });
-        logDebug(`shortcutInstaller: created macOS symlink at ${linkPath}`);
+        fs.writeFileSync(scriptPath, script, { mode: 0o755 });
+        // 念のため実行権限を明示付与
+        execSync(`chmod +x "${scriptPath}"`, { timeout: 5000 });
+        logDebug(`shortcutInstaller: created macOS .command script at ${scriptPath} (cdpPort=${cdpPort})`);
     } catch (e) {
-        logWarn(`shortcutInstaller: macOS symlink creation failed — ${e instanceof Error ? e.message : e}`);
+        logWarn(`shortcutInstaller: macOS .command creation failed — ${e instanceof Error ? e.message : e}`);
     }
 }

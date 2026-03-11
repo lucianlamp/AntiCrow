@@ -2,7 +2,7 @@
   "name": "anti-crow",
   "displayName": "AntiCrow",
   "description": "Discord→Antigravity自動操作ブリッジ。自然文で依頼→定期/即時実行→結果通知。",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "lucianlamp",
   "author": "lucianlamp",
   "icon": "images/AntiCrowIcon.png",

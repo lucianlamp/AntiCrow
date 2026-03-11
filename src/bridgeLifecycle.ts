@@ -364,6 +364,7 @@ async function promoteToBotOwner(
         if (!guild) { return; }
 
         try {
+            // settings.json の workspacePaths
             const currentPaths = getWorkspacePaths();
             for (const wsName of Object.keys(currentPaths)) {
                 if (!wsName || knownCategories.has(wsName)) { continue; }
@@ -371,6 +372,18 @@ async function promoteToBotOwner(
                 knownCategories.add(wsName);
                 logDebug(`Bridge: new workspace detected in settings: "${wsName}" — creating category...`);
                 await ctx.bot.ensureWorkspaceStructure(guild.id, wsName);
+            }
+
+            // CdpPool が自動学習したWSパスも参照（他ウィンドウが workspacePaths に未保存でも検出）
+            if (ctx.cdpPool) {
+                const resolvedPaths = ctx.cdpPool.getResolvedWorkspacePaths();
+                for (const wsName of Object.keys(resolvedPaths)) {
+                    if (!wsName || knownCategories.has(wsName)) { continue; }
+                    if (isInvalidWorkspaceName(wsName) || SubagentReceiver.isSubagent(wsName)) { continue; }
+                    knownCategories.add(wsName);
+                    logDebug(`Bridge: new workspace detected via CdpPool: "${wsName}" — creating category...`);
+                    await ctx.bot.ensureWorkspaceStructure(guild.id, wsName);
+                }
             }
         } catch (e) {
             logDebug(`Bridge: periodic workspace check failed: ${e instanceof Error ? e.message : e}`);

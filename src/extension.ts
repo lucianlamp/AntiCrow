@@ -123,6 +123,29 @@ export async function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(autoAcceptBar);
 
     // -----------------------------------------------------------------
+    // 全ウィンドウでワークスペースパスを workspacePaths に自動保存
+    // Bot Owner 以外のウィンドウも自分のWSパスを登録することで、
+    // Bot Owner の定期チェックでカテゴリが自動作成されるようにする
+    // -----------------------------------------------------------------
+    {
+        const currentWsName = vscode.workspace.name;
+        const currentWsFolders = vscode.workspace.workspaceFolders;
+        if (currentWsName && currentWsFolders && currentWsFolders.length > 0) {
+            const { isInvalidWorkspaceName } = await import('./bridgeLifecycle');
+            if (!isInvalidWorkspaceName(currentWsName)) {
+                const { getConfig } = await import('./configHelper');
+                const wsPath = currentWsFolders[0].uri.fsPath;
+                const wsPaths = getConfig().get<Record<string, string>>('workspacePaths') || {};
+                if (!wsPaths[currentWsName] || wsPaths[currentWsName] !== wsPath) {
+                    wsPaths[currentWsName] = wsPath;
+                    await getConfig().update('workspacePaths', wsPaths, vscode.ConfigurationTarget.Global);
+                    logDebug(`Extension: auto-saved workspace path: "${currentWsName}" → "${wsPath}"`);
+                }
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------
     // ライセンスモジュール初期化（Lemonsqueezy）
     // -----------------------------------------------------------------
     licenseChecker = new LicenseChecker();
@@ -317,7 +340,7 @@ export async function activate(context: vscode.ExtensionContext) {
         vscode.commands.registerCommand('anti-crow.toggleAutoAccept', async () => {
             const cfg = vscode.workspace.getConfiguration('antiCrow');
             const current = cfg.get<boolean>('autoAccept') ?? false;
-            await cfg.update('autoAccept', !current, vscode.ConfigurationTarget.Global);
+            await cfg.update('autoAccept', !current, vscode.ConfigurationTarget.Workspace);
             if (ctx.autoAcceptStatusBarItem) {
                 updateAutoAcceptStatusBar(ctx.autoAcceptStatusBarItem, ctx.agentRunning);
             }

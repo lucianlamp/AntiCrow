@@ -332,15 +332,6 @@ export class DiscordBot {
         return this.client.guilds.cache.first() || null;
     }
 
-    /** Guild キャッシュから最初に見つかった #agent-chat チャンネルの ID を返す */
-    findFirstAgentChatChannelId(): string | null {
-        const guild = this.getFirstGuild();
-        if (!guild) { return null; }
-        const ch = guild.channels.cache.find(
-            c => c.type === ChannelType.GuildText && c.name === 'agent-chat',
-        );
-        return ch?.id ?? null;
-    }
 
     /** 指定ワークスペース名のカテゴリ配下にある #agent-chat チャンネルの ID を返す */
     findAgentChatChannelByWorkspace(workspaceName: string): string | null {
