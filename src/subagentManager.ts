@@ -178,9 +178,14 @@ export class SubagentManager {
 
     /**
      * 全サブエージェントの一覧を返す。
+     * @param workspaceName 指定時は該当WSのサブエージェントのみ返す（名前プレフィックスでフィルタ）
      */
-    list(): SubagentInfo[] {
-        return Array.from(this.agents.values()).map((h) => h.info);
+    list(workspaceName?: string): SubagentInfo[] {
+        const all = Array.from(this.agents.values()).map((h) => h.info);
+        if (workspaceName) {
+            return all.filter((info) => info.name.startsWith(`${workspaceName}-`));
+        }
+        return all;
     }
 
     /**
