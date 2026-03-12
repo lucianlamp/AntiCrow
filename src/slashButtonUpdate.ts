@@ -112,7 +112,7 @@ export async function handleUpdate(
             embeds: [buildEmbed(t('update.downloading'), EmbedColor.Info)],
         });
 
-        const vsixUrl = buildR2Url('anti-crow-latest.vsix');
+        const vsixUrl = buildR2Url(latestInfo.fileName);
         logDebug(`handleUpdate: downloading ${vsixUrl}`);
 
         const vsixResponse = await fetch(vsixUrl);
