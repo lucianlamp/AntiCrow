@@ -19,7 +19,7 @@ Send a natural language message from Discord on your phone → Antigravity execu
 - 📝 **Prompt Templates** — Save frequently used instructions as templates for one-tap execution
 - 🧠 **Model & Mode Switching** — Switch AI models and execution modes from Discord
 - 🤖 **Auto Mode** — AI autonomously executes tasks in sequence with safety guards (Pro only)
-- ⚡ **Auto Accept** — Automatically clicks Run / Allow / Continue, etc. (Pro only)
+- ⚡ **Auto Accept Enhanced** — VSCode command approval, auto-scroll, UI expansion, and permission dialog handling (Pro only, works alongside pesosz/antigravity-auto-accept)
 - 🤝 **Agent Team Mode** — Multiple AI agents execute tasks in parallel for faster results (Pro only)
 - 💾 **Memory** — Automatically records and utilizes past learnings (global / workspace-specific)
 - 🛡️ **Safety Guard** — 21-pattern dangerous operation detection (file deletion, credential leaks, injection attacks)
@@ -38,7 +38,7 @@ Send a natural language message from Discord on your phone → Antigravity execu
 | Model & mode switching | ✅ | ✅ |
 | Templates | ✅ | ✅ |
 | Auto Mode | ❌ | ✅ |
-| Auto Accept | ❌ | ✅ |
+| Auto Accept Enhanced | ❌ | ✅ |
 | Agent Team Mode | ❌ | ✅ |
 | Pro Trial | — | 14 days free |
 
@@ -182,6 +182,47 @@ AI autonomously decides the next action and executes tasks in sequence. Start wi
 
 ---
 
+## ⚡ Auto Accept Enhanced (Pro Only)
+
+AntiCrow's enhanced Auto Accept feature works alongside the [pesosz/antigravity-auto-accept](https://github.com/pesosz/antigravity-auto-accept) extension.
+
+### Configuration
+
+| Setting | Default | Description |
+| --- | --- | --- |
+| `antiCrow.autoAcceptEnhanced` | `false` | Enable enhanced auto accept features |
+
+### How It Works
+
+**When `autoAcceptEnhanced` is `false` (default):**
+- Only the `pesosz/antigravity-auto-accept` extension handles basic button clicking (Run / Allow / Continue)
+- AntiCrow's enhanced features are disabled
+- Best for simple use cases or when you want minimal intervention
+
+**When `autoAcceptEnhanced` is `true`:**
+- Both `pesosz/antigravity-auto-accept` AND AntiCrow's enhanced features are active
+- Additional capabilities:
+  - 🔧 **VSCode Command Approval** — Approves 4 types of VSCode commands automatically
+  - 📜 **Auto Scroll** — Automatically scrolls to the latest output
+  - 📂 **UI Section Expansion** — Expands collapsed sections (e.g., "1 Step Requires Input")
+  - 🔐 **Permission Dialog Handling** — Automatically handles permission dialogs
+  - 🛡️ **Safety Guard Integration** — 21-pattern detection prevents dangerous operations
+
+### Setup
+
+1. Install [pesosz/antigravity-auto-accept](https://github.com/pesosz/antigravity-auto-accept) extension
+2. To enable enhanced features, set in Antigravity settings:
+   ```json
+   "antiCrow.autoAcceptEnhanced": true
+   ```
+3. Or toggle via Command Palette: **AntiCrow: Toggle Auto Accept**
+
+> ⚠️ **Breaking Change (v0.1.1):** The old `antiCrow.autoAccept` setting has been removed. If you were using it, switch to `antiCrow.autoAcceptEnhanced`.
+
+> 💎 **Pro Only:** This feature requires a Pro license. Free plan users can still use `pesosz/antigravity-auto-accept` independently.
+
+---
+
 ## 🤝 Agent Team Mode (Pro Only)
 
 Multiple AI sub-agents execute tasks in parallel. Large-scale changes are automatically split, with multiple AIs working simultaneously.
@@ -230,7 +271,7 @@ Toggle on/off with the `/team` command.
 | `antiCrow.autoStart` | boolean | `true` | Automatically start bridge on launch |
 | `antiCrow.categoryArchiveDays` | number | `7` | Workspace category auto-archive days (0 = disabled) |
 | `antiCrow.allowedUserIds` | string[] | `[]` | Allowed Discord user IDs (**empty = all denied**) |
-| `antiCrow.autoAccept` | boolean | `false` | Enable auto accept (Pro only) |
+| `antiCrow.autoAcceptEnhanced` | boolean | `false` | Enable enhanced auto accept with pesosz co-op mode (Pro only) |
 | `antiCrow.maxRetries` | number | `0` | Auto retry count on timeout (0 = disabled) |
 | `antiCrow.workspaceParentDirs` | string[] | `[]` | Parent directories for new workspace creation |
 
