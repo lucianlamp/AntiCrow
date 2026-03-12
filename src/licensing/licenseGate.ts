@@ -7,7 +7,7 @@
 // ---------------------------------------------------------------------------
 
 import { LicenseChecker } from './licenseChecker';
-import { logInfo } from '../logger';
+import { logInfo, logWarn } from '../logger';
 
 // -----------------------------------------------------------------------
 // Free プランの制限値
@@ -36,13 +36,36 @@ export const PRO_ONLY_FEATURES: ReadonlySet<string> = new Set([
 // Lemonsqueezy URL
 // -----------------------------------------------------------------------
 
-/** 購入ページ URL（.env で設定可能） */
-export const PURCHASE_URL = process.env.PURCHASE_URL || 'https://anti-crow.lemonsqueezy.com';
+/** 環境変数 URL を検証（HTTPS 強制 + ドメインホワイトリスト） */
+function validateEnvUrl(envValue: string | undefined, defaultUrl: string, allowedDomains: string[]): string {
+    if (!envValue) return defaultUrl;
+    try {
+        const parsed = new URL(envValue);
+        if (parsed.protocol !== 'https:') {
+            logWarn(`[Security] URL must use HTTPS, falling back to default: ${defaultUrl}`);
+            return defaultUrl;
+        }
+        const isAllowed = allowedDomains.some(domain =>
+            parsed.hostname === domain || parsed.hostname.endsWith(`.${domain}`),
+        );
+        if (!isAllowed) {
+            logWarn(`[Security] URL domain not in whitelist (${parsed.hostname}), falling back to default: ${defaultUrl}`);
+            return defaultUrl;
+        }
+        return envValue;
+    } catch {
+        logWarn(`[Security] Invalid URL format, falling back to default: ${defaultUrl}`);
+        return defaultUrl;
+    }
+}
+
+/** 購入ページ URL（.env で設定可能、HTTPS + ドメイン検証付き） */
+export const PURCHASE_URL = validateEnvUrl(process.env.PURCHASE_URL, 'https://anti-crow.lemonsqueezy.com', ['lemonsqueezy.com']);
 
 /** （月額プランは廃止済み） */
 
-/** Lifetime プラン専用チェックアウト URL（.env で設定可能、未設定時は PURCHASE_URL） */
-export const PURCHASE_URL_LIFETIME = process.env.PURCHASE_URL_LIFETIME || PURCHASE_URL;
+/** Lifetime プラン専用チェックアウト URL（.env で設定可能、HTTPS + ドメイン検証付き） */
+export const PURCHASE_URL_LIFETIME = validateEnvUrl(process.env.PURCHASE_URL_LIFETIME, PURCHASE_URL, ['lemonsqueezy.com']);
 
 export class LicenseGate {
     private checker: LicenseChecker;

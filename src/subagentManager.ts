@@ -7,11 +7,16 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import { promisify } from 'util';
 
-/** execSync の非同期版。メインスレッドをブロックしない */
-const execAsync = promisify(exec);
+/** execFile の非同期版。シェルを経由せずコマンドを直接実行（インジェクション対策） */
+const execFileAsync = promisify(execFile);
+
+/** git コマンドを安全に実行するヘルパー（シェルインジェクション対策） */
+function gitExec(args: string[], opts: { cwd: string }): Promise<{ stdout: string; stderr: string }> {
+    return execFileAsync('git', args, opts);
+}
 import { logDebug, logWarn, logError } from './logger';
 import {
     SubagentConfig,
@@ -470,7 +475,7 @@ export class SubagentManager {
                 // git worktree list で登録済み worktree パスを取得
                 let registeredPaths: Set<string>;
                 try {
-                    const { stdout: output } = await execAsync('git worktree list --porcelain', {
+                    const { stdout: output } = await gitExec(['worktree', 'list', '--porcelain'], {
                         cwd: this.repoRoot,
                     });
                     registeredPaths = new Set(
@@ -510,7 +515,7 @@ export class SubagentManager {
 
                     // 対応するブランチも削除
                     try {
-                        await execAsync(`git branch -D team/subagent/${entry.name}`, {
+                        await gitExec(['branch', '-D', `team/subagent/${entry.name}`], {
                             cwd: this.repoRoot,
                         });
                         logDebug(`[SubagentManager] 残存ブランチ削除: team/subagent/${entry.name}`);
@@ -520,7 +525,7 @@ export class SubagentManager {
                 if (orphanCount > 0) {
                     // git worktree prune で git 側の参照も掃除
                     try {
-                        await execAsync('git worktree prune', { cwd: this.repoRoot });
+                        await gitExec(['worktree', 'prune'], { cwd: this.repoRoot });
                     } catch { /* ignore */ }
                     logDebug(`[SubagentManager] ${orphanCount} 個の残存 worktree ディレクトリを削除しました`);
                 }
@@ -600,7 +605,7 @@ export class WorktreePool {
 
         // コミット存在チェック: HEAD が存在しないと git worktree / git branch が失敗する
         try {
-            await execAsync('git rev-parse HEAD', { cwd: this.repoRoot });
+            await gitExec(['rev-parse', 'HEAD'], { cwd: this.repoRoot });
         } catch {
             throw new Error(
                 `リポジトリにコミットがありません。チームモードを使用するには、最低1つのコミットが必要です。` +
@@ -763,7 +768,7 @@ export class WorktreePool {
 
                 // 2. dirty state チェック
                 try {
-                    const { stdout: status } = await execAsync('git status --porcelain', {
+                    const { stdout: status } = await gitExec(['status', '--porcelain'], {
                         cwd: entry.path,
                     });
                     if (status.trim()) {
@@ -838,16 +843,16 @@ export class WorktreePool {
     private async createWorktree(wtPath: string, branchName: string): Promise<void> {
         // ブランチ作成（存在する場合は無視）
         try {
-            await execAsync(`git branch ${branchName}`, { cwd: this.repoRoot });
+            await gitExec(['branch', branchName], { cwd: this.repoRoot });
         } catch { /* 既存ブランチ */ }
 
-        await execAsync(`git worktree add "${wtPath}" ${branchName}`, {
+        await gitExec(['worktree', 'add', wtPath, branchName], {
             cwd: this.repoRoot,
         });
 
         // worktree を lock して Git 管理画面に影響しないようにする
         try {
-            await execAsync(`git worktree lock "${wtPath}" --reason "anti-crow pool worktree"`, {
+            await gitExec(['worktree', 'lock', wtPath, '--reason', 'anti-crow pool worktree'], {
                 cwd: this.repoRoot,
             });
             logDebug(`[WorktreePool] worktree lock 完了: ${wtPath}`);
@@ -864,15 +869,15 @@ export class WorktreePool {
     /** worktree をリセット（作業内容をクリーン） */
     private async resetWorktree(wtPath: string, _branchName: string): Promise<void> {
         // メインブランチの内容にリセット
-        await execAsync('git checkout -- .', { cwd: wtPath });
-        await execAsync('git clean -fd', { cwd: wtPath });
+        await gitExec(['checkout', '--', '.'], { cwd: wtPath });
+        await gitExec(['clean', '-fd'], { cwd: wtPath });
         logDebug(`[WorktreePool] worktree リセット: ${wtPath}`);
     }
 
     /** worktree を強制削除 */
     private async removeWorktreeForced(wtPath: string, branchName: string): Promise<void> {
         try {
-            await execAsync(`git worktree remove "${wtPath}" --force`, {
+            await gitExec(['worktree', 'remove', wtPath, '--force'], {
                 cwd: this.repoRoot,
             });
         } catch {
@@ -881,12 +886,12 @@ export class WorktreePool {
                 fs.rmSync(wtPath, { recursive: true, force: true });
             }
             try {
-                await execAsync('git worktree prune', { cwd: this.repoRoot });
+                await gitExec(['worktree', 'prune'], { cwd: this.repoRoot });
             } catch { /* ignore */ }
         }
         // ブランチも削除
         try {
-            await execAsync(`git branch -D ${branchName}`, { cwd: this.repoRoot });
+            await gitExec(['branch', '-D', branchName], { cwd: this.repoRoot });
         } catch { /* ignore */ }
     }
 

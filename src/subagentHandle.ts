@@ -7,11 +7,16 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import { promisify } from 'util';
 
-/** execSync の非同期版。メインスレッドをブロックしない */
-const execAsync = promisify(exec);
+/** execFile の非同期版。シェルを経由せずコマンドを直接実行（インジェクション対策） */
+const execFileAsync = promisify(execFile);
+
+/** git コマンドを安全に実行するヘルパー（シェルインジェクション対策） */
+function gitExec(args: string[], opts: { cwd: string }): Promise<{ stdout: string; stderr: string }> {
+    return execFileAsync('git', args, opts);
+}
 import { logDebug, logWarn, logError } from './logger';
 import {
     SubagentState,
@@ -123,12 +128,12 @@ export class SubagentHandle {
             try {
                 // プール worktree 内で新しいブランチを作成してチェックアウト
                 try {
-                    await execAsync(`git checkout -b ${this.branch}`, {
+                    await gitExec(['checkout', '-b', this.branch], {
                         cwd: this.worktreePath,
                     });
                 } catch {
                     // ブランチが既に存在する場合はチェックアウトのみ
-                    await execAsync(`git checkout ${this.branch}`, {
+                    await gitExec(['checkout', this.branch], {
                         cwd: this.worktreePath,
                     });
                 }
@@ -143,7 +148,7 @@ export class SubagentHandle {
             try {
                 // コミット存在チェック: HEAD が存在しないと git worktree add が失敗する
                 try {
-                    await execAsync('git rev-parse HEAD', { cwd: this.repoRoot });
+                    await gitExec(['rev-parse', 'HEAD'], { cwd: this.repoRoot });
                 } catch {
                     this._state = 'FAILED';
                     throw new Error(
@@ -164,7 +169,7 @@ export class SubagentHandle {
                 // 従来の2段階方式（git branch → git worktree add）は、git branch が
                 // 黙って失敗するとブランチなしで worktree add を実行してしまう問題があった
                 try {
-                    await execAsync(`git worktree add -b ${this.branch} "${this.worktreePath}" HEAD`, {
+                    await gitExec(['worktree', 'add', '-b', this.branch, this.worktreePath, 'HEAD'], {
                         cwd: this.repoRoot,
                     });
                     logDebug(`[SubagentHandle] worktree + ブランチ一括作成完了: ${this.worktreePath}`);
@@ -173,7 +178,7 @@ export class SubagentHandle {
                     const errMsg = String(addErr);
                     if (errMsg.includes('already exists')) {
                         logDebug(`[SubagentHandle] ブランチ ${this.branch} は既に存在 — worktree のみ作成`);
-                        await execAsync(`git worktree add "${this.worktreePath}" ${this.branch}`, {
+                        await gitExec(['worktree', 'add', this.worktreePath, this.branch], {
                             cwd: this.repoRoot,
                         });
                         logDebug(`[SubagentHandle] worktree 作成完了（既存ブランチ使用）: ${this.worktreePath}`);
@@ -390,7 +395,7 @@ export class SubagentHandle {
         if (this.usePool) {
             // プール使用時: ブランチのみ削除。worktree フォルダは次回再利用のため残す
             try {
-                await execAsync(`git branch -D ${this.branch}`, {
+                await gitExec(['branch', '-D', this.branch], {
                     cwd: this.repoRoot,
                 });
                 logDebug(`[SubagentHandle] プール使用: ブランチ削除: ${this.branch}`);
@@ -460,8 +465,8 @@ export class SubagentHandle {
     async mergeChanges(): Promise<{ merged: boolean; conflicted: boolean; error?: string }> {
         try {
             // メインブランチ（HEAD）とサブエージェントブランチの差分をチェック
-            const { stdout: diffOutput_ } = await execAsync(
-                `git log HEAD..${this.branch} --oneline`,
+            const { stdout: diffOutput_ } = await gitExec(
+                ['log', `HEAD..${this.branch}`, '--oneline'],
                 { cwd: this.repoRoot },
             );
             const diffOutput = diffOutput_.trim();
@@ -476,7 +481,7 @@ export class SubagentHandle {
 
             // マージ実行
             try {
-                await execAsync(`git merge ${this.branch} --no-edit`, {
+                await gitExec(['merge', this.branch, '--no-edit'], {
                     cwd: this.repoRoot,
                 });
                 logDebug(`[SubagentHandle] ${this.name}: ✅ マージ成功 (${commitCount} commits)`);
@@ -486,7 +491,7 @@ export class SubagentHandle {
                 logWarn(`[SubagentHandle] ${this.name}: ⚠️ マージコンフリクト発生。マージを中断します。`);
                 logWarn(`[SubagentHandle] コンフリクト詳細: ${mergeErr}`);
                 try {
-                    await execAsync('git merge --abort', { cwd: this.repoRoot });
+                    await gitExec(['merge', '--abort'], { cwd: this.repoRoot });
                 } catch { /* ignore: merge --abort 自体は失敗しても問題ない */ }
                 return { merged: false, conflicted: true, error: String(mergeErr) };
             }
@@ -534,7 +539,7 @@ export class SubagentHandle {
         this.setWorktreeState('cleaning');
         // Step 1: git worktree remove --force で正規の削除を試みる
         try {
-            await execAsync(`git worktree remove "${this.worktreePath}" --force`, {
+            await gitExec(['worktree', 'remove', this.worktreePath, '--force'], {
                 cwd: this.repoRoot,
             });
             logDebug(`[SubagentHandle] worktree 削除完了: ${this.worktreePath}`);
@@ -543,7 +548,7 @@ export class SubagentHandle {
 
             // Step 2: git worktree prune でゴミ参照を掃除
             try {
-                await execAsync('git worktree prune', { cwd: this.repoRoot });
+                await gitExec(['worktree', 'prune'], { cwd: this.repoRoot });
                 logDebug(`[SubagentHandle] git worktree prune 実行完了`);
             } catch { /* ignore */ }
 
@@ -557,7 +562,7 @@ export class SubagentHandle {
                     logDebug(`[SubagentHandle] ロックファイル削除: ${lockFile}`);
                     // ロック解除後に再度 git worktree remove を試みる
                     try {
-                        await execAsync(`git worktree remove "${this.worktreePath}" --force`, {
+                        await gitExec(['worktree', 'remove', this.worktreePath, '--force'], {
                             cwd: this.repoRoot,
                         });
                         logDebug(`[SubagentHandle] ロック解除後の worktree 削除成功`);
@@ -589,7 +594,7 @@ export class SubagentHandle {
 
             // Step 5: 最終 prune で git 内部参照を完全にクリーンアップ
             try {
-                await execAsync('git worktree prune', { cwd: this.repoRoot });
+                await gitExec(['worktree', 'prune'], { cwd: this.repoRoot });
             } catch { /* ignore */ }
         }
 
@@ -610,7 +615,7 @@ export class SubagentHandle {
 
         // ブランチ削除
         try {
-            await execAsync(`git branch -D ${this.branch}`, {
+            await gitExec(['branch', '-D', this.branch], {
                 cwd: this.repoRoot,
             });
             logDebug(`[SubagentHandle] ブランチ削除完了: ${this.branch}`);

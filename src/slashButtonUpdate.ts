@@ -20,8 +20,36 @@ import { BridgeContext } from './bridgeContext';
 
 const execAsync = promisify(exec);
 
-// R2 パブリック URL（環境変数で上書き可能）
-const R2_PUBLIC_URL = process.env.ANTICROW_R2_PUBLIC_URL || 'https://pub-43d0b2eef4734fc8b00c014791e17d8a.r2.dev';
+/**
+ * 環境変数で上書き可能な URL を検証する（セキュリティ対策）。
+ * HTTPS 強制 + ドメインホワイトリスト検証。
+ * 不正な場合はデフォルト値にフォールバックし警告ログを出力。
+ */
+function validateEnvUrl(envValue: string | undefined, defaultUrl: string, allowedDomains: string[]): string {
+    if (!envValue) return defaultUrl;
+    try {
+        const parsed = new URL(envValue);
+        if (parsed.protocol !== 'https:') {
+            logWarn(`[Security] URL must use HTTPS, falling back to default: ${defaultUrl}`);
+            return defaultUrl;
+        }
+        const isAllowed = allowedDomains.some(domain =>
+            parsed.hostname === domain || parsed.hostname.endsWith(`.${domain}`),
+        );
+        if (!isAllowed) {
+            logWarn(`[Security] URL domain not in whitelist (${parsed.hostname}), falling back to default: ${defaultUrl}`);
+            return defaultUrl;
+        }
+        return envValue;
+    } catch {
+        logWarn(`[Security] Invalid URL format, falling back to default: ${defaultUrl}`);
+        return defaultUrl;
+    }
+}
+
+// R2 パブリック URL（環境変数で上書き可能、HTTPS + ドメイン検証付き）
+const R2_PUBLIC_URL_DEFAULT = 'https://pub-43d0b2eef4734fc8b00c014791e17d8a.r2.dev';
+const R2_PUBLIC_URL = validateEnvUrl(process.env.ANTICROW_R2_PUBLIC_URL, R2_PUBLIC_URL_DEFAULT, ['r2.dev']);
 // r2.dev パブリックURLではプレフィックス付きキーが 404 を返すため、バケット直下を使用
 const RELEASES_PATH = '';
 

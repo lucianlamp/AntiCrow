@@ -52,8 +52,31 @@ export type LicenseChangeListener = (status: LicenseStatus) => void;
 // 定数
 // -----------------------------------------------------------------------
 
-/** Lemonsqueezy API ベース URL（.env で設定可能） */
-const LEMON_API_BASE = process.env.LEMON_API_BASE || 'https://api.lemonsqueezy.com';
+/** 環境変数 URL を検証（HTTPS 強制 + ドメインホワイトリスト） */
+function validateEnvUrl(envValue: string | undefined, defaultUrl: string, allowedDomains: string[]): string {
+    if (!envValue) return defaultUrl;
+    try {
+        const parsed = new URL(envValue);
+        if (parsed.protocol !== 'https:') {
+            logWarn(`[Security] URL must use HTTPS, falling back to default: ${defaultUrl}`);
+            return defaultUrl;
+        }
+        const isAllowed = allowedDomains.some(domain =>
+            parsed.hostname === domain || parsed.hostname.endsWith(`.${domain}`),
+        );
+        if (!isAllowed) {
+            logWarn(`[Security] URL domain not in whitelist (${parsed.hostname}), falling back to default: ${defaultUrl}`);
+            return defaultUrl;
+        }
+        return envValue;
+    } catch {
+        logWarn(`[Security] Invalid URL format, falling back to default: ${defaultUrl}`);
+        return defaultUrl;
+    }
+}
+
+/** Lemonsqueezy API ベース URL（.env で設定可能、HTTPS + ドメイン検証付き） */
+const LEMON_API_BASE = validateEnvUrl(process.env.LEMON_API_BASE, 'https://api.lemonsqueezy.com', ['lemonsqueezy.com']);
 
 /** デフォルトのチェック間隔（24時間） */
 const DEFAULT_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;

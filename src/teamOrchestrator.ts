@@ -9,10 +9,15 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import { promisify } from 'util';
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
+
+/** git コマンドを安全に実行するヘルパー（シェルインジェクション対策） */
+function gitExec(args: string[], opts: { cwd: string }): Promise<{ stdout: string; stderr: string }> {
+    return execFileAsync('git', args, opts);
+}
 import { logDebug, logError, logInfo, logWarn } from './logger';
 import { t } from './i18n';
 import type { SubagentManager } from './subagentManager';
@@ -1456,7 +1461,7 @@ export class TeamOrchestrator {
                             logInfo(`[TeamOrchestrator] orphan worktree 検出: ${entryPath}`);
                             // git worktree remove を試行
                             try {
-                                await execAsync(`git worktree remove "${entryPath}" --force`, { cwd: repoRoot });
+                                await gitExec(['worktree', 'remove', entryPath, '--force'], { cwd: repoRoot });
                             } catch {
                                 // 失敗したら物理削除
                                 fs.rmSync(entryPath, { recursive: true, force: true });
@@ -1476,7 +1481,7 @@ export class TeamOrchestrator {
         // 2. .git/worktrees/ 内の不整合エントリを prune
         try {
             if (fs.existsSync(gitWorktreesDir)) {
-                await execAsync('git worktree prune', { cwd: repoRoot });
+                await gitExec(['worktree', 'prune'], { cwd: repoRoot });
                 logDebug('[TeamOrchestrator] git worktree prune 実行完了');
             }
         } catch (e) {
@@ -1574,7 +1579,7 @@ export class TeamOrchestrator {
                     logInfo(`[TeamOrchestrator] 最終検証: .git/worktrees/ に残留するサブエージェント参照を削除: ${entry}`);
                     try {
                         // まず git worktree remove を試す
-                        await execAsync(`git worktree remove "${entry}" --force`, { cwd: repoRoot });
+                        await gitExec(['worktree', 'remove', entry, '--force'], { cwd: repoRoot });
                         logInfo(`[TeamOrchestrator] git worktree remove 成功: ${entry}`);
                     } catch {
                         // 失敗したら直接削除
@@ -1594,7 +1599,7 @@ export class TeamOrchestrator {
 
         // git worktree prune で最終クリーンアップ
         try {
-            await execAsync('git worktree prune', { cwd: repoRoot });
+            await gitExec(['worktree', 'prune'], { cwd: repoRoot });
         } catch { /* ignore */ }
 
         if (remainingCount > 0) {
