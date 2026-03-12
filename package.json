@@ -105,6 +105,11 @@
           "default": false,
           "markdownDescription": "自動承認（Run / Allow / Continue 等）を有効にする。ステータスバーのボタンでもトグル可能です。\n\n⚠️ **注意:** 有効にすると、危険なコマンド（`rm -rf`, `format` 等）も含め全ての確認ダイアログが自動承認されます。**信頼できる環境でのみ有効化してください。**"
         },
+        "antiCrow.autoAcceptEnhanced": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "拡張自動承認機能（VSCode コマンド承認、自動スクロール、展開、権限ダイアログ処理）を有効にする。\n\n`pesosz/antigravity-auto-accept` 拡張機能を使用している場合は、この設定を無効にして基本的なボタンクリックを pesosz に委任できます。\n\nDisable if using `pesosz/antigravity-auto-accept` for basic button clicking."
+        },
         "antiCrow.maxRetries": {
           "type": "number",
           "default": 0,

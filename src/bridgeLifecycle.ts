@@ -798,18 +798,18 @@ async function startBridgeInternal(
     // 設定変更リスナー
     context.subscriptions.push(
         vscode.workspace.onDidChangeConfiguration(e => {
-            if (e.affectsConfiguration('antiCrow.autoAccept')) {
+            if (e.affectsConfiguration('antiCrow.autoAcceptEnhanced')) {
                 const autoOp = vscode.workspace.getConfiguration('antiCrow')
-                    .get<boolean>('autoAccept') ?? false;
+                    .get<boolean>('autoAcceptEnhanced') ?? false;
                 if (autoOp) {
                     // Pro 限定: Free プランではウォッチャーを起動しない
                     const gate = getLicenseGate();
-                    if (gate && !gate.isFeatureAllowed('autoAccept')) {
-                        logDebug('Bridge: autoAccept enabled but blocked (Free plan)');
+                    if (gate && !gate.isFeatureAllowed('autoAcceptEnhanced')) {
+                        logDebug('Bridge: autoAcceptEnhanced enabled but blocked (Free plan)');
                         return;
                     }
-                    logDebug('Bridge: autoAccept enabled — starting UI watcher');
-                    const isProCheck = () => getLicenseGate()?.isFeatureAllowed('autoAccept') ?? true;
+                    logDebug('Bridge: autoAcceptEnhanced enabled — starting UI watcher');
+                    const isProCheck = () => getLicenseGate()?.isFeatureAllowed('autoAcceptEnhanced') ?? true;
                     const onAgentStateChange = (running: boolean) => {
                         ctx.agentRunning = running;
                         if (ctx.autoAcceptStatusBarItem) {
@@ -827,7 +827,7 @@ async function startBridgeInternal(
                         logDebug('Bridge: startup UIWatcher started via config change');
                     }
                 } else {
-                    logDebug('Bridge: autoAccept disabled — stopping UI watcher');
+                    logDebug('Bridge: autoAcceptEnhanced disabled — stopping UI watcher');
                     ctx.executorPool?.stopUIWatcherAll();
                     if (ctx.startupUIWatcher) {
                         ctx.startupUIWatcher.stop();
@@ -838,20 +838,20 @@ async function startBridgeInternal(
         })
     );
 
-    // autoAccept が有効ならUIウォッチャーを常時起動（Pro 限定）
+    // autoAcceptEnhanced が有効ならUIウォッチャーを常時起動（Pro 限定）
     //
     // アーキテクチャ:
     //   - ステータスバー: ctx.cdp ベースの独立 UIWatcher が制御（確実に接続済み）
     //   - autoFollowOutput: ExecutorPool の各 UIWatcher が WS 別に独立制御
     //   - 競合なし: onAgentStateChange は独立ウォッチャーのみ、ExecutorPool には渡さない
     const autoOpEnabled = vscode.workspace.getConfiguration('antiCrow')
-        .get<boolean>('autoAccept') ?? false;
+        .get<boolean>('autoAcceptEnhanced') ?? false;
     if (autoOpEnabled) {
         const gate = getLicenseGate();
-        if (gate && !gate.isFeatureAllowed('autoAccept')) {
-            logDebug('Bridge: autoAccept enabled but blocked at startup (Free plan)');
+        if (gate && !gate.isFeatureAllowed('autoAcceptEnhanced')) {
+            logDebug('Bridge: autoAcceptEnhanced enabled but blocked at startup (Free plan)');
         } else {
-            const isProCheck = () => getLicenseGate()?.isFeatureAllowed('autoAccept') ?? true;
+            const isProCheck = () => getLicenseGate()?.isFeatureAllowed('autoAcceptEnhanced') ?? true;
             const onAgentStateChange = (running: boolean) => {
                 ctx.agentRunning = running;
                 if (ctx.autoAcceptStatusBarItem) {
@@ -871,7 +871,7 @@ async function startBridgeInternal(
                 ctx.startupUIWatcher = startupWatcher;
                 logDebug('Bridge: startup UIWatcher started (status bar only, using ctx.cdp)');
             }
-            logDebug('Bridge: UI watcher started (autoAccept enabled)');
+            logDebug('Bridge: UI watcher started (autoAcceptEnhanced enabled)');
         }
     }
 

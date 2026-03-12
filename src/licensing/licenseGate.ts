@@ -27,7 +27,7 @@ export type GateLevel = 'pro' | 'free';
  * スラッシュコマンドではなく、拡張内部の機能を制限する。
  */
 export const PRO_ONLY_FEATURES: ReadonlySet<string> = new Set([
-    'autoAccept',   // 自動承認（UIダイアログ自動クリック）
+    'autoAcceptEnhanced',   // 拡張自動承認（pesosz 併用モード）
     'teamMode',     // チームモード（複数サブエージェント並行実行）
     'autoMode',     // オートモード（自動連続タスク実行）
     // suggestions は Free でも利用可能

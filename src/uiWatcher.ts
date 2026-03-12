@@ -64,12 +64,12 @@ export class UIWatcher {
 
     /**
      * UIウォッチャーを開始する。
-     * autoAccept が有効な場合、VSCode コマンド経由で提案を自動承認し、
-     * DOM フォールバックで既知のダイアログ（Continue, Allow, Retry 等）を
-     * 自動検出してクリックする。
+     * autoAcceptEnhanced が有効な場合、VSCode コマンド経由で提案を自動承認し、
+     * 自動スクロール、UI展開、権限ダイアログ処理を行う。
      * bridgeLifecycle からブリッジ起動時に呼ばれる（常時動作）。
      *
-     * **注意:** autoAccept は Pro 限定機能。Free プランでは設定が ON でも無効。
+     * **注意:** autoAcceptEnhanced は Pro 限定機能。Free プランでは設定が ON でも無効。
+     * pesosz/antigravity-auto-accept のみを使用する場合は OFF にする。
      */
     start(): void {
         // 既存タイマーがあればクリアして再起動（多重起動によるリーク防止）
@@ -78,11 +78,11 @@ export class UIWatcher {
         logDebug('UIWatcher: started (command-first hybrid mode)');
 
         this.timer = setInterval(async () => {
-            // autoAccept 設定を毎回チェック（設定変更を動的に反映）
+            // autoAcceptEnhanced 設定を毎回チェック（設定変更を動的に反映）
             const autoEnabled = vscode.workspace.getConfiguration('antiCrow')
-                .get<boolean>('autoAccept') ?? false;
+                .get<boolean>('autoAcceptEnhanced') ?? false;
             if (!autoEnabled) {
-                // autoAccept OFF の場合、agentRunning 状態をリセット
+                // autoAcceptEnhanced OFF の場合、agentRunning 状態をリセット
                 if (this.lastAgentRunning) {
                     this.lastAgentRunning = false;
                     this.onAgentStateChange?.(false);
@@ -90,7 +90,7 @@ export class UIWatcher {
                 return;
             }
 
-            // Pro 限定: Free プランでは autoAccept を無効化
+            // Pro 限定: Free プランでは autoAcceptEnhanced を無効化
             if (!this.isProCheck()) { return; }
 
             // エージェント実行中かどうかを検出し、状態変化時にコールバックを発火
@@ -152,6 +152,7 @@ export class UIWatcher {
             // 「下にスクロールしながら出てきたボタンを押す」自然なフローで動作。
             // エージェント待機中（🟡）はスクロール不要 → 実行中（🟢）のみ実行。
             // =================================================================
+
             if (this.lastAgentRunning) {
                 try {
                     await this.cdp.autoFollowOutput();

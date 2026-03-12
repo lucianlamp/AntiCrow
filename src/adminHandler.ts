@@ -566,7 +566,7 @@ async function handlePro(ctx: BridgeContext, interaction: ChatInputCommandIntera
             t('admin.pro.lifetime'),
             '',
             t('admin.pro.featuresTitle'),
-            `${[...PRO_ONLY_FEATURES].map(f => f === 'autoAccept' ? t('admin.pro.autoAcceptLabel') : `\`${f}\``).join(', ')}${t('admin.pro.unlimitedTasks') ? ', ' + t('admin.pro.unlimitedTasks') : ''}`,
+            `${[...PRO_ONLY_FEATURES].map(f => f === 'autoAcceptEnhanced' ? t('admin.pro.autoAcceptEnhancedLabel') : `\`${f}\``).join(', ')}${t('admin.pro.unlimitedTasks') ? ', ' + t('admin.pro.unlimitedTasks') : ''}`,
         ];
 
         // トライアル情報を追加
