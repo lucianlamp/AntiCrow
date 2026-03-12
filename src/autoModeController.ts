@@ -314,10 +314,16 @@ export async function startAutoMode(
     config?: Partial<AutoModeConfig>,
     isTeamMode: boolean = false,
 ): Promise<string> {
-    // 同じWSで既にアクティブなら停止
-    if (stateMap.get(wsKey)?.active) {
-        logWarn(`autoMode: already active for wsKey=${wsKey}, stopping previous session`);
-        await stopAutoMode(channel, 'new_session', wsKey);
+    // 同じWSで既にアクティブなら、サイレントにクリーンアップする
+    // （Discord に「完了」通知を送信しない — ユーザーに混乱を与えるため）
+    const prevState = stateMap.get(wsKey);
+    if (prevState?.active) {
+        const prevDuration = Date.now() - prevState.startedAt;
+        logWarn(`autoMode: already active for wsKey=${wsKey}, silently resetting previous session (steps=${prevState.currentStep}, duration=${formatDuration(prevDuration)})`);
+        cancelPlanGeneration();
+        stateMap.delete(wsKey);
+        pauseResolveMap.delete(wsKey);
+        confirmResolveMap.delete(wsKey);
     }
 
     const mergedConfig: AutoModeConfig = { ...AUTO_MODE_DEFAULTS, ...config };
@@ -504,6 +510,34 @@ export async function stopAutoMode(
     // 最後のstateでサマリーを送信（後方互換のため1回だけ）
     const [, state] = allStates[allStates.length - 1];
     await sendStopSummary(channel, state, reason);
+}
+
+/**
+ * セッション状態を直接クリアする（Discord 通知なし）。
+ * executor のエラーハンドリングで TextChannel が取得できない場合のフォールバック。
+ * stopAutoMode と異なり、Discord への通知を行わずに状態だけを確実にクリアする。
+ */
+export function cleanupAutoModeState(wsKey?: string): void {
+    if (wsKey) {
+        const state = stateMap.get(wsKey);
+        if (!state) {
+            logDebug(`autoMode: cleanupAutoModeState called but no state for wsKey=${wsKey}`);
+            return;
+        }
+        stateMap.delete(wsKey);
+        pauseResolveMap.delete(wsKey);
+        confirmResolveMap.delete(wsKey);
+    } else {
+        if (stateMap.size === 0) {
+            logDebug('autoMode: cleanupAutoModeState called but no state');
+            return;
+        }
+        stateMap.clear();
+        pauseResolveMap.clear();
+        confirmResolveMap.clear();
+    }
+    cancelPlanGeneration();
+    logWarn(`autoMode: session state forcefully cleaned up (wsKey=${wsKey ?? 'all'})`);
 }
 
 /**

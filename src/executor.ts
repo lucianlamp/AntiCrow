@@ -20,7 +20,7 @@ import { getCurrentModel } from './cdpModels';
 
 import { getMaxRetries } from './configHelper';
 import { t } from './i18n';
-import { isAutoModeActive, onStepComplete, handleAutoModeError } from './autoModeController';
+import { isAutoModeActive, onStepComplete, handleAutoModeError, cleanupAutoModeState } from './autoModeController';
 import type { SuggestionItem } from './suggestionParser';
 import * as fs from 'fs';
 import { getActivePlanTypingIntervals, getActivePlanProgressIntervals } from './messageQueue';
@@ -365,6 +365,10 @@ export class Executor {
                             this.autoModeContinueLoop(notifyChannel, suggestions, cleanContent, plan)
                                 .catch(err => {
                                     logError('Executor: autoModeContinueLoop failed', err);
+                                    // セッション残存を防止: フォールバックとしてセッションをクリア
+                                    // autoModeContinueLoop 内部の catch で handleAutoModeError が呼ばれるが、
+                                    // チャンネル取得失敗等で到達しないケースがあるため、ここでも確実にクリアする
+                                    cleanupAutoModeState(plan.workspace_name);
                                 });
                         }
                         : undefined,
@@ -398,6 +402,12 @@ export class Executor {
             // 進捗ファイルクリーンアップ（エラー時も確実に削除）
             if (progressPath) { try { await this.fileIpc.cleanupProgress(progressPath); } catch (e) { logDebug(`Executor: progress cleanup failed: ${e}`); } }
 
+            // 連続オートモード セッション残存防止
+            if (isAutoModeActive(plan.workspace_name)) {
+                cleanupAutoModeState(plan.workspace_name);
+                logWarn('Executor: autoMode session cleaned up due to executeJob error');
+            }
+
             logError(`Executor: plan ${plan.plan_id} failed`, err);
             throw err;
         }
@@ -428,6 +438,8 @@ export class Executor {
             resolver(false);
         }
         this.jobCompletionResolvers.clear();
+        // 連続オートモード セッション残存防止
+        cleanupAutoModeState();
         logDebug('Executor: force reset — running/processing/aborted flags set, queue emptied');
     }
 
@@ -448,6 +460,8 @@ export class Executor {
             resolver(false);
         }
         this.jobCompletionResolvers.clear();
+        // 連続オートモード セッション残存防止
+        cleanupAutoModeState();
         logDebug('Executor: force stop — running/processing/aborted flags set, queue preserved');
     }
 
