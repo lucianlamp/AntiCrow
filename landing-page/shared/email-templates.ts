@@ -12,17 +12,17 @@ export function generateInviteEmailHtml(params: {
 <tr><td align="center">
 <table width="600" cellpadding="0" cellspacing="0" style="background:#111;border-radius:16px;overflow:hidden;border:1px solid #222">
   <tr><td style="padding:40px 40px 20px;text-align:center">
-    <div style="font-size:28px;font-weight:800;color:#fff;letter-spacing:-0.5px">🦅 Anti-Crow</div>
+    <div style="font-size:28px;font-weight:800;color:#fff;letter-spacing:-0.5px">🦅 AntiCrow</div>
     <div style="font-size:13px;color:#888;margin-top:4px">AI-Powered Development Assistant</div>
   </td></tr>
   <tr><td style="padding:20px 40px">
     <h1 style="color:#fff;font-size:22px;margin:0 0 16px">ウェイトリストから招待されました！🎉</h1>
     <p style="color:#aaa;font-size:15px;line-height:1.7;margin:0 0 24px">
-      Anti-Crow へのアクセスが承認されました。以下のボタンからVSIX拡張機能をダウンロードしてください。
+      AntiCrow へのアクセスが承認されました。以下のボタンからVSIX拡張機能をダウンロードしてください。
     </p>
     <div style="text-align:center;margin:32px 0">
       <a href="${params.downloadUrl}" style="display:inline-block;padding:14px 36px;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;text-decoration:none;border-radius:12px;font-size:16px;font-weight:700;letter-spacing:0.3px">
-        ⬇️ Anti-Crow v${params.version} をダウンロード
+        ⬇️ AntiCrow v${params.version} をダウンロード
       </a>
     </div>
     <p style="color:#666;font-size:13px;text-align:center;margin:0 0 24px">
@@ -39,7 +39,7 @@ export function generateInviteEmailHtml(params: {
   </td></tr>
   <tr><td style="padding:24px 40px;border-top:1px solid #222">
     <p style="color:#555;font-size:12px;text-align:center;margin:0">
-      Anti-Crow Team — このメールはウェイトリスト登録に基づいて送信されています
+      AntiCrow Team — このメールはウェイトリスト登録に基づいて送信されています
     </p>
   </td></tr>
 </table>
@@ -62,13 +62,13 @@ export function generateUpdateEmailHtml(params: {
 <tr><td align="center">
 <table width="600" cellpadding="0" cellspacing="0" style="background:#111;border-radius:16px;overflow:hidden;border:1px solid #222">
   <tr><td style="padding:40px 40px 20px;text-align:center">
-    <div style="font-size:28px;font-weight:800;color:#fff;letter-spacing:-0.5px">🦅 Anti-Crow</div>
+    <div style="font-size:28px;font-weight:800;color:#fff;letter-spacing:-0.5px">🦅 AntiCrow</div>
     <div style="font-size:13px;color:#888;margin-top:4px">AI-Powered Development Assistant</div>
   </td></tr>
   <tr><td style="padding:20px 40px">
     <h1 style="color:#fff;font-size:22px;margin:0 0 16px">新バージョン v${params.version} がリリースされました！🚀</h1>
     <p style="color:#aaa;font-size:15px;line-height:1.7;margin:0 0 24px">
-      Anti-Crow の最新バージョンがリリースされました。以下から最新版をダウンロードしてください。
+      AntiCrow の最新バージョンがリリースされました。以下から最新版をダウンロードしてください。
     </p>
     <div style="text-align:center;margin:32px 0">
       <a href="${params.downloadUrl}" style="display:inline-block;padding:14px 36px;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;text-decoration:none;border-radius:12px;font-size:16px;font-weight:700;letter-spacing:0.3px">
@@ -92,7 +92,7 @@ export function generateUpdateEmailHtml(params: {
   </td></tr>
   <tr><td style="padding:24px 40px;border-top:1px solid #222">
     <p style="color:#555;font-size:12px;text-align:center;margin:0">
-      Anti-Crow Team — このメールはウェイトリスト登録に基づいて送信されています
+      AntiCrow Team — このメールはウェイトリスト登録に基づいて送信されています
     </p>
   </td></tr>
 </table>

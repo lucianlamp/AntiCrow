@@ -79,7 +79,7 @@ describe('markdownToJson', () => {
     // ---------------------------------------------------------------------------
 
     it('should correctly convert prompt_rules.md structure', () => {
-        const md = `# Anti-Crow プロンプトルール
+        const md = `# AntiCrow プロンプトルール
 
 ## 出力スキーマ
 
@@ -101,7 +101,7 @@ describe('markdownToJson', () => {
 - "all": 全て実行`;
 
         const result = markdownToJson(md);
-        const root = result['Anti-Crow_プロンプトルール'] as Record<string, unknown>;
+        const root = result['AntiCrow_プロンプトルール'] as Record<string, unknown>;
 
         // H2 セクションが存在すること
         expect(root).toHaveProperty('出力スキーマ');

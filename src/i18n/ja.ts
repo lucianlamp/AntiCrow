@@ -12,7 +12,7 @@
 // {{TIMEZONE}} プレースホルダーは実行時に置換される。
 // ---------------------------------------------------------------------------
 
-export const PROMPT_RULES_MD = `# Anti-Crow プロンプトルール
+export const PROMPT_RULES_MD = `# AntiCrow プロンプトルール
 
 ## 出力スキーマ（計画生成時）
 
@@ -880,7 +880,7 @@ export const messages = {
   'command.auto.desc': 'オートモード — AIが自動的にタスクを連続実行します（Pro限定）',
   'command.auto.promptDesc': 'タスクのプロンプト（例: --steps 10 --confirm semi LPをリニューアルして）',
   'command.autoConfig.desc': 'オートモードの設定を表示・変更します',
-  'command.update.desc': 'Anti-Crow を最新バージョンに更新します',
+  'command.update.desc': 'AntiCrow を最新バージョンに更新します',
 
   // --- アップデート通知 ---
   'update.checking': '🔍 最新バージョンを確認中...',

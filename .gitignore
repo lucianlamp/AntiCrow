@@ -33,5 +33,5 @@ vsce-output.txt
 # ビルド出力
 dist/
 
-# Anti-Crow worktree プール
-.anticrow/worktrees/
+# AntiCrow ローカルデータ（MEMORY, team設定, worktree, 実行履歴など）
+.anticrow/

@@ -1,10 +1,10 @@
 # Platform Differences
 
-Anti-Crow supports Windows, macOS, and Linux. This page documents the differences in behavior across operating systems.
+AntiCrow supports Windows, macOS, and Linux. This page documents the differences in behavior across operating systems.
 
 ## Desktop Shortcuts
 
-Anti-Crow automatically creates a desktop shortcut on first launch. The shortcut launches Antigravity with the CDP (Chrome DevTools Protocol) port enabled.
+AntiCrow automatically creates a desktop shortcut on first launch. The shortcut launches Antigravity with the CDP (Chrome DevTools Protocol) port enabled.
 
 | Item | Windows | macOS | Linux |
 |------|---------|-------|-------|
@@ -31,7 +31,7 @@ Anti-Crow automatically creates a desktop shortcut on first launch. The shortcut
 
 ## CDP Connection
 
-Anti-Crow communicates with the Antigravity editor using CDP (Chrome DevTools Protocol). The shell used differs by OS.
+AntiCrow communicates with the Antigravity editor using CDP (Chrome DevTools Protocol). The shell used differs by OS.
 
 | Item | Windows | macOS | Linux |
 |------|---------|-------|-------|
@@ -46,7 +46,7 @@ Anti-Crow communicates with the Antigravity editor using CDP (Chrome DevTools Pr
 
 ## Process Detection
 
-Anti-Crow uses different commands on each OS to detect whether Antigravity is running.
+AntiCrow uses different commands on each OS to detect whether Antigravity is running.
 
 | Item | Windows | macOS | Linux |
 |------|---------|-------|-------|

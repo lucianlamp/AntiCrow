@@ -59,9 +59,9 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
-                    from: 'Anti-Crow <onboarding@resend.dev>',
+                    from: 'AntiCrow <onboarding@resend.dev>',
                     to: email,
-                    subject: '🦅 Anti-Crow へようこそ！ダウンロードリンクをお届けします',
+                    subject: '🦅 AntiCrow へようこそ！ダウンロードリンクをお届けします',
                     html: emailHtml,
                 }),
             });

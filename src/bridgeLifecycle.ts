@@ -1039,11 +1039,15 @@ export function updateStatusBar(ctx: BridgeContext): void {
     const licenseTooltip = getLicenseTooltipLine();
 
     // 3状態でアイコンを切り替え:
-    // 1. Bot Owner で Bot Ready → ✅ チェックマーク（アクティブ）
-    // 2. スタンバイ（Bot Owner でないが Anti-Crow 起動中） → 👁 目アイコン
-    // 3. 未起動 → 🔌 コンセント
+    // 1. Bot Ready → ✅ チェックマーク（アクティブ）
+    // 2. スタンバイ（Bridge 起動済みだが Bot 未Ready） → 👁 目アイコン
+    //    - Bot Owner: bot 存在するが isReady()=false（起動中・再接続中）
+    //    - Bot Owner: isBotOwner=true だが bot 未生成（promoteToBotOwner 途中）
+    //    - Non-Owner: lockWatchTimer が動いている（別WSが Bot 管理中）
+    // 3. 未起動（Bridge 未起動） → 🔌 コンセント
     const botReady = ctx.bot?.isReady() ?? false;
-    const isStandby = !botReady && ctx.lockWatchTimer !== null;
+    // Bot Owner は lockWatchTimer を使わないため、isBotOwner でもスタンバイ判定する
+    const isStandby = !botReady && (ctx.lockWatchTimer !== null || ctx.isBotOwner);
 
     if (botReady) {
         // Bot 接続済み: チェックマーク
@@ -1053,7 +1057,7 @@ export function updateStatusBar(ctx: BridgeContext): void {
             : t('bridge.tooltipStandby', licenseTooltip);
         ctx.statusBarItem.command = 'anti-crow.stop';
     } else if (isStandby) {
-        // スタンバイ: 別WSが Bot を管理中。ロック監視タイマーが動いている
+        // スタンバイ: Bridge 起動済みだが Bot 未Ready（起動中・再接続中・別WS管理中）
         ctx.statusBarItem.text = `$(eye) AntiCrow${licenseSuffix}`;
         ctx.statusBarItem.tooltip = t('bridge.tooltipStandby', licenseTooltip);
         ctx.statusBarItem.command = 'anti-crow.stop';

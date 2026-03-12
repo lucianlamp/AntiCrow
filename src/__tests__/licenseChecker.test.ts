@@ -369,7 +369,7 @@ describe('LicenseChecker — トライアル機能', () => {
                     meta: {
                         store_id: 1,
                         product_id: 1,
-                        product_name: 'Anti-Crow',
+                        product_name: 'AntiCrow',
                         variant_id: 1,
                         variant_name: 'Lifetime',
                     },
@@ -439,7 +439,7 @@ describe('LicenseChecker — Lemonsqueezy API レスポンスハンドリング'
                     id: 1, status: 'active', key: 'k',
                     activation_limit: 5, activation_usage: 1, expires_at: null,
                 },
-                meta: { store_id: 1, product_id: 1, product_name: 'Anti-Crow', variant_id: 1, variant_name: 'Lifetime' },
+                meta: { store_id: 1, product_id: 1, product_name: 'AntiCrow', variant_id: 1, variant_name: 'Lifetime' },
             }),
         });
 
@@ -517,7 +517,7 @@ describe('LicenseChecker — Lemonsqueezy API レスポンスハンドリング'
                     id: 1, status: 'active', key: 'k',
                     activation_limit: 5, activation_usage: 1, expires_at: expiry,
                 },
-                meta: { store_id: 1, product_id: 1, product_name: 'Anti-Crow', variant_id: 1, variant_name: 'Lifetime' },
+                meta: { store_id: 1, product_id: 1, product_name: 'AntiCrow', variant_id: 1, variant_name: 'Lifetime' },
             }),
         });
 
@@ -536,7 +536,7 @@ describe('LicenseChecker — Lemonsqueezy API レスポンスハンドリング'
                     activation_limit: 5, activation_usage: 1, expires_at: null,
                 },
                 instance: { id: 'inst-abc-123', name: 'test' },
-                meta: { store_id: 1, product_id: 1, product_name: 'Anti-Crow', variant_id: 1, variant_name: 'Lifetime' },
+                meta: { store_id: 1, product_id: 1, product_name: 'AntiCrow', variant_id: 1, variant_name: 'Lifetime' },
             }),
         });
 
@@ -677,7 +677,7 @@ describe('LicenseChecker — キャッシュ TTL', () => {
                     id: 1, status: 'active', key: 'k',
                     activation_limit: 5, activation_usage: 1, expires_at: null,
                 },
-                meta: { store_id: 1, product_id: 1, product_name: 'Anti-Crow', variant_id: 1, variant_name: 'Lifetime' },
+                meta: { store_id: 1, product_id: 1, product_name: 'AntiCrow', variant_id: 1, variant_name: 'Lifetime' },
             }),
         });
 
@@ -703,7 +703,7 @@ describe('LicenseChecker — キャッシュ TTL', () => {
                     id: 1, status: 'active', key: 'k',
                     activation_limit: 5, activation_usage: 1, expires_at: null,
                 },
-                meta: { store_id: 1, product_id: 1, product_name: 'Anti-Crow', variant_id: 1, variant_name: 'Lifetime' },
+                meta: { store_id: 1, product_id: 1, product_name: 'AntiCrow', variant_id: 1, variant_name: 'Lifetime' },
             }),
         });
 
@@ -721,7 +721,7 @@ describe('LicenseChecker — キャッシュ TTL', () => {
                     id: 1, status: 'active', key: 'k',
                     activation_limit: 5, activation_usage: 1, expires_at: null,
                 },
-                meta: { store_id: 1, product_id: 1, product_name: 'Anti-Crow', variant_id: 1, variant_name: 'Lifetime' },
+                meta: { store_id: 1, product_id: 1, product_name: 'AntiCrow', variant_id: 1, variant_name: 'Lifetime' },
             }),
         });
 
@@ -738,7 +738,7 @@ describe('LicenseChecker — キャッシュ TTL', () => {
                     id: 1, status: 'active', key: 'k',
                     activation_limit: 5, activation_usage: 1, expires_at: null,
                 },
-                meta: { store_id: 1, product_id: 1, product_name: 'Anti-Crow', variant_id: 1, variant_name: 'Lifetime' },
+                meta: { store_id: 1, product_id: 1, product_name: 'AntiCrow', variant_id: 1, variant_name: 'Lifetime' },
             }),
         });
 
@@ -756,7 +756,7 @@ describe('LicenseChecker — キャッシュ TTL', () => {
                     id: 1, status: 'active', key: 'k',
                     activation_limit: 5, activation_usage: 1, expires_at: null,
                 },
-                meta: { store_id: 1, product_id: 1, product_name: 'Anti-Crow', variant_id: 1, variant_name: 'Lifetime' },
+                meta: { store_id: 1, product_id: 1, product_name: 'AntiCrow', variant_id: 1, variant_name: 'Lifetime' },
             }),
         });
 

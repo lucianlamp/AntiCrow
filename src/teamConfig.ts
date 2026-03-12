@@ -10,6 +10,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { logDebug, logWarn } from './logger';
+import { ensureAnticrowGitignore } from './gitignoreHelper';
 
 // ---------------------------------------------------------------------------
 // 型定義
@@ -92,6 +93,7 @@ export function saveTeamConfig(repoRoot: string, config: TeamConfig): void {
     try {
         if (!fs.existsSync(dirPath)) {
             fs.mkdirSync(dirPath, { recursive: true });
+            ensureAnticrowGitignore(repoRoot);
         }
         fs.writeFileSync(filePath, JSON.stringify(config, null, 2) + '\n', 'utf-8');
         logDebug(`TeamConfig: saved to ${filePath}`);

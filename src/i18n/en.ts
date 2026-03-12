@@ -9,7 +9,7 @@
 // embeddedRules.ts — PROMPT_RULES_MD (English version)
 // ---------------------------------------------------------------------------
 
-export const PROMPT_RULES_MD = `# Anti-Crow Prompt Rules
+export const PROMPT_RULES_MD = `# AntiCrow Prompt Rules
 
 ## Output Schema (Plan Generation)
 
@@ -847,7 +847,7 @@ export const messages = {
   'command.auto.desc': 'Auto Mode — AI automatically executes tasks in sequence (Pro only)',
   'command.auto.promptDesc': 'Task prompt (e.g. --steps 10 --confirm semi Redesign the landing page)',
   'command.autoConfig.desc': 'View and configure Auto Mode settings',
-  'command.update.desc': 'Update Anti-Crow to the latest version',
+  'command.update.desc': 'Update AntiCrow to the latest version',
 
   // --- Update notifications ---
   'update.checking': '🔍 Checking for updates...',

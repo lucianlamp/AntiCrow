@@ -28,9 +28,9 @@ describe('memorySummarizer', () => {
     // -----------------------------------------------------------------
     describe('splitMemoryContent', () => {
         it('ヘッダーのみの場合は空配列を返す', () => {
-            const content = '# Anti-Crow Memory\n\nメモリファイルです。\n';
+            const content = '# AntiCrow Memory\n\nメモリファイルです。\n';
             const result = splitMemoryContent(content);
-            expect(result.header).toContain('Anti-Crow Memory');
+            expect(result.header).toContain('AntiCrow Memory');
             expect(result.oldEntries).toEqual([]);
             expect(result.recentEntries).toEqual([]);
             expect(result.existingSummary).toBeNull();

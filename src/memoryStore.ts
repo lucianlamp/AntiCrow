@@ -10,6 +10,7 @@ import * as path from 'path';
 import * as os from 'os';
 import { logDebug, logWarn } from './logger';
 import { trySummarizeIfNeeded, SUMMARIZE_THRESHOLD_BYTES } from './memorySummarizer';
+import { ensureAnticrowGitignore } from './gitignoreHelper';
 import type { SummarizeOps } from './memorySummarizer';
 
 // -------------------------------------------------------------------------
@@ -162,6 +163,13 @@ function appendToMemoryFile(filePath: string, entry: string, label: string): voi
         if (!fs.existsSync(dir)) {
             fs.mkdirSync(dir, { recursive: true });
             logDebug(`memoryStore: created directory ${dir}`);
+
+            // ワークスペース記憶の場合、.gitignore に .anticrow/ を自動追加
+            // （グローバル記憶 ~/.anticrow/ は Git リポジトリ外なのでスキップ）
+            if (!dir.startsWith(os.homedir() + path.sep + '.anticrow')) {
+                const repoRoot = path.resolve(dir, '..');
+                ensureAnticrowGitignore(repoRoot);
+            }
         }
         const timestamp = new Date().toISOString().slice(0, 10);
         const formattedEntry = `\n\n### ${timestamp}\n${entry.trim()}\n`;

@@ -1,5 +1,5 @@
 /**
- * upload-r2.ts — Anti-Crow VSIX を Cloudflare R2 にアップロードするスクリプト
+ * upload-r2.ts — AntiCrow VSIX を Cloudflare R2 にアップロードするスクリプト
  *
  * 使い方:
  *   npx tsx scripts/upload-r2.ts [--bucket <name>] [--vsix <path>]
@@ -55,7 +55,7 @@ async function main(): Promise<void> {
   const version: string = packageJson.version;
   const name: string = packageJson.name || 'anti-crow';
 
-  console.log(`📦 Anti-Crow v${version} を R2 にアップロードするのだ！`);
+  console.log(`📦 AntiCrow v${version} を R2 にアップロードするのだ！`);
   console.log(`🪣 バケット: ${bucket}`);
 
   // VSIX ファイルの特定

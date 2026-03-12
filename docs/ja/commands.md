@@ -193,4 +193,4 @@ Discord モーダルで直接編集が可能です（4000文字以内）。
 
 ### `/update`
 
-Anti-Crow を最新バージョンに更新します。Cloudflare R2 から最新の VSIX をダウンロードし、自動インストールします。
+AntiCrow を最新バージョンに更新します。Cloudflare R2 から最新の VSIX をダウンロードし、自動インストールします。

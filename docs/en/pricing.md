@@ -1,6 +1,6 @@
 # Pricing & Limits
 
-Anti-Crow offers two plans: **Free** and **Pro**.
+AntiCrow offers two plans: **Free** and **Pro**.
 
 ## Plan Comparison
 
@@ -22,7 +22,7 @@ Anti-Crow offers two plans: **Free** and **Pro**.
 
 ### Plan Generation is Unlimited
 
-When you send a message to Anti-Crow, the AI first generates a plan for what to do.
+When you send a message to AntiCrow, the AI first generates a plan for what to do.
 This plan generation is **unlimited even on the Free plan**.
 
 Limits only apply when you approve a plan and **actually execute a task**.
