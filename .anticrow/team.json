@@ -1,8 +1,0 @@
-{
-  "enabled": true,
-  "maxAgents": 3,
-  "responseTimeoutMs": 900000,
-  "monitorIntervalMs": 15000,
-  "autoSpawn": true,
-  "enableParallel": true
-}
