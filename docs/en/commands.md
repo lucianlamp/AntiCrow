@@ -90,12 +90,6 @@ Display detected Antigravity workspaces.
 - Pagination support
 - Auto-delete information for unused categories
 
-### `/history`
-
-Display and switch Antigravity conversation history.
-
-- Switch conversations via buttons
-- Pagination support
 
 ---
 
@@ -116,13 +110,13 @@ Queue actions: "✏️ Edit", "❌ Delete", "🗑️ Clear All"
 
 ---
 
-## Agent agent team mode
+## Agent Team Mode
 
 ### `/team`
 
-Display the Agent agent team mode management panel (**Pro only**).
+Display the Agent Team Mode management panel (**Pro only**).
 
-- Toggle Agent agent team mode on/off
+- Toggle Agent Team Mode on/off
 - View active sub-agent status
 - Display team settings
 
@@ -132,7 +126,7 @@ See [Agent agent team mode](team-mode.md) for details.
 
 ## Templates
 
-### `/templates`
+### `/template`
 
 Display and manage saved templates.
 

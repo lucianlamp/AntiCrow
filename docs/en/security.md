@@ -95,7 +95,6 @@ AntiCrow is designed to give users full control:
 |---|---|
 | `allowedUserIds` | Control who can operate the Bot |
 | `~/.anticrow/ANTICROW.md` | Edit and review custom instructions sent to AI |
-| `autoAcceptEnhanced` | Control enhanced auto-approval on/off (Pro only) |
 | `workspacePaths` | Control which folders AI can access |
 | `responseTimeoutMs` | Control timeout duration |
 

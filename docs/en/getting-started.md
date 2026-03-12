@@ -7,8 +7,10 @@ AntiCrow is distributed as an Antigravity extension (VSIX).
 ### Installation
 
 ```bash
-antigravity --install-extension anti-crow-0.1.0.vsix --force
+antigravity --install-extension anti-crow-0.1.1.vsix --force
 ```
+
+> 📝 The version may vary depending on the distributed file.
 
 Or install via the Antigravity Command Palette (`Ctrl+Shift+P`) → "Extensions: Install from VSIX..."
 
@@ -23,7 +25,7 @@ To get the most out of AntiCrow, install the following extension:
 | **Publisher** | pesosz |
 | **Install** | Search `Antigravity Auto Accept` in Antigravity Extensions, or [view on GitHub](https://github.com/pesosz/antigravity-auto-accept) |
 
-> 💡 This extension automatically clicks Antigravity approval buttons (Run / Allow / Continue). Combined with AntiCrow's **Auto Accept Enhanced** (Pro), you get a fully autonomous workflow with VSCode command approval, auto-scroll, UI expansion, permission dialog handling, and safety guards.
+> 💡 This extension automatically clicks Antigravity approval buttons (Run / Allow / Continue). Combined with AntiCrow, you get a fully autonomous development workflow.
 
 ## 2. Create a Discord Bot
 
@@ -44,11 +46,14 @@ To get the most out of AntiCrow, install the following extension:
    - Add Reactions
    - Use Slash Commands
    - Manage Messages
+   - Create Public Threads
+   - Send Messages in Threads
+   - Manage Threads
 
 ## 3. Invite the Bot to Your Server
 
 1. Go to "OAuth2" → "URL Generator" in the Developer Portal
-2. Scopes: Select `bot` and `applications.commands`
+2. Scopes: Select `bot`
 3. Bot Permissions: Select the permissions listed above
 4. Open the generated URL in your browser to invite the bot
 
@@ -101,7 +106,6 @@ Go to your Discord server and send a message in a text channel to verify it's wo
 | `antiCrow.autoStart` | `true` | Auto-start bot when Antigravity launches |
 | `antiCrow.allowedUserIds` | `[]` | Discord user IDs allowed to operate the bot |
 | `antiCrow.responseTimeoutMs` | `0` | Idle timeout in ms. 0 = unlimited |
-| `antiCrow.autoAcceptEnhanced` | `false` | Enhanced auto-accept (Pro only, co-op with pesosz/antigravity-auto-accept) |
 | `antiCrow.maxRetries` | `0` | Auto-retry count on timeout |
 | `antiCrow.cdpPort` | `9000` | CDP connection port |
 | `antiCrow.language` | `ja` | UI/prompt language (`ja` / `en`) |

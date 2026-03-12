@@ -23,6 +23,7 @@ import {
     ButtonInteraction,
     AutocompleteInteraction,
     ModalSubmitInteraction,
+    TextChannel,
 } from 'discord.js';
 
 import { ChannelIntent } from './types';
@@ -148,6 +149,8 @@ export async function handleButtonInteraction(
         if (customId === 'confirm_continue' || customId === 'confirm_stop') {
             try {
                 const autoMode: any = await import('./autoModeController');
+                // TODO: マルチWS対応時はボタンの customId に wsKey を埋め込み、
+                //       ここで取得して渡す。現時点ではフォールバック（最初のMap エントリ）で動作する。
                 if (customId === 'confirm_continue') {
                     autoMode.handleConfirmResponse?.('continue');
                     await interaction.reply({ embeds: [buildEmbed(t('autoMode.confirm.continued'), EmbedColor.Success)] });
@@ -215,6 +218,8 @@ export async function handleButtonInteraction(
         }
 
         // ----- 連続オートモード関連ボタン -----
+        // TODO: マルチWS対応時はボタンの customId に wsKey を埋め込み、
+        //       ここで取得して各関数に渡す。現時点ではフォールバック（最初のMap エントリ）で動作する。
         if (
             customId === 'safety_approve' ||
             customId === 'safety_skip' ||
@@ -230,8 +235,17 @@ export async function handleButtonInteraction(
                 } else if (customId === 'safety_skip') {
                     autoMode.handleSafetyResponse?.('skip');
                     await interaction.reply({ embeds: [buildEmbed(t('autoMode.safety.skipped'), EmbedColor.Info)] });
-                } else if (customId === 'safety_stop' || customId === 'automode_stop') {
-                    autoMode.stopAutoMode?.();
+                } else if (customId === 'safety_stop' || customId === 'automode_stop' || customId === 'auto_stop') {
+                    // stopAutoMode には channel (TextChannel) と reason が必要
+                    const ch = interaction.channel;
+                    if (ch && ch.isTextBased() && !ch.isDMBased()) {
+                        await autoMode.stopAutoMode?.(ch as TextChannel, 'manual');
+                    } else {
+                        // TextChannel でない場合は stopAutoMode を呼べないが、
+                        // 状態はリセットしておく（終了サマリーなし）
+                        logWarn('handleButtonInteraction: auto_stop — channel is not TextChannel, calling stopAutoMode without channel');
+                        autoMode.handleSafetyResponse?.('stop');
+                    }
                     await interaction.reply({ embeds: [buildEmbed(t('autoMode.safety.stopped'), EmbedColor.Warning)] });
                 }
             } catch (e) {

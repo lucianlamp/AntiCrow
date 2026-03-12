@@ -15,15 +15,14 @@
 | **Daily task limit** | **Limited** | **Unlimited** |
 | **Weekly task limit** | **Limited** | **Unlimited** |
 | **Continuous Auto Mode** | ❌ | ✅ |
-| **Agent agent team mode** | ❌ | ✅ |
-| **Auto Approve** | ❌ | ✅ |
+| **Agent Team Mode** | ❌ | ✅ |
 
 ## Pricing
 
 | Plan | Price | Description |
 |------|-------|-------------|
 | 🆓 **Free** | Free | Basic features + task limits |
-| ♾️ **Lifetime** | $50 | All features unlimited (one-time purchase) |
+| ♾️ **Lifetime** | $69.99 | All features unlimited (one-time purchase) |
 
 ## Pro Trial
 
@@ -34,7 +33,7 @@ A Pro trial period is available on first installation. During the trial, all fea
 ### From Discord
 
 1. Execute the `/pro` command
-2. Click "♾️ Lifetime ($50)"
+2. Click "♾️ Lifetime ($69.99)"
 3. Complete payment on the purchase page
 4. Receive your license key via email
 

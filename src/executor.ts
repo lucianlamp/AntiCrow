@@ -622,7 +622,7 @@ export class Executor {
                     clearInterval(stepProgress);
                     getActivePlanProgressIntervals().delete(stepProgress);
                     await this.fileIpc.cleanupProgress(nextProgressPath).catch(() => { });
-                    try { require('fs').unlinkSync(nextTmpPath); } catch { /* ignore */ }
+                    try { fs.unlinkSync(nextTmpPath); } catch { /* ignore */ }
                 }
 
                 logDebug(`Executor: autoModeContinueLoop — response received (${stepResponse.length} chars)`);
@@ -656,9 +656,9 @@ export class Executor {
 
                 // レスポンスファイルクリーンアップ
                 try {
-                    await require('fs').promises.unlink(nextResponsePath);
+                    await fs.promises.unlink(nextResponsePath);
                     const metaPath = nextResponsePath.replace(/_response\.(json|md)$/, '_meta.json');
-                    await require('fs').promises.unlink(metaPath).catch(() => { });
+                    await fs.promises.unlink(metaPath).catch(() => { });
                 } catch { /* ignore */ }
 
                 // sendProcessedResponse の返り値から suggestions を直接取得

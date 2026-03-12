@@ -62,9 +62,9 @@ Continuous Auto Mode is a **Pro plan exclusive** feature. Upgrade via the `/pro`
 
 ---
 
-## Agent agent team mode
+## Agent Team Mode
 
-### Q: How do I use Agent agent team mode?
+### Q: How do I use Agent Team Mode?
 
 1. Upgrade to Pro plan
 2. `/team` → "🟢 Team ON" to enable
@@ -72,7 +72,7 @@ Continuous Auto Mode is a **Pro plan exclusive** feature. Upgrade via the `/pro`
 
 ### Q: I see "No commits in repository"
 
-Agent agent team mode uses Git worktrees and requires at least one commit:
+Agent Team Mode uses Git worktrees and requires at least one commit:
 
 ```bash
 git init && git add -A && git commit -m "initial commit"
@@ -84,7 +84,7 @@ git init && git add -A && git commit -m "initial commit"
 
 ### Q: What are the Free plan limits?
 
-There are limits on daily and weekly task execution counts. Continuous Auto Mode and Agent agent team mode are not available.
+There are limits on daily and weekly task execution counts. Continuous Auto Mode and Agent Team Mode are not available.
 
 ### Q: I forgot my license key
 
@@ -92,7 +92,7 @@ Your license key is in the Lemonsqueezy purchase confirmation email.
 
 ### Q: What is the Pro plan pricing?
 
-♾️ **Lifetime ($50)** — a one-time purchase. Once purchased, all features are unlocked permanently with unlimited usage.
+♾️ **Lifetime ($69.99)** — a one-time purchase. Once purchased, all features are unlocked permanently with unlimited usage.
 
 ---
 

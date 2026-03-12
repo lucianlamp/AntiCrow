@@ -19,7 +19,6 @@ Send a natural language message from Discord on your phone → Antigravity execu
 - 📝 **Prompt Templates** — Save frequently used instructions as templates for one-tap execution
 - 🧠 **Model & Mode Switching** — Switch AI models and execution modes from Discord
 - 🤖 **Continuous Auto Mode** — AI autonomously executes tasks in sequence with safety guards (Pro only)
-- ⚡ **Auto Accept Enhanced** — Advanced automation features that complement pesosz/antigravity-auto-accept (Pro only)
 - 🤝 **Agent Agent Team Mode** — Multiple AI agents execute tasks in parallel for faster results (Pro only)
 - 💾 **Memory** — Automatically records and utilizes past learnings (global / workspace-specific)
 - 🛡️ **Safety Guard** — 21-pattern dangerous operation detection (file deletion, credential leaks, injection attacks)
@@ -81,7 +80,7 @@ To get the most out of AntiCrow, install the **Antigravity Auto Accept** extensi
 | **Publisher** | pesosz |
 | **Install** | Search `Antigravity Auto Accept` in Antigravity Extensions, or [view on GitHub](https://github.com/pesosz/antigravity-auto-accept) |
 
-> 💡 **Why?** Antigravity Auto Accept handles basic approval button clicking (Run / Allow / Continue). AntiCrow's **Auto Accept Enhanced** (Pro) builds on top of it with advanced features like VSCode command approval, auto-scroll, UI expansion, and safety guards. Together, they provide a fully autonomous workflow.
+> 💡 **Why?** Antigravity Auto Accept handles basic approval button clicking (Run / Allow / Continue). Combined with AntiCrow, it provides a fully autonomous workflow.
 
 ---
 
@@ -102,7 +101,7 @@ To get the most out of AntiCrow, install the **Antigravity Auto Accept** extensi
 1. Select **"OAuth2"** from the left menu
 2. In **"URL Generator"**, configure:
    - **SCOPES**: `bot`
-   - **BOT PERMISSIONS**: `Send Messages`, `Read Message History`, `Add Reactions`, `Manage Channels`, `Attach Files`, `Embed Links`, `Create Public Threads`, `Send Messages in Threads`, `Manage Threads`
+   - **BOT PERMISSIONS**: `Send Messages`, `Read Message History`, `Add Reactions`, `Manage Channels`, `Manage Messages`, `Attach Files`, `Embed Links`, `Use Slash Commands`, `Create Public Threads`, `Send Messages in Threads`, `Manage Threads`
 3. Copy the generated URL and open it in your browser → Invite the Bot to your server
 
 ### 3️⃣ Install the Extension
@@ -194,27 +193,6 @@ AI autonomously decides the next action and executes tasks in sequence. Start wi
 
 ---
 
-## ⚡ Auto Accept Enhanced (Pro Only)
-
-AntiCrow's Auto Accept Enhanced complements the [pesosz/antigravity-auto-accept](https://github.com/pesosz/antigravity-auto-accept) extension with advanced automation:
-
-- 🔧 **VSCode Command Approval** — Approves VSCode commands automatically
-- 📜 **Auto Scroll** — Scrolls to the latest output
-- 📂 **UI Section Expansion** — Expands collapsed sections
-- 🔐 **Permission Dialog Handling** — Handles permission dialogs
-- 🛡️ **Safety Guard Integration** — 21-pattern detection prevents dangerous operations
-
-### Setup
-
-1. Install [pesosz/antigravity-auto-accept](https://github.com/pesosz/antigravity-auto-accept) extension
-2. Enable enhanced features in Antigravity settings:
-   ```json
-   "antiCrow.autoAcceptEnhanced": true
-   ```
-
-> 💎 **Pro Only:** This feature requires a Pro license. Free plan users can still use `pesosz/antigravity-auto-accept` independently.
-
----
 
 ## 🤝 Agent Agent Team Mode (Pro Only)
 
@@ -260,11 +238,10 @@ Toggle on/off with the `/team` command.
 | Setting Key | Type | Default | Description |
 | --- | --- | --- | --- |
 | `antiCrow.botToken` | boolean | `false` | Bot Token configuration status (display only) |
-| `antiCrow.responseTimeoutMs` | number | `1800000` | Idle timeout since last progress update (30 min) |
+| `antiCrow.responseTimeoutMs` | number | `0` | Idle timeout since last progress update (0 = unlimited) |
 | `antiCrow.autoStart` | boolean | `true` | Automatically start bridge on launch |
 | `antiCrow.categoryArchiveDays` | number | `7` | Workspace category auto-archive days (0 = disabled) |
 | `antiCrow.allowedUserIds` | string[] | `[]` | Allowed Discord user IDs (**empty = all denied**) |
-| `antiCrow.autoAcceptEnhanced` | boolean | `false` | Enable enhanced auto accept with pesosz co-op mode (Pro only) |
 | `antiCrow.maxRetries` | number | `0` | Auto retry count on timeout (0 = disabled) |
 | `antiCrow.workspaceParentDirs` | string[] | `[]` | Parent directories for new workspace creation |
 
@@ -282,7 +259,7 @@ Toggle on/off with the `/team` command.
 | `AntiCrow: Create Desktop Shortcut` | Create an Antigravity desktop shortcut |
 
 | `AntiCrow: License Info` | Display current license information |
-| `AntiCrow: Set License Key` | Enter/update license key |
+| `AntiCrow: License Login` | Log in to activate Pro license |
 
 ---
 

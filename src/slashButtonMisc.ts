@@ -20,6 +20,8 @@ import { processSuggestionPrompt } from './messageHandler';
 import { t } from './i18n';
 import { loadTeamConfig } from './teamConfig';
 import { startAutoMode } from './autoModeController';
+import { getLicenseGate } from './extension';
+import { PURCHASE_URL_LIFETIME } from './licensing/licenseGate';
 
 /**
  * テンプレート・Pro・キュー・提案関連ボタンを処理する。
@@ -136,6 +138,20 @@ export async function handleMiscButton(
 
     // ----- 「🔄 連続オートモードで実行」ボタン（Phase 3: /suggest → /auto 連携） -----
     if (customId === SUGGEST_AUTO_MODE_ID) {
+        // ライセンスチェック: 連続オートモードは Pro 限定機能
+        const gate = getLicenseGate();
+        if (gate && !gate.isFeatureAllowed('autoMode')) {
+            await interaction.reply({
+                embeds: [buildEmbed(
+                    `🔒 **連続オートモードは Pro 限定機能です**\n\n`
+                    + `この機能を使うには Pro プランへのアップグレードが必要です。\n`
+                    + `👉 [Pro プランを購入](${PURCHASE_URL_LIFETIME})`,
+                    EmbedColor.Warning,
+                )],
+            });
+            return true;
+        }
+
         const channelId = interaction.channelId;
         const suggestions = getAllSuggestions(channelId);
 

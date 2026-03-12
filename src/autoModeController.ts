@@ -1011,17 +1011,8 @@ async function pauseForSafety(
     const pauseStartMs = Date.now();
     const effectiveWsKey = wsKey ?? currentState.wsKey;
     return new Promise<'approve' | 'skip' | 'stop'>((resolve) => {
-        pauseResolveMap.set(effectiveWsKey, (action) => {
-            const state = resolveState(effectiveWsKey);
-            if (state) {
-                state.paused = false;
-                state.totalPausedMs += Date.now() - pauseStartMs;
-            }
-            resolve(action);
-        });
-
         // タイムアウト: 5分間応答がなければ自動停止
-        setTimeout(() => {
+        const timeoutId = setTimeout(() => {
             if (pauseResolveMap.has(effectiveWsKey)) {
                 logWarn('autoMode: safety response timeout — auto-stopping');
                 pauseResolveMap.delete(effectiveWsKey);
@@ -1033,6 +1024,16 @@ async function pauseForSafety(
                 resolve('stop');
             }
         }, 5 * 60 * 1000);
+
+        pauseResolveMap.set(effectiveWsKey, (action) => {
+            clearTimeout(timeoutId); // ユーザー応答時にタイムアウトをクリア
+            const state = resolveState(effectiveWsKey);
+            if (state) {
+                state.paused = false;
+                state.totalPausedMs += Date.now() - pauseStartMs;
+            }
+            resolve(action);
+        });
     });
 }
 
@@ -1179,17 +1180,8 @@ async function pauseForConfirmation(
     const pauseStartMs = Date.now();
     const effectiveWsKey = wsKey ?? currentState.wsKey;
     return new Promise<'continue' | 'stop'>((resolve) => {
-        confirmResolveMap.set(effectiveWsKey, (action) => {
-            const state = resolveState(effectiveWsKey);
-            if (state) {
-                state.paused = false;
-                state.totalPausedMs += Date.now() - pauseStartMs;
-            }
-            resolve(action);
-        });
-
         // タイムアウト: 10分間応答がなければ自動停止
-        setTimeout(() => {
+        const timeoutId = setTimeout(() => {
             if (confirmResolveMap.has(effectiveWsKey)) {
                 logWarn('autoMode: confirm response timeout — auto-stopping');
                 confirmResolveMap.delete(effectiveWsKey);
@@ -1201,6 +1193,16 @@ async function pauseForConfirmation(
                 resolve('stop');
             }
         }, 10 * 60 * 1000);
+
+        confirmResolveMap.set(effectiveWsKey, (action) => {
+            clearTimeout(timeoutId); // ユーザー応答時にタイムアウトをクリア
+            const state = resolveState(effectiveWsKey);
+            if (state) {
+                state.paused = false;
+                state.totalPausedMs += Date.now() - pauseStartMs;
+            }
+            resolve(action);
+        });
     });
 }
 

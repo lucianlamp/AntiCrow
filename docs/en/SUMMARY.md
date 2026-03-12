@@ -5,7 +5,7 @@
 * [Basic Usage](basic-usage.md)
 * [Slash Commands](commands.md)
 * [Continuous Auto Mode](auto-mode.md)
-* [Agent agent team mode](team-mode.md)
+* [Agent Team Mode](team-mode.md)
 * [Templates](templates.md)
 * [Scheduled Execution](schedules.md)
 * [Pricing & Limits](pricing.md)

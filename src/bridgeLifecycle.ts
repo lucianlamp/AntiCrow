@@ -790,7 +790,6 @@ async function startBridgeInternal(
         }
     }, 5 * 60_000);
 
-    // (autoAcceptEnhanced 設定リスナー・起動時チェックは UIWatcher 削除に伴い撤去済み)
 
     // CDP ヘルスチェック（60秒間隔で接続状態を監視）
     ctx.healthCheckTimer = setInterval(async () => {

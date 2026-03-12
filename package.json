@@ -90,11 +90,6 @@
           "default": 9000,
           "markdownDescription": "CDP（Chrome DevTools Protocol）接続に使用する固定ポート番号。Antigravity 起動時に `--remote-debugging-port` に使用されます。\n\nこのポートで Antigravity を起動するデスクトップショートカットを作成するには、**[Create Desktop Shortcut](command:anti-crow.createShortcut)** を実行してください。\n\n---\n\nFixed port for CDP (Chrome DevTools Protocol) connection. Used as `--remote-debugging-port` when launching Antigravity.\n\nTo create a desktop shortcut that launches Antigravity with this port, run **[Create Desktop Shortcut](command:anti-crow.createShortcut)**."
         },
-        "antiCrow.autoAcceptEnhanced": {
-          "type": "boolean",
-          "default": true,
-          "markdownDescription": "拡張自動承認機能（VSCode コマンド承認、自動スクロール、展開、権限ダイアログ処理）を有効にする。\n\n💡 **推奨:** [`pesosz/antigravity-auto-accept`](https://github.com/pesosz/antigravity-auto-accept) 拡張機能を併せてインストールしてください。基本的なボタンクリック（Run / Allow / Continue）を自動化し、AntiCrow の拡張機能と組み合わせることで完全な自律実行環境を構築できます。\n\n---\n\nEnable enhanced auto-accept (VSCode command approval, auto-scroll, UI expansion, permission dialog handling).\n\n💡 **Recommended:** Install [`pesosz/antigravity-auto-accept`](https://github.com/pesosz/antigravity-auto-accept) alongside this. It automates basic button clicking (Run / Allow / Continue), and combined with AntiCrow's enhanced features, provides a fully autonomous workflow.\n\nDisable if using `pesosz/antigravity-auto-accept` alone for basic button clicking."
-        },
         "antiCrow.autoStart": {
           "type": "boolean",
           "default": true,
@@ -150,7 +145,7 @@
     "typecheck": "tsc -p ./ --noEmit",
     "bundle": "node ./esbuild.js",
     "package": "npx -y @vscode/vsce package --no-dependencies --allow-missing-repository --skip-license --baseContentUrl \".\" --baseImagesUrl \".\"",
-    "deploy": "npm run compile && npm run bundle && npm run package && antigravity --install-extension anti-crow-0.1.0.vsix --force",
+    "deploy": "npm run compile && npm run bundle && npm run package && antigravity --install-extension anti-crow-0.1.1.vsix --force",
     "test": "vitest run",
     "vscode:prepublish": "npm run typecheck && npm run bundle",
     "setup:licensing": "npx tsx scripts/setup-licensing.ts",

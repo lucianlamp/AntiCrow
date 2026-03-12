@@ -36,7 +36,6 @@ export interface BridgeContext {
     statusBarItem: vscode.StatusBarItem;
     lockWatchTimer: NodeJS.Timeout | null;
     categoryWatchTimer: NodeJS.Timeout | null;
-    autoAcceptWatcherTimer: NodeJS.Timeout | null;
     healthCheckTimer: NodeJS.Timeout | null;
     cleanupTimer: NodeJS.Timeout | null;
     staleRecoveryTimer: NodeJS.Timeout | null;
