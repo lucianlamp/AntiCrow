@@ -12,8 +12,8 @@ Whether you're on your phone or PC, as long as you have Discord, you can ask AI 
 
 - 📱 **AI Control via Discord** — Just send a message and Antigravity starts working
 - ⚡ **Instant & Scheduled Execution** — Execute now or set up cron schedules
-- 🤖 **Auto Mode** — AI autonomously executes tasks in sequence (Pro only)
-- 👥 **Team Mode** — Multiple sub-agents work in parallel (Pro only)
+- 🤖 **Continuous Auto Mode** — AI autonomously executes tasks in sequence (Pro only)
+- 👥 **Agent agent team mode** — Multiple sub-agents work in parallel (Pro only)
 - 📋 **Templates** — Save frequently used prompts and execute with one click
 - 🛡️ **Safety Guard** — Automatically detects and blocks dangerous commands
 - 🔐 **Security** — Only authorized users can operate the bot
@@ -23,8 +23,8 @@ Whether you're on your phone or PC, as long as you have Discord, you can ask AI 
 1. [Getting Started (Installation & Setup)](getting-started.md)
 2. [Basic Usage](basic-usage.md)
 3. [Slash Commands](commands.md)
-4. [Auto Mode](auto-mode.md)
-5. [Team Mode](team-mode.md)
+4. [Continuous Auto Mode](auto-mode.md)
+5. [Agent agent team mode](team-mode.md)
 6. [Templates](templates.md)
 7. [Scheduled Execution](schedules.md)
 8. [Pro Plan](pro-plan.md)

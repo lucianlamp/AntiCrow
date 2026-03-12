@@ -57,8 +57,8 @@
                 "badge": "Pro"
             },
             {
-                "title": "Auto Approve",
-                "description": "Automatically click confirmation dialogs during remote execution",
+                "title": "Continuous Auto Mode",
+                "description": "AI autonomously executes tasks in sequence with safety guards",
                 "badge": "Pro"
             },
             {
@@ -134,7 +134,7 @@
             },
             {
                 "question": "Is there a Pro trial?",
-                "answer": "Yes, 14-day free trial. Access all Pro features including Agent Team Mode and Auto Approve."
+                "answer": "Yes, 14-day free trial. Access all Pro features including Continuous Auto Mode and Agent Team Mode."
             },
             {
                 "question": "Will it support AI tools other than Antigravity?",

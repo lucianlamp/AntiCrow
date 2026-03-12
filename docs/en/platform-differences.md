@@ -10,7 +10,7 @@ AntiCrow automatically creates a desktop shortcut on first launch. The shortcut 
 |------|---------|-------|-------|
 | File format | `.lnk` (shortcut) | `.command` (shell script) | `.desktop` (desktop entry) |
 | Location | Desktop | `~/Desktop/` | `~/.local/share/applications/` |
-| Launch command | `Antigravity.exe --remote-debugging-port=9333` | `open -a Antigravity --args --remote-debugging-port=9333` | `antigravity --remote-debugging-port=9333` |
+| Launch command | `Antigravity.exe --remote-debugging-port=9000` | `open -a Antigravity --args --remote-debugging-port=9000` | `antigravity --remote-debugging-port=9000` |
 
 ### Windows Notes
 
@@ -40,7 +40,7 @@ AntiCrow communicates with the Antigravity editor using CDP (Chrome DevTools Pro
 
 ### Troubleshooting
 
-- If your firewall blocks `localhost:9333`, CDP connection will fail
+- If your firewall blocks `localhost:9000`, CDP connection will fail
 - On macOS, settings in `.zshrc` / `.zprofile` may affect behavior
 - On Linux, settings in `.bashrc` / `.bash_profile` may affect behavior
 
@@ -64,7 +64,7 @@ The Language Server binary differs between Apple Silicon and Intel Macs:
 
 ### CDP Port
 
-- **Default**: `9333`
+- **Default**: `9000`
 - **How to change**: Modify `antiCrow.cdpPort` in Antigravity settings
 - When launching from the shortcut, this setting value is automatically used
 

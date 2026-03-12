@@ -33,12 +33,7 @@ export class ExecutorPool {
     private extensionPath: string;
     private postSuggestions: PostSuggestionsFunc | null;
     private sendFile: SendFileFunc | null;
-    /** 起動中の UIWatcher isProCheck コールバック（新規 Executor 生成時にも自動適用） */
-    private uiWatcherIsProCheck: (() => boolean) | null = null;
-    /** 起動中の UIWatcher onAgentStateChange コールバック（ownerWorkspace の Executor にのみ適用） */
-    private uiWatcherOnAgentStateChange: ((running: boolean) => void) | null = null;
-    /** 自ウィンドウのワークスペース名（ステータスバー更新の対象。これ以外の WS の UIWatcher は autoFollowOutput のみ実行） */
-    private ownerWorkspace: string | null = null;
+
     /** モデル名更新コールバック（新規 Executor 生成時にも自動適用） */
     private setModelNameCallback: ((name: string | null) => void) | null = null;
 
@@ -100,14 +95,7 @@ export class ExecutorPool {
 
         this.pool.set(key, executor);
         logDebug(`ExecutorPool: created executor for workspace "${key}" (pool size=${this.pool.size})`);
-        // UIWatcher が起動中なら新規 Executor にも自動適用
-        // onAgentStateChange は ownerWorkspace の Executor にのみ適用（ステータスバー競合防止）
-        if (this.uiWatcherIsProCheck) {
-            const isOwner = this.ownerWorkspace !== null && key === this.ownerWorkspace;
-            const cb = isOwner ? (this.uiWatcherOnAgentStateChange ?? undefined) : undefined;
-            executor.startUIWatcher(this.uiWatcherIsProCheck, cb);
-            logDebug(`ExecutorPool: auto-started UIWatcher for new executor "${key}" (statusBar=${isOwner})`);
-        }
+
         // モデル名更新コールバックが設定済みなら新規 Executor にも自動適用
         if (this.setModelNameCallback) {
             executor.setSetModelNameFn(this.setModelNameCallback);
@@ -249,46 +237,7 @@ export class ExecutorPool {
         return Array.from(this.pool.keys());
     }
 
-    // -------------------------------------------------------------------
-    // UIWatcher 管理
-    // -------------------------------------------------------------------
 
-    /**
-     * 自ウィンドウのワークスペース名を設定する。
-     * onAgentStateChange コールバック（ステータスバー更新）はこのワークスペースの Executor にのみ適用される。
-     * 他ワークスペースの UIWatcher は autoFollowOutput のみ実行（ステータスバーに影響しない）。
-     */
-    setOwnerWorkspace(ws: string): void {
-        this.ownerWorkspace = ws;
-        logDebug(`ExecutorPool: ownerWorkspace set to "${ws}"`);
-    }
-
-    /**
-     * 全 Executor の UIWatcher を起動する。
-     * isProCheck コールバックを保持し、以後 getOrCreate された Executor にも自動適用する。
-     * onAgentStateChange は ownerWorkspace の Executor にのみ適用（ステータスバー競合防止）。
-     */
-    startUIWatcherAll(isProCheck?: () => boolean, onAgentStateChange?: (running: boolean) => void): void {
-        this.uiWatcherIsProCheck = isProCheck ?? null;
-        this.uiWatcherOnAgentStateChange = onAgentStateChange ?? null;
-        for (const [key, executor] of this.pool.entries()) {
-            const isOwner = this.ownerWorkspace !== null && key === this.ownerWorkspace;
-            const cb = isOwner ? onAgentStateChange : undefined;
-            executor.startUIWatcher(isProCheck, cb);
-            logDebug(`ExecutorPool: started UIWatcher for workspace "${key}" (statusBar=${isOwner})`);
-        }
-    }
-
-    /**
-     * 全 Executor の UIWatcher を停止する。
-     */
-    stopUIWatcherAll(): void {
-        this.uiWatcherIsProCheck = null;
-        for (const [key, executor] of this.pool.entries()) {
-            executor.stopUIWatcher();
-            logDebug(`ExecutorPool: stopped UIWatcher for workspace "${key}"`);
-        }
-    }
 
     // -------------------------------------------------------------------
     // モデル名更新コールバック

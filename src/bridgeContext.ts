@@ -14,7 +14,7 @@ import { PlanStore } from './planStore';
 import { Executor } from './executor';
 import { ExecutorPool } from './executorPool';
 import { TemplateStore } from './templateStore';
-import { UIWatcher } from './uiWatcher';
+
 import { SubagentManager } from './subagentManager';
 import { SubagentReceiver } from './subagentReceiver';
 import { TeamOrchestrator } from './teamOrchestrator';
@@ -34,20 +34,18 @@ export interface BridgeContext {
     globalStoragePath: string;
     extensionPath: string;
     statusBarItem: vscode.StatusBarItem;
-    autoAcceptStatusBarItem: vscode.StatusBarItem | null;
     lockWatchTimer: NodeJS.Timeout | null;
     categoryWatchTimer: NodeJS.Timeout | null;
     autoAcceptWatcherTimer: NodeJS.Timeout | null;
     healthCheckTimer: NodeJS.Timeout | null;
     cleanupTimer: NodeJS.Timeout | null;
     staleRecoveryTimer: NodeJS.Timeout | null;
-    /** ステータスバー専用 UIWatcher（ctx.cdp を使用。ExecutorPool の UIWatcher とは独立） */
-    startupUIWatcher: UIWatcher | null;
+
     /** Discord からライセンスキーを設定するためのコールバック（SecretStorage + LicenseChecker を橋渡し） */
     setLicenseKeyFn: ((key: string) => Promise<{ valid: boolean; planType: string }>) | null;
     /** トライアル残り日数を取得するコールバック */
     getTrialDaysRemaining: (() => number | undefined) | null;
-    /** エージェントが実行中かどうか（UIWatcher が isAgentRunning で検出） */
+    /** エージェントが実行中かどうか */
     agentRunning: boolean;
     /** サブエージェントマネージャー（メインウィンドウ側） */
     subagentManager: SubagentManager | null;

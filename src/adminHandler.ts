@@ -203,7 +203,7 @@ async function handleCancel(ctx: BridgeContext, interaction: ChatInputCommandInt
             logDebug('handleCancel: /stop executed — default executor stopped (no pool entries)');
         }
 
-        // オートモード停止（Executor 停止後にループも止める）
+        // 連続オート停止（Executor 停止後にループも止める）
         if (isAutoModeActive(wsKey ?? undefined)) {
             const channel = interaction.channel as TextChannel;
             await stopAutoMode(channel, 'manual_stop', wsKey ?? undefined);
@@ -566,7 +566,7 @@ async function handlePro(ctx: BridgeContext, interaction: ChatInputCommandIntera
             t('admin.pro.lifetime'),
             '',
             t('admin.pro.featuresTitle'),
-            `${[...PRO_ONLY_FEATURES].map(f => f === 'autoAcceptEnhanced' ? t('admin.pro.autoAcceptEnhancedLabel') : `\`${f}\``).join(', ')}${t('admin.pro.unlimitedTasks') ? ', ' + t('admin.pro.unlimitedTasks') : ''}`,
+            `${[...PRO_ONLY_FEATURES].map(f => `\`${f}\``).join(', ')}${t('admin.pro.unlimitedTasks') ? ', ' + t('admin.pro.unlimitedTasks') : ''}`,
         ];
 
         // トライアル情報を追加
@@ -835,7 +835,7 @@ async function handleTeam(
 }
 
 // ---------------------------------------------------------------------------
-// /auto — オートモード（AI自動連続実行）
+// /auto — 連続オート（AI自動連続実行）
 // ---------------------------------------------------------------------------
 
 async function handleAutoMode(
@@ -887,7 +887,7 @@ async function handleAutoMode(
         // プロンプトが空の場合のデフォルト
         const finalPrompt = userPrompt || t('autoMode.defaultPrompt');
 
-        // /auto コマンドの応答: オートモード開始メッセージ + 停止ボタン
+        // /auto コマンドの応答: 連続オート開始メッセージ + 停止ボタン
         const durationMin = Math.round(mergedConfig.maxDuration / 60000);
         await interaction.reply({
             embeds: [buildEmbed(
@@ -910,7 +910,7 @@ async function handleAutoMode(
         logWarn(`handleAutoMode: autoModeController not available yet: ${e instanceof Error ? e.message : e}`);
         await interaction.reply({
             embeds: [buildEmbed(
-                '⚠️ オートモードコントローラーがまだ初期化されていません。\nautoModeController.ts のビルドを待ってください。',
+                '⚠️ 連続オートコントローラーがまだ初期化されていません。\nautoModeController.ts のビルドを待ってください。',
                 EmbedColor.Warning,
             )],
         });
@@ -918,7 +918,7 @@ async function handleAutoMode(
 }
 
 // ---------------------------------------------------------------------------
-// /auto-config — オートモード設定の表示・変更
+// /auto-config — 連続オート設定の表示・変更
 // ---------------------------------------------------------------------------
 
 async function handleAutoConfig(

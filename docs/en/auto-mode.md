@@ -1,10 +1,10 @@
-# Auto Mode
+# Continuous Auto Mode
 
 > 🤖 AI autonomously executes tasks in sequence (Pro only)
 
 ## Overview
 
-Auto Mode (`/auto`) lets you assign complex tasks to AI for autonomous continuous processing. After each step completes, AI determines the next action and automatically continues execution.
+Continuous Auto Mode (`/auto`) lets you assign complex tasks to AI for autonomous continuous processing. After each step completes, AI determines the next action and automatically continues execution.
 
 ## Usage
 
@@ -59,7 +59,7 @@ Auto Mode (`/auto`) lets you assign complex tasks to AI for autonomous continuou
 
 ## Safety Guard 🛡️
 
-During auto mode execution, the following dangerous actions trigger an **automatic pause**:
+During Continuous Auto Mode execution, the following dangerous actions trigger an **automatic pause**:
 
 ### Blocked (Confirmation Required)
 
@@ -80,12 +80,12 @@ During auto mode execution, the following dangerous actions trigger an **automat
 |--------|--------|
 | ✅ Approve | Allow this operation and resume the loop |
 | ⏭️ Skip | Skip this step and proceed to the next |
-| 🛑 Stop | Fully stop auto mode |
+| 🛑 Stop | Fully stop Continuous Auto Mode |
 
 ## Step Flow
 
 ```
-🚀 Auto Mode Start
+🚀 Continuous Auto Mode Start
    ↓
 📝 Step 1 Execution
    ↓
@@ -97,12 +97,12 @@ During auto mode execution, the following dangerous actions trigger an **automat
    ↓
    ... (repeats until maxSteps or maxDuration)
    ↓
-📊 Auto Mode Complete
+📊 Continuous Auto Mode Complete
 ```
 
 ## Completion Report
 
-Information displayed when auto mode completes:
+Information displayed when Continuous Auto Mode completes:
 
 - ✅ Completed steps / max steps
 - ⏱️ Total time
@@ -110,19 +110,19 @@ Information displayed when auto mode completes:
 
 ### Suggestion Buttons
 
-When auto mode completes, if the AI generated suggestions in the last step, **suggestion buttons** are displayed alongside the completion summary. Click a button to immediately execute that action.
+When Continuous Auto Mode completes, if the AI generated suggestions in the last step, **suggestion buttons** are displayed alongside the completion summary. Click a button to immediately execute that action.
 
 | Button | Description |
 |--------|-------------|
 | 💡🔧🚀 Suggestions | AI-suggested next actions (up to 3) |
 | 🤖 Let Agent Decide | AI autonomously picks the best action |
-| 🔄 Run in Auto Mode | Re-run auto mode based on suggestions |
+| 🔄 Run in Continuous Auto Mode | Re-run Continuous Auto Mode based on suggestions |
 
 If no suggestions were generated, no buttons are shown.
 
 ## How to Stop
 
-To stop auto mode mid-execution:
+To stop Continuous Auto Mode mid-execution:
 
 1. Execute the `/stop` command
 2. Click "🛑 Stop" when Safety Guard triggers
@@ -134,7 +134,7 @@ Settings specified with `/auto` are **saved per channel**. Next time you use `/a
 
 ## Notes
 
-- Auto Mode is a **Pro plan exclusive** feature
+- Continuous Auto Mode is a **Pro plan exclusive** feature
 - During execution, `autoApprove` (auto-approve confirmation dialogs) is temporarily enabled
-- After auto mode ends, `autoApprove` reverts to its original setting
+- After Continuous Auto Mode ends, `autoApprove` reverts to its original setting
 - Safety Guard is always active (cannot be disabled)

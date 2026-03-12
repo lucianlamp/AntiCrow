@@ -28,7 +28,6 @@ import { registerGuildCommands } from './slashCommands';
 import { cleanupOldAttachments } from './attachmentDownloader';
 import { acquireLock, releaseLock } from './botLock';
 import { BridgeContext } from './bridgeContext';
-import { updateAutoAcceptStatusBar } from './extension';
 import { enqueueMessage } from './messageHandler';
 import { handleSlashCommand, handleButtonInteraction, handleAutocomplete, handleModalSubmit } from './slashHandler';
 import { getConfig, getResponseTimeout, getTimezone, getArchiveDays, getWorkspacePaths, getClientId, getCdpPorts } from './configHelper';
@@ -37,7 +36,7 @@ import { getLicenseGate, getLicenseChecker } from './extension';
 import type { LicenseType } from './licensing';
 import { setSummarizeOps, stripMemoryTags } from './memoryStore';
 import { stripSuggestionTags } from './suggestionParser';
-import { UIWatcher } from './uiWatcher';
+
 import { SubagentManager } from './subagentManager';
 import { SubagentReceiver } from './subagentReceiver';
 import { TeamOrchestrator } from './teamOrchestrator';
@@ -120,8 +119,8 @@ async function redeliverStaleResponses(
     ctx: BridgeContext,
     staleResponses: import('./fileIpc').StaleResponse[],
 ): Promise<void> {
-    // オートモード中は stale response リカバリーをスキップ
-    // （オートモードのレスポンス管理は autoModeContinueLoop が担当）
+    // 連続オート中は stale response リカバリーをスキップ
+    // （連続オートのレスポンス管理は autoModeContinueLoop が担当）
     if (isAutoModeActive()) {
         logDebug('Bridge: skipping stale response recovery — auto mode is active');
         return;
@@ -540,11 +539,7 @@ async function startBridgeInternal(
         ctx.bot?.setModelName(name);
     });
 
-    // マルチウインドウ対応: ExecutorPool に自ウィンドウのワークスペース名を設定
-    // → onAgentStateChange（ステータスバー更新）はこの WS の Executor にのみ適用される
-    if (currentWorkspaceName) {
-        ctx.executorPool.setOwnerWorkspace(currentWorkspaceName);
-    }
+
 
     // TemplateStore 初期化
     ctx.templateStore = new TemplateStore(storageUri.fsPath);
@@ -779,7 +774,7 @@ async function startBridgeInternal(
     // 定期 stale response チェック（5分間隔 — 再起動後に AI が書いたレスポンスもピックアップ）
     ctx.staleRecoveryTimer = setInterval(async () => {
         if (!ctx.fileIpc || !ctx.bot || !ctx.bot.isReady()) { return; }
-        // オートモード中はスキップ（autoModeContinueLoop がレスポンスを管理中）
+        // 連続オート中はスキップ（autoModeContinueLoop がレスポンスを管理中）
         if (isAutoModeActive()) {
             logDebug('Bridge: skipping periodic stale check — auto mode is active');
             return;
@@ -795,85 +790,7 @@ async function startBridgeInternal(
         }
     }, 5 * 60_000);
 
-    // 設定変更リスナー
-    context.subscriptions.push(
-        vscode.workspace.onDidChangeConfiguration(e => {
-            if (e.affectsConfiguration('antiCrow.autoAcceptEnhanced')) {
-                const autoOp = vscode.workspace.getConfiguration('antiCrow')
-                    .get<boolean>('autoAcceptEnhanced') ?? false;
-                if (autoOp) {
-                    // Pro 限定: Free プランではウォッチャーを起動しない
-                    const gate = getLicenseGate();
-                    if (gate && !gate.isFeatureAllowed('autoAcceptEnhanced')) {
-                        logDebug('Bridge: autoAcceptEnhanced enabled but blocked (Free plan)');
-                        return;
-                    }
-                    logDebug('Bridge: autoAcceptEnhanced enabled — starting UI watcher');
-                    const isProCheck = () => getLicenseGate()?.isFeatureAllowed('autoAcceptEnhanced') ?? true;
-                    const onAgentStateChange = (running: boolean) => {
-                        ctx.agentRunning = running;
-                        if (ctx.autoAcceptStatusBarItem) {
-                            updateAutoAcceptStatusBar(ctx.autoAcceptStatusBarItem, running);
-                        }
-                    };
-                    // ExecutorPool UIWatcher: autoFollowOutput のみ（ステータスバーに影響しない）
-                    ctx.executorPool?.startUIWatcherAll(isProCheck);
-                    // ステータスバー専用: ctx.cdp で独立 UIWatcher を起動
-                    if (!ctx.startupUIWatcher && ctx.cdp) {
-                        const watcher = new UIWatcher(ctx.cdp, () => ctx.executorPool?.isAnyRunning() ?? false, isProCheck);
-                        watcher.setAgentStateCallback(onAgentStateChange);
-                        watcher.start();
-                        ctx.startupUIWatcher = watcher;
-                        logDebug('Bridge: startup UIWatcher started via config change');
-                    }
-                } else {
-                    logDebug('Bridge: autoAcceptEnhanced disabled — stopping UI watcher');
-                    ctx.executorPool?.stopUIWatcherAll();
-                    if (ctx.startupUIWatcher) {
-                        ctx.startupUIWatcher.stop();
-                        ctx.startupUIWatcher = null;
-                    }
-                }
-            }
-        })
-    );
-
-    // autoAcceptEnhanced が有効ならUIウォッチャーを常時起動（Pro 限定）
-    //
-    // アーキテクチャ:
-    //   - ステータスバー: ctx.cdp ベースの独立 UIWatcher が制御（確実に接続済み）
-    //   - autoFollowOutput: ExecutorPool の各 UIWatcher が WS 別に独立制御
-    //   - 競合なし: onAgentStateChange は独立ウォッチャーのみ、ExecutorPool には渡さない
-    const autoOpEnabled = vscode.workspace.getConfiguration('antiCrow')
-        .get<boolean>('autoAcceptEnhanced') ?? false;
-    if (autoOpEnabled) {
-        const gate = getLicenseGate();
-        if (gate && !gate.isFeatureAllowed('autoAcceptEnhanced')) {
-            logDebug('Bridge: autoAcceptEnhanced enabled but blocked at startup (Free plan)');
-        } else {
-            const isProCheck = () => getLicenseGate()?.isFeatureAllowed('autoAcceptEnhanced') ?? true;
-            const onAgentStateChange = (running: boolean) => {
-                ctx.agentRunning = running;
-                if (ctx.autoAcceptStatusBarItem) {
-                    updateAutoAcceptStatusBar(ctx.autoAcceptStatusBarItem, running);
-                }
-            };
-
-            // ExecutorPool UIWatcher: autoFollowOutput のみ（ステータスバーに影響しない）
-            ctx.executorPool?.startUIWatcherAll(isProCheck);
-
-            // ステータスバー専用: ctx.cdp で独立 UIWatcher を起動
-            // ctx.cdp は起動時に connect() 済みなので、CdpPool より確実に現在のウィンドウに接続されている
-            if (ctx.cdp) {
-                const startupWatcher = new UIWatcher(ctx.cdp, () => ctx.executorPool?.isAnyRunning() ?? false, isProCheck);
-                startupWatcher.setAgentStateCallback(onAgentStateChange);
-                startupWatcher.start();
-                ctx.startupUIWatcher = startupWatcher;
-                logDebug('Bridge: startup UIWatcher started (status bar only, using ctx.cdp)');
-            }
-            logDebug('Bridge: UI watcher started (autoAcceptEnhanced enabled)');
-        }
-    }
+    // (autoAcceptEnhanced 設定リスナー・起動時チェックは UIWatcher 削除に伴い撤去済み)
 
     // CDP ヘルスチェック（60秒間隔で接続状態を監視）
     ctx.healthCheckTimer = setInterval(async () => {
@@ -942,12 +859,6 @@ export async function stopBridge(ctx: BridgeContext): Promise<void> {
     // 実行中ジョブを先に停止（CDP 切断前にジョブ停止を保証）
     ctx.executor?.forceStop();
     ctx.executorPool?.forceStopAll();
-    // UIウォッチャー停止
-    ctx.executorPool?.stopUIWatcherAll();
-    if (ctx.startupUIWatcher) {
-        ctx.startupUIWatcher.stop();
-        ctx.startupUIWatcher = null;
-    }
 
     ctx.cdpPool?.disconnectAll();
     ctx.cdp?.fullDisconnect();

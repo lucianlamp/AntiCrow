@@ -362,7 +362,7 @@ export interface ConfirmationResult {
     selectedChoices?: number[];
     /** エージェントに委任された場合 true */
     agentDelegated?: boolean;
-    /** オートモードで実行する場合 true */
+    /** 連続オートで実行する場合 true */
     autoMode?: boolean;
 }
 
@@ -472,16 +472,16 @@ export async function dispatchPlan(
         plan.notify_channel_id = channel.id;
 
         // -------------------------------------------------------------------
-        // オートモード: 確認ステップスキップ
+        // 連続オート: 確認ステップスキップ
         // チームモードが有効かつ tasks がある場合は チームモード分岐にフォールスルー
         // それ以外は直接実行キューに追加
         // -------------------------------------------------------------------
         if (autoMode) {
             if (isTeamMode && ctx.teamOrchestrator && plan.tasks && plan.tasks.length > 1) {
-                // オートモード + チームモード: 確認スキップしてチームモード分岐にフォールスルー
+                // 連続オート + チームモード: 確認スキップしてチームモード分岐にフォールスルー
                 logDebug(`dispatchPlan: Auto mode + Team mode — skipping confirmation, falling through to team orchestration (plan=${plan.plan_id}, tasks=${plan.tasks.length})`);
             } else {
-                // オートモード単独: 直接実行キューに追加
+                // 連続オート単独: 直接実行キューに追加
                 logDebug(`dispatchPlan: Auto mode — skipping confirmation, direct execution (plan=${plan.plan_id})`);
                 if (executorPool) {
                     await executorPool.enqueueImmediate(wsNameForImmediate || '', plan);

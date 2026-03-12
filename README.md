@@ -18,9 +18,9 @@ Send a natural language message from Discord on your phone → Antigravity execu
 - 📊 **Progress Notifications** — Real-time progress updates for long-running tasks
 - 📝 **Prompt Templates** — Save frequently used instructions as templates for one-tap execution
 - 🧠 **Model & Mode Switching** — Switch AI models and execution modes from Discord
-- 🤖 **Auto Mode** — AI autonomously executes tasks in sequence with safety guards (Pro only)
-- ⚡ **Auto Accept Enhanced** — VSCode command approval, auto-scroll, UI expansion, and permission dialog handling (Pro only, works alongside pesosz/antigravity-auto-accept)
-- 🤝 **Agent Team Mode** — Multiple AI agents execute tasks in parallel for faster results (Pro only)
+- 🤖 **Continuous Auto Mode** — AI autonomously executes tasks in sequence with safety guards (Pro only)
+- ⚡ **Auto Accept Enhanced** — Advanced automation features that complement pesosz/antigravity-auto-accept (Pro only)
+- 🤝 **Agent Agent Team Mode** — Multiple AI agents execute tasks in parallel for faster results (Pro only)
 - 💾 **Memory** — Automatically records and utilizes past learnings (global / workspace-specific)
 - 🛡️ **Safety Guard** — 21-pattern dangerous operation detection (file deletion, credential leaks, injection attacks)
 - 🔐 **Security** — Encrypted token storage, user ID restrictions
@@ -37,9 +37,8 @@ Send a natural language message from Discord on your phone → Antigravity execu
 | File attachments & progress notifications | ✅ | ✅ |
 | Model & mode switching | ✅ | ✅ |
 | Templates | ✅ | ✅ |
-| Auto Mode | ❌ | ✅ |
-| Auto Accept Enhanced | ❌ | ✅ |
-| Agent Team Mode | ❌ | ✅ |
+| Continuous Auto Mode | ❌ | ✅ |
+| Agent Agent Team Mode | ❌ | ✅ |
 | Pro Trial | — | 14 days free |
 
 Run the `/pro` command in Discord to manage, purchase, or enter a license key.
@@ -70,6 +69,19 @@ AntiCrow acts as a bridge between Discord and Antigravity.
 | Node.js | 16.11 or higher |
 | Discord Account | Developer Portal access required for Bot creation |
 | Discord Server | A server where you have admin permissions |
+
+### 🔌 Recommended Extension
+
+To get the most out of AntiCrow, install the **Antigravity Auto Accept** extension:
+
+| | |
+| --- | --- |
+| **Name** | Antigravity Auto Accept |
+| **ID** | `pesosz.antigravity-auto-accept` |
+| **Publisher** | pesosz |
+| **Install** | Search `Antigravity Auto Accept` in Antigravity Extensions, or [view on GitHub](https://github.com/pesosz/antigravity-auto-accept) |
+
+> 💡 **Why?** Antigravity Auto Accept handles basic approval button clicking (Run / Allow / Continue). AntiCrow's **Auto Accept Enhanced** (Pro) builds on top of it with advanced features like VSCode command approval, auto-scroll, UI expansion, and safety guards. Together, they provide a fully autonomous workflow.
 
 ---
 
@@ -165,7 +177,7 @@ Messages sent from channels within a category are executed in the corresponding 
 
 ---
 
-## 🤖 Auto Mode (Pro Only)
+## 🤖 Continuous Auto Mode (Pro Only)
 
 AI autonomously decides the next action and executes tasks in sequence. Start with the `/auto` command:
 
@@ -178,52 +190,33 @@ AI autonomously decides the next action and executes tasks in sequence. Start wi
 
 **Safety Guard:** 21-pattern detection protects against file system destruction, Git force operations, database drops, crypto key leaks, and prompt injection attacks.
 
-> 📖 [Full Auto Mode documentation](https://anticrow.gitbook.io/en/auto-mode)
+> 📖 [Full Continuous Auto Mode documentation](https://anticrow.gitbook.io/en/auto-mode)
 
 ---
 
 ## ⚡ Auto Accept Enhanced (Pro Only)
 
-AntiCrow's enhanced Auto Accept feature works alongside the [pesosz/antigravity-auto-accept](https://github.com/pesosz/antigravity-auto-accept) extension.
+AntiCrow's Auto Accept Enhanced complements the [pesosz/antigravity-auto-accept](https://github.com/pesosz/antigravity-auto-accept) extension with advanced automation:
 
-### Configuration
-
-| Setting | Default | Description |
-| --- | --- | --- |
-| `antiCrow.autoAcceptEnhanced` | `false` | Enable enhanced auto accept features |
-
-### How It Works
-
-**When `autoAcceptEnhanced` is `false` (default):**
-- Only the `pesosz/antigravity-auto-accept` extension handles basic button clicking (Run / Allow / Continue)
-- AntiCrow's enhanced features are disabled
-- Best for simple use cases or when you want minimal intervention
-
-**When `autoAcceptEnhanced` is `true`:**
-- Both `pesosz/antigravity-auto-accept` AND AntiCrow's enhanced features are active
-- Additional capabilities:
-  - 🔧 **VSCode Command Approval** — Approves 4 types of VSCode commands automatically
-  - 📜 **Auto Scroll** — Automatically scrolls to the latest output
-  - 📂 **UI Section Expansion** — Expands collapsed sections (e.g., "1 Step Requires Input")
-  - 🔐 **Permission Dialog Handling** — Automatically handles permission dialogs
-  - 🛡️ **Safety Guard Integration** — 21-pattern detection prevents dangerous operations
+- 🔧 **VSCode Command Approval** — Approves VSCode commands automatically
+- 📜 **Auto Scroll** — Scrolls to the latest output
+- 📂 **UI Section Expansion** — Expands collapsed sections
+- 🔐 **Permission Dialog Handling** — Handles permission dialogs
+- 🛡️ **Safety Guard Integration** — 21-pattern detection prevents dangerous operations
 
 ### Setup
 
 1. Install [pesosz/antigravity-auto-accept](https://github.com/pesosz/antigravity-auto-accept) extension
-2. To enable enhanced features, set in Antigravity settings:
+2. Enable enhanced features in Antigravity settings:
    ```json
    "antiCrow.autoAcceptEnhanced": true
    ```
-3. Or toggle via Command Palette: **AntiCrow: Toggle Auto Accept**
-
-> ⚠️ **Breaking Change (v0.1.1):** The old `antiCrow.autoAccept` setting has been removed. If you were using it, switch to `antiCrow.autoAcceptEnhanced`.
 
 > 💎 **Pro Only:** This feature requires a Pro license. Free plan users can still use `pesosz/antigravity-auto-accept` independently.
 
 ---
 
-## 🤝 Agent Team Mode (Pro Only)
+## 🤝 Agent Agent Team Mode (Pro Only)
 
 Multiple AI sub-agents execute tasks in parallel. Large-scale changes are automatically split, with multiple AIs working simultaneously.
 
@@ -233,7 +226,7 @@ Multiple AI sub-agents execute tasks in parallel. Large-scale changes are automa
 
 Toggle on/off with the `/team` command.
 
-> 📖 [Full Team Mode documentation](https://anticrow.gitbook.io/en/team-mode)
+> 📖 [Full Agent Team Mode documentation](https://anticrow.gitbook.io/en/team-mode)
 
 ---
 
@@ -250,9 +243,9 @@ Toggle on/off with the `/team` command.
 | `/mode` | Switch AI mode (Planning / Fast) |
 | `/template` | Manage prompt templates |
 | `/schedules` | Display and manage scheduled executions |
-| `/auto` | Start Auto Mode (Pro only) |
-| `/auto-config` | View/change Auto Mode settings |
-| `/team` | Manage Agent Team Mode (Pro only) |
+| `/auto` | Start Continuous Auto Mode (Pro only) |
+| `/auto-config` | View/change Continuous Auto Mode settings |
+| `/team` | Manage Agent Agent Team Mode (Pro only) |
 | `/suggest` | Re-display suggestion buttons |
 | `/screenshot` | Capture current screen |
 | `/soul` | View/reset customization settings |
@@ -287,7 +280,7 @@ Toggle on/off with the `/team` command.
 | `AntiCrow: Show Plans` | Display all registered plans as JSON |
 | `AntiCrow: Clear All Plans` | Delete all plans |
 | `AntiCrow: Create Desktop Shortcut` | Create an Antigravity desktop shortcut |
-| `AntiCrow: Toggle Auto Accept` | Toggle auto accept on/off (Pro only) |
+
 | `AntiCrow: License Info` | Display current license information |
 | `AntiCrow: Set License Key` | Enter/update license key |
 

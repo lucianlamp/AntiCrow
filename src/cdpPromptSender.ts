@@ -72,7 +72,7 @@ export async function startNewChat(ctx: PromptSenderContext): Promise<void> {
     });
 
     logDebug('CDP: startNewChat — fell back to Ctrl+Shift+L key injection');
-    await ctx.sleep(1500);
+    await ctx.sleep(1000);
     ctx.resetCascadeContext();
 }
 
@@ -85,6 +85,7 @@ export async function startNewChat(ctx: PromptSenderContext): Promise<void> {
  * キャンセルボタンが存在する = 処理中。自動クリックで停止させる。
  */
 async function waitForCascadeIdle(ctx: PromptSenderContext, maxWaitMs = 15000): Promise<void> {
+    const t0 = Date.now();
     const IDLE_CHECK_JS = `
 (function() {
     function getTargetDoc() {
@@ -121,18 +122,34 @@ async function waitForCascadeIdle(ctx: PromptSenderContext, maxWaitMs = 15000): 
 })()
     `.trim();
 
+    // ファストパス: ループに入る前に1回だけチェック（sleepなしで即リターン）
+    try {
+        const contextId = await ctx.getCascadeContext();
+        const fastResult = await ctx.conn.evaluate(IDLE_CHECK_JS, contextId) as { idle: boolean; action?: string };
+        if (fastResult?.idle) {
+            logDebug(`CDP: waitForCascadeIdle — fast path idle (${Date.now() - t0}ms)`);
+            return;
+        }
+        if (fastResult?.action) {
+            logDebug(`CDP: waitForCascadeIdle — fast path action: ${fastResult.action}`);
+        }
+    } catch (e) {
+        logDebug(`CDP: waitForCascadeIdle — fast path check failed: ${e instanceof Error ? e.message : e}`);
+    }
+
     const deadline = Date.now() + maxWaitMs;
-    const pollMs = 1000;
-    let clickedCancel = false;
+    const pollMs = 500;
+    let clickedCancel = true; // ファストパスでキャンセル済みの可能性
 
     while (Date.now() < deadline) {
+        await ctx.sleep(pollMs);
         try {
             const contextId = await ctx.getCascadeContext();
             const result = await ctx.conn.evaluate(IDLE_CHECK_JS, contextId) as { idle: boolean; action?: string };
             if (result?.idle) {
                 if (clickedCancel) {
-                    logDebug('CDP: waitForCascadeIdle — Cascade is now idle after cancel');
-                    await ctx.sleep(1000); // キャンセル後の安定待ち
+                    logDebug(`CDP: waitForCascadeIdle — idle after cancel (${Date.now() - t0}ms)`);
+                    await ctx.sleep(500); // キャンセル後の安定待ち
                 }
                 return;
             }
@@ -143,9 +160,8 @@ async function waitForCascadeIdle(ctx: PromptSenderContext, maxWaitMs = 15000): 
         } catch (e) {
             logDebug(`CDP: waitForCascadeIdle — check failed: ${e instanceof Error ? e.message : e}`);
         }
-        await ctx.sleep(pollMs);
     }
-    logWarn('CDP: waitForCascadeIdle — timeout, proceeding anyway');
+    logWarn(`CDP: waitForCascadeIdle — timeout after ${Date.now() - t0}ms, proceeding anyway`);
 }
 
 // ---------------------------------------------------------------------------
@@ -153,6 +169,7 @@ async function waitForCascadeIdle(ctx: PromptSenderContext, maxWaitMs = 15000): 
 // ---------------------------------------------------------------------------
 
 export async function sendPrompt(ctx: PromptSenderContext, prompt: string): Promise<void> {
+    const sendStart = Date.now();
     for (let attempt = 1; attempt <= 3; attempt++) {
         try {
             await ctx.conn.connect();
@@ -171,7 +188,9 @@ export async function sendPrompt(ctx: PromptSenderContext, prompt: string): Prom
         logWarn(`CDP: ensureCascadePanel failed: ${e}`);
     }
     // --- (0) Cascade のアイドル状態を保証 ---
+    const idleStart = Date.now();
     await waitForCascadeIdle(ctx);
+    logDebug(`CDP: sendPrompt — waitForCascadeIdle took ${Date.now() - idleStart}ms`);
 
     const contextId = await ctx.getCascadeContext();
 
@@ -194,8 +213,9 @@ export async function sendPrompt(ctx: PromptSenderContext, prompt: string): Prom
 })()
     `.trim();
 
+    const readinessStart = Date.now();
     const READINESS_MAX_WAIT_MS = 10_000;
-    const READINESS_POLL_MS = 1_000;
+    const READINESS_POLL_MS = 300;
     const readinessDeadline = Date.now() + READINESS_MAX_WAIT_MS;
     let textboxReady = false;
     while (Date.now() < readinessDeadline) {
@@ -211,6 +231,7 @@ export async function sendPrompt(ctx: PromptSenderContext, prompt: string): Prom
         }
         await ctx.sleep(READINESS_POLL_MS);
     }
+    logDebug(`CDP: sendPrompt — readiness check took ${Date.now() - readinessStart}ms`);
     if (!textboxReady) {
         logWarn('CDP: sendPrompt — textbox readiness timeout, proceeding anyway');
     }
@@ -284,7 +305,7 @@ export async function sendPrompt(ctx: PromptSenderContext, prompt: string): Prom
     `.trim();
 
     for (let verify = 0; verify < 3; verify++) {
-        await ctx.sleep(300);
+        await ctx.sleep(100);
         try {
             const verifyResult = await ctx.conn.evaluate(VERIFY_JS, contextId) as { hasContent: boolean; length: number };
             if (verifyResult?.hasContent) {
@@ -298,7 +319,7 @@ export async function sendPrompt(ctx: PromptSenderContext, prompt: string): Prom
         }
     }
 
-    await ctx.sleep(500);
+    await ctx.sleep(200);
 
     const submitJs = `
   (function() {
@@ -326,5 +347,5 @@ export async function sendPrompt(ctx: PromptSenderContext, prompt: string): Prom
   })()
 `;
     await ctx.conn.evaluate(submitJs, contextId);
-    logDebug('CDP: prompt submitted');
+    logDebug(`CDP: prompt submitted (total sendPrompt: ${Date.now() - sendStart}ms)`);
 }

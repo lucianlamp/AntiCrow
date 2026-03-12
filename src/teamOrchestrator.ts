@@ -977,7 +977,7 @@ export class TeamOrchestrator {
                     }
                 }
 
-                await handle.sendPrompt(subagentPrompt);
+                await handle.sendPromptFireAndForget(subagentPrompt);
 
                 // 起動通知は廃止 — 完了時に通知する
 

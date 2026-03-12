@@ -56,11 +56,11 @@ Click "🤖 Delegate to Agent" to let AI automatically select and execute the be
 
 ---
 
-## Auto Mode
+## Continuous Auto Mode
 
 ### `/auto <prompt>`
 
-Start auto mode. AI autonomously executes tasks in sequence (**Pro only**).
+Start Continuous Auto Mode. AI autonomously executes tasks in sequence (**Pro only**).
 
 Options:
 
@@ -75,7 +75,7 @@ Example:
 /auto --steps 5 --confirm semi Redesign the landing page
 ```
 
-See [Auto Mode](auto-mode.md) for details.
+See [Continuous Auto Mode](auto-mode.md) for details.
 
 ---
 
@@ -116,17 +116,17 @@ Queue actions: "✏️ Edit", "❌ Delete", "🗑️ Clear All"
 
 ---
 
-## Team Mode
+## Agent agent team mode
 
 ### `/team`
 
-Display the team mode management panel (**Pro only**).
+Display the Agent agent team mode management panel (**Pro only**).
 
-- Toggle team mode on/off
+- Toggle Agent agent team mode on/off
 - View active sub-agent status
 - Display team settings
 
-See [Team Mode](team-mode.md) for details.
+See [Agent agent team mode](team-mode.md) for details.
 
 ---
 

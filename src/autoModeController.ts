@@ -1,8 +1,8 @@
 // ---------------------------------------------------------------------------
-// autoModeController.ts — オートモードの心臓部
+// autoModeController.ts — 連続オートの心臓部
 // ---------------------------------------------------------------------------
 // 責務:
-//   1. オートモードのライフサイクル管理（開始・停止・一時停止）
+//   1. 連続オートのライフサイクル管理（開始・停止・一時停止）
 //   2. ステップループの制御（次ステップのプロンプト構築・投入）
 //   3. セーフティガード（DANGEROUS_PATTERNS による事前チェック）
 //   4. Discord 通知（開始・ステップ完了・セーフティ警告・終了サマリー）
@@ -27,7 +27,7 @@ const execAsync = promisify(exec);
 // 型定義
 // ---------------------------------------------------------------------------
 
-/** オートモードの実行状態 */
+/** 連続オートの実行状態 */
 interface AutoModeState {
     active: boolean;
     channelId: string;
@@ -41,11 +41,10 @@ interface AutoModeState {
     paused: boolean;           // セーフティ一時停止
     totalPausedMs: number;     // 一時停止の累積時間（ms）
     originalPrompt: string;    // ユーザーの初期プロンプト
-    autoApproveWasEnabled: boolean; // 元の autoApprove 状態を保持
     isTeamMode: boolean;       // チームモードでの実行かどうか（Phase 3）
 }
 
-/** オートモードの設定 */
+/** 連続オートの設定 */
 export interface AutoModeConfig {
     /** 次のアクション決定方法（Phase 1: auto-delegate のみ） */
     selectionMode: 'auto-delegate' | 'first' | 'ai-select';
@@ -247,7 +246,7 @@ const SIMILARITY_THRESHOLD = 0.9;
 // 状態管理（WS別Map — 複数WSで同時実行可能）
 // ---------------------------------------------------------------------------
 
-/** WS別のオートモード状態 */
+/** WS別の連続オート状態 */
 const stateMap = new Map<string, AutoModeState>();
 
 /** WS別のセーフティ一時停止 resolve コールバック */
@@ -276,7 +275,7 @@ function resolveState(wsKey?: string): AutoModeState | null {
 // ---------------------------------------------------------------------------
 
 /**
- * 現在のオートモード状態を取得する。
+ * 現在の連続オート状態を取得する。
  * @param wsKey 省略時は最初にアクティブなWSの状態を返す
  */
 function getAutoModeState(wsKey?: string): AutoModeState | null {
@@ -284,7 +283,7 @@ function getAutoModeState(wsKey?: string): AutoModeState | null {
 }
 
 /**
- * オートモードがアクティブかどうかを返す。
+ * 連続オートがアクティブかどうかを返す。
  * @param wsKey 省略時はいずれかのWSがアクティブなら true
  */
 export function isAutoModeActive(wsKey?: string): boolean {
@@ -298,8 +297,7 @@ export function isAutoModeActive(wsKey?: string): boolean {
 }
 
 /**
- * オートモードを開始する。
- * - autoApprove を有効化
+ * 連続オートを開始する。
  * - Discord に開始通知
  * - 初回プロンプトを投入
  *
@@ -337,7 +335,6 @@ export async function startAutoMode(
         paused: false,
         totalPausedMs: 0,
         originalPrompt: prompt,
-        autoApproveWasEnabled: false, // 実際の値は呼び出し元で設定
         isTeamMode,
     };
     stateMap.set(wsKey, newState);
@@ -347,7 +344,7 @@ export async function startAutoMode(
     // Discord 開始通知
     try {
         const embed = buildEmbed(
-            `🚀 **オートモード開始**\n━━━━━━━━━━━━━━━━━━━━\n\n`
+            `🚀 **連続オート開始**\n━━━━━━━━━━━━━━━━━━━━\n\n`
             + `📝 **タスク:** ${prompt.substring(0, 200)}\n`
             + `⚙️ **設定:** 最大${mergedConfig.maxSteps}ステップ / ${Math.round(mergedConfig.maxDuration / 60000)}分\n`
             + `🔒 **セーフティガード:** 有効`,
@@ -467,7 +464,7 @@ export async function onStepComplete(
 }
 
 /**
- * オートモードを停止する。
+ * 連続オートを停止する。
  * 状態をリセットし、Discord に終了サマリーを通知する。
  */
 export async function stopAutoMode(
@@ -544,13 +541,13 @@ async function sendStopSummary(
             reasonText = '🛑 確認モードによりユーザーが停止しました';
             break;
         case 'new_session':
-            reasonText = '新しいオートモードセッションが開始されました';
+            reasonText = '新しい連続オートセッションが開始されました';
             break;
         case 'error':
             reasonText = '⚠️ エラーが発生しました';
             break;
         case 'auto_reset':
-            reasonText = '⚠️ 新しい計画の実行に伴い、既存のオートモードを停止しました';
+            reasonText = '⚠️ 新しい計画の実行に伴い、既存の連続オートを停止しました';
             break;
         default:
             reasonText = 'ユーザーが手動で停止しました';
@@ -565,7 +562,7 @@ async function sendStopSummary(
         }).join('\n');
 
         const embed = buildEmbed(
-            `📊 **オートモード完了**\n━━━━━━━━━━━━━━━━━━━━\n\n`
+            `📊 **連続オート完了**\n━━━━━━━━━━━━━━━━━━━━\n\n`
             + `✅ **完了ステップ:** ${state.currentStep}/${state.maxSteps}\n`
             + `⏱️ **合計時間:** ${formatDuration(totalDuration)}${state.totalPausedMs > 0 ? ` (⏸️ 一時停止: ${formatDuration(state.totalPausedMs)})` : ''}\n`
             + `🛡️ **セーフティ発動:** ${safetyCount}回\n\n`
@@ -659,7 +656,7 @@ export function handleConfirmResponse(action: 'continue' | 'stop', wsKey?: strin
 }
 
 /**
- * オートモードでエラーが発生した場合の処理。
+ * 連続オートでエラーが発生した場合の処理。
  * ループを停止し、Discord に通知する。
  */
 export async function handleAutoModeError(
@@ -719,7 +716,7 @@ function buildAutonomousPrompt(fallbackPrompt: string, wsKey?: string): string {
 }
 
 /**
- * オートモード用のプロンプトを構築する。
+ * 連続オート用のプロンプトを構築する。
  * Phase 2: selectionMode に応じた3分岐を実装。
  *
  * - 'auto-delegate': AUTO_PROMPT + SUGGESTIONSコンテキスト（Phase 1 デフォルト）
@@ -953,7 +950,7 @@ function calculateSimilarity(a: string, b: string): number {
 // ---------------------------------------------------------------------------
 
 /**
- * 危険検知時にオートモードを一時停止し、Discord で承認待ちする。
+ * 危険検知時に連続オートを一時停止し、Discord で承認待ちする。
  * ユーザーがボタンをクリックするまでブロックする。
  */
 async function pauseForSafety(
@@ -978,7 +975,7 @@ async function pauseForSafety(
             + `🔍 **検知内容:** ${safetyResult.reason}\n`
             + `📝 **パターン:** \`${safetyResult.pattern}\`\n`
             + matchedLineText
-            + `⏸️ オートモードを一時停止しました`,
+            + `⏸️ 連続オートを一時停止しました`,
             EmbedColor.Warning,
             true,
         );
@@ -1136,7 +1133,7 @@ async function sendSafetyWarning(
 // ---------------------------------------------------------------------------
 
 /**
- * Phase 2: confirmMode の確認待ちでオートモードを一時停止する。
+ * Phase 2: confirmMode の確認待ちで連続オートを一時停止する。
  * ユーザーが「続行」「停止」ボタンをクリックするまでブロックする。
  */
 async function pauseForConfirmation(

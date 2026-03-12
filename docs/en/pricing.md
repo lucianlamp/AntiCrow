@@ -9,8 +9,8 @@ AntiCrow offers two plans: **Free** and **Pro**.
 | Plan generation (AI planning) | Unlimited | Unlimited |
 | Task execution (daily) | 10/day | Unlimited |
 | Task execution (weekly) | 50/week | Unlimited |
-| Auto Mode | ✅ | ✅ |
-| Team Mode | ✅ | ✅ |
+| Continuous Auto Mode | ✅ | ✅ |
+| Agent agent team mode | ✅ | ✅ |
 | Auto Approve | ❌ | ✅ |
 
 ## Free Plan Limits

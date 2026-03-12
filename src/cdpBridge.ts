@@ -38,7 +38,6 @@ import {
     clickExpandAll as uiClickExpandAll,
     clickDropupChevron as uiClickDropupChevron,
     scrollToBottom as uiScrollToBottom,
-    autoFollowOutput as uiAutoFollowOutput,
     autoApprove as uiAutoApprove,
 } from './cdpUI';
 import { CdpConnectionError, AntigravityLaunchError, CascadePanelError } from './errors';
@@ -487,9 +486,7 @@ export class CdpBridge {
         return uiScrollToBottom(this.ops);
     }
 
-    async autoFollowOutput(): Promise<void> {
-        return uiAutoFollowOutput(this.ops);
-    }
+
 
     async autoApprove(): Promise<{ clicked: number }> {
         return uiAutoApprove(this.ops);

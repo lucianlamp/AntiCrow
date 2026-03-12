@@ -218,7 +218,7 @@ interface ResponseCallbacks {
     sendEmbeds: (descriptions: string[], color: number) => Promise<void>;
     /** Discord チャンネルに提案ボタンを送信 */
     sendSuggestionButtons: (suggestions: SuggestionItem[]) => Promise<void>;
-    /** オートモード: レスポンス処理完了時のコールバック（SUGGESTIONS + クリーンコンテンツを受け取る） */
+    /** 連続オート: レスポンス処理完了時のコールバック（SUGGESTIONS + クリーンコンテンツを受け取る） */
     onAutoModeComplete?: (suggestions: SuggestionItem[], cleanContent: string) => void;
 }
 
@@ -275,7 +275,7 @@ export async function sendProcessedResponse(options: {
     }
 
     // 5. 提案ボタン送信
-    // オートモード中でも onAutoModeComplete が設定されていない場合（チームモード完了など）は送信する
+    // 連続オート中でも onAutoModeComplete が設定されていない場合（チームモード完了など）は送信する
     const { isAutoModeActive } = await import('./autoModeController');
     const suppressSuggestions = isAutoModeActive() && !!callbacks.onAutoModeComplete;
     if (suggestions.length > 0 && !suppressSuggestions) {
@@ -289,7 +289,7 @@ export async function sendProcessedResponse(options: {
         logDebug(`ResponseHandler: skipping suggestion buttons (auto mode active with onAutoModeComplete)`);
     }
 
-    // 6. オートモードコールバック（SUGGESTIONS + クリーンコンテンツを通知）
+    // 6. 連続オートコールバック（SUGGESTIONS + クリーンコンテンツを通知）
     if (callbacks.onAutoModeComplete) {
         try {
             callbacks.onAutoModeComplete(suggestions, cleanContent);

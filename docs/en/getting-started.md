@@ -12,6 +12,19 @@ antigravity --install-extension anti-crow-0.1.0.vsix --force
 
 Or install via the Antigravity Command Palette (`Ctrl+Shift+P`) → "Extensions: Install from VSIX..."
 
+### Recommended Extension
+
+To get the most out of AntiCrow, install the following extension:
+
+| | |
+|---|---|
+| **Name** | Antigravity Auto Accept |
+| **ID** | `pesosz.antigravity-auto-accept` |
+| **Publisher** | pesosz |
+| **Install** | Search `Antigravity Auto Accept` in Antigravity Extensions, or [view on GitHub](https://github.com/pesosz/antigravity-auto-accept) |
+
+> 💡 This extension automatically clicks Antigravity approval buttons (Run / Allow / Continue). Combined with AntiCrow's **Auto Accept Enhanced** (Pro), you get a fully autonomous workflow with VSCode command approval, auto-scroll, UI expansion, permission dialog handling, and safety guards.
+
 ## 2. Create a Discord Bot
 
 1. Go to [Discord Developer Portal](https://discord.com/developers/applications)
@@ -88,9 +101,9 @@ Go to your Discord server and send a message in a text channel to verify it's wo
 | `antiCrow.autoStart` | `true` | Auto-start bot when Antigravity launches |
 | `antiCrow.allowedUserIds` | `[]` | Discord user IDs allowed to operate the bot |
 | `antiCrow.responseTimeoutMs` | `0` | Idle timeout in ms. 0 = unlimited |
-| `antiCrow.autoAccept` | `false` | Auto-approve confirmation dialogs |
+| `antiCrow.autoAcceptEnhanced` | `false` | Enhanced auto-accept (Pro only, co-op with pesosz/antigravity-auto-accept) |
 | `antiCrow.maxRetries` | `0` | Auto-retry count on timeout |
-| `antiCrow.cdpPort` | `9333` | CDP connection port |
+| `antiCrow.cdpPort` | `9000` | CDP connection port |
 | `antiCrow.language` | `ja` | UI/prompt language (`ja` / `en`) |
 | `antiCrow.categoryArchiveDays` | `7` | Auto-delete unused categories after N days. 0 = disabled |
 | `antiCrow.workspaceParentDirs` | `[]` | Parent directories for new workspace creation |

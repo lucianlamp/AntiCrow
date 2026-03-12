@@ -45,9 +45,9 @@ Use the `/model` command to display the model list and click a button to switch.
 
 ---
 
-## Auto Mode
+## Continuous Auto Mode
 
-### Q: Auto mode stops mid-execution
+### Q: Continuous Auto Mode stops mid-execution
 
 Possible causes:
 
@@ -56,15 +56,15 @@ Possible causes:
 - Reached `--steps` limit → Increase the value
 - `--duration` timeout → Increase the value
 
-### Q: I can't use auto mode
+### Q: I can't use Continuous Auto Mode
 
-Auto Mode is a **Pro plan exclusive** feature. Upgrade via the `/pro` command.
+Continuous Auto Mode is a **Pro plan exclusive** feature. Upgrade via the `/pro` command.
 
 ---
 
-## Team Mode
+## Agent agent team mode
 
-### Q: How do I use team mode?
+### Q: How do I use Agent agent team mode?
 
 1. Upgrade to Pro plan
 2. `/team` → "🟢 Team ON" to enable
@@ -72,7 +72,7 @@ Auto Mode is a **Pro plan exclusive** feature. Upgrade via the `/pro` command.
 
 ### Q: I see "No commits in repository"
 
-Team mode uses Git worktrees and requires at least one commit:
+Agent agent team mode uses Git worktrees and requires at least one commit:
 
 ```bash
 git init && git add -A && git commit -m "initial commit"
@@ -84,7 +84,7 @@ git init && git add -A && git commit -m "initial commit"
 
 ### Q: What are the Free plan limits?
 
-There are limits on daily and weekly task execution counts. Auto Mode and Team Mode are not available.
+There are limits on daily and weekly task execution counts. Continuous Auto Mode and Agent agent team mode are not available.
 
 ### Q: I forgot my license key
 

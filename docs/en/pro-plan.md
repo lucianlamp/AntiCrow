@@ -14,8 +14,8 @@
 | Scheduled execution | ✅ | ✅ |
 | **Daily task limit** | **Limited** | **Unlimited** |
 | **Weekly task limit** | **Limited** | **Unlimited** |
-| **Auto Mode** | ❌ | ✅ |
-| **Team Mode** | ❌ | ✅ |
+| **Continuous Auto Mode** | ❌ | ✅ |
+| **Agent agent team mode** | ❌ | ✅ |
 | **Auto Approve** | ❌ | ✅ |
 
 ## Pricing

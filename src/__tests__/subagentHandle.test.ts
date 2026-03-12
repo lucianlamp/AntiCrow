@@ -294,6 +294,94 @@ describe('SubagentHandle', () => {
     });
 
     // -----------------------------------------------------------------------
+    // sendPromptFireAndForget
+    // -----------------------------------------------------------------------
+
+    describe('sendPromptFireAndForget', () => {
+        it('READY 以外の状態でエラーを投げる', async () => {
+            const { handle } = createHandle();
+            // 状態は IDLE
+            await expect(handle.sendPromptFireAndForget('test')).rejects.toThrow('READY 状態でのみ');
+        });
+
+        it('READY 状態で正常にプロンプトを送信し、状態を BUSY にする', async () => {
+            const { handle } = createHandle({ usePool: true });
+
+            // spawn で READY にする
+            mockDiscoverInstances.mockResolvedValue([
+                { title: 'test-agent-1 — Antigravity', port: 9000 },
+            ]);
+            mockExtractWorkspaceName.mockReturnValue('test-agent-1');
+            mockWritePrompt.mockReturnValue('/mock/ipc/subagent_test_prompt.json');
+
+            await handle.spawn();
+            expect(handle.state).toBe('READY');
+
+            const result = await handle.sendPromptFireAndForget('テスト指示');
+
+            // 状態が BUSY に遷移
+            expect(handle.state).toBe('BUSY');
+
+            // writePrompt が呼ばれた
+            expect(mockWritePrompt).toHaveBeenCalledTimes(1);
+            const promptData = mockWritePrompt.mock.calls[0][1];
+            expect(promptData.prompt).toBe('テスト指示');
+            expect(promptData.type).toBe('subagent_prompt');
+            expect(promptData.to).toBe('test-agent-1');
+
+            // watchResponse は呼ばれない（Fire-and-Forget）
+            expect(mockWatchResponse).not.toHaveBeenCalled();
+
+            // 戻り値にファイルパスが含まれる
+            expect(result.promptFile).toBeDefined();
+            expect(result.callbackPath).toBeDefined();
+            expect(result.callbackPath).toContain('subagent_test-agent-1_response_');
+        });
+
+        it('sendPrompt と sendPromptFireAndForget の挙動の違いを確認する', async () => {
+            // sendPrompt を使うケース
+            const { handle: handle1 } = createHandle({ name: 'agent-sp', usePool: true });
+            mockDiscoverInstances.mockResolvedValue([
+                { title: 'agent-sp — Antigravity', port: 9000 },
+            ]);
+            mockExtractWorkspaceName.mockReturnValue('agent-sp');
+            mockWritePrompt.mockReturnValue('/mock/ipc/prompt.json');
+
+            const mockResponse = {
+                type: 'subagent_response',
+                from: 'agent-sp',
+                timestamp: Date.now(),
+                status: 'success',
+                result: 'done',
+                execution_time_ms: 100,
+            };
+            mockWatchResponse.mockResolvedValue(mockResponse);
+
+            await handle1.spawn();
+            await handle1.sendPrompt('test');
+
+            // sendPrompt は watchResponse を呼ぶ
+            expect(mockWatchResponse).toHaveBeenCalledTimes(1);
+
+            vi.clearAllMocks();
+
+            // sendPromptFireAndForget を使うケース
+            const { handle: handle2 } = createHandle({ name: 'agent-ff', usePool: true });
+            mockDiscoverInstances.mockResolvedValue([
+                { title: 'agent-ff — Antigravity', port: 9000 },
+            ]);
+            mockExtractWorkspaceName.mockReturnValue('agent-ff');
+            mockWritePrompt.mockReturnValue('/mock/ipc/prompt.json');
+
+            await handle2.spawn();
+            await handle2.sendPromptFireAndForget('test');
+
+            // sendPromptFireAndForget は watchResponse を呼ばない
+            expect(mockWatchResponse).not.toHaveBeenCalled();
+        });
+    });
+
+    // -----------------------------------------------------------------------
     // spawn — 状態遷移チェック
     // -----------------------------------------------------------------------
 

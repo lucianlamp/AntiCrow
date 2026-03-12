@@ -41,12 +41,10 @@ const ctx: BridgeContext = {
     globalStoragePath: '',
     extensionPath: '',
     statusBarItem: undefined!,
-    autoAcceptStatusBarItem: null,
 
     lockWatchTimer: null,
     categoryWatchTimer: null,
     autoAcceptWatcherTimer: null,
-    startupUIWatcher: null,
     healthCheckTimer: null,
     cleanupTimer: null,
     staleRecoveryTimer: null,
@@ -75,26 +73,6 @@ export function getLicenseChecker(): LicenseChecker | null {
 import * as fs from 'fs';
 import * as path from 'path';
 
-/**
- * Auto Accept ステータスバーの表示を更新（3状態）
- * - 🔴 Auto Accept — 設定OFF（停止中）
- * - 🟡 Auto Accept — 設定ON、エージェント待機中
- * - 🟢 Auto Accept — 設定ON、エージェント実行中（稼働中）
- */
-export function updateAutoAcceptStatusBar(item: vscode.StatusBarItem, agentRunning = false): void {
-    const enabled = vscode.workspace.getConfiguration('antiCrow')
-        .get<boolean>('autoAccept') ?? false;
-    if (!enabled) {
-        item.text = '🔴 Auto Accept';
-        item.tooltip = 'Auto Accept: 停止中（クリックで有効化）';
-    } else if (agentRunning) {
-        item.text = '🟢 Auto Accept';
-        item.tooltip = 'Auto Accept: 稼働中（クリックで無効化）';
-    } else {
-        item.text = '🟡 Auto Accept';
-        item.tooltip = 'Auto Accept: 待機中（クリックで無効化）';
-    }
-}
 
 // =====================================================================
 // activate
@@ -114,13 +92,6 @@ export async function activate(context: vscode.ExtensionContext) {
     ctx.statusBarItem.show();
     context.subscriptions.push(ctx.statusBarItem);
 
-    // Auto Accept ステータスバーボタン
-    const autoAcceptBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
-    autoAcceptBar.command = 'anti-crow.toggleAutoAccept';
-    ctx.autoAcceptStatusBarItem = autoAcceptBar;
-    updateAutoAcceptStatusBar(autoAcceptBar);
-    autoAcceptBar.show();
-    context.subscriptions.push(autoAcceptBar);
 
     // -----------------------------------------------------------------
     // 全ウィンドウでワークスペースパスを workspacePaths に自動保存
@@ -337,31 +308,6 @@ export async function activate(context: vscode.ExtensionContext) {
         logError('Shortcut offer check failed', e);
     });
 
-    // -----------------------------------------------------------------
-    // コマンド: Toggle Auto Accept
-    // -----------------------------------------------------------------
-    context.subscriptions.push(
-        vscode.commands.registerCommand('anti-crow.toggleAutoAccept', async () => {
-            const cfg = vscode.workspace.getConfiguration('antiCrow');
-            const current = cfg.get<boolean>('autoAccept') ?? false;
-            await cfg.update('autoAccept', !current, vscode.ConfigurationTarget.Workspace);
-            if (ctx.autoAcceptStatusBarItem) {
-                updateAutoAcceptStatusBar(ctx.autoAcceptStatusBarItem, ctx.agentRunning);
-            }
-            vscode.window.showInformationMessage(
-                `Auto Accept: ${!current ? '🟡 有効（待機中）' : '🔴 無効'}`
-            );
-        })
-    );
-
-    // 設定変更時に Auto Accept ステータスバーを自動更新
-    context.subscriptions.push(
-        vscode.workspace.onDidChangeConfiguration(e => {
-            if (e.affectsConfiguration('antiCrow.autoAccept') && ctx.autoAcceptStatusBarItem) {
-                updateAutoAcceptStatusBar(ctx.autoAcceptStatusBarItem, ctx.agentRunning);
-            }
-        })
-    );
 
     // -----------------------------------------------------------------
     // 自動起動

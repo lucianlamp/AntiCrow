@@ -74,16 +74,7 @@ vi.mock('../suggestionButtons', () => ({
     storeSuggestions: vi.fn(),
 }));
 
-vi.mock('../uiWatcher', () => {
-    class MockUIWatcher {
-        start = vi.fn();
-        stop = vi.fn();
-    }
-    return {
-        UIWatcher: MockUIWatcher,
-        DEFAULT_AUTO_CLICK_RULES: [],
-    };
-});
+
 
 vi.mock('../configHelper', () => ({
     getMaxRetries: vi.fn(() => 0),
@@ -151,7 +142,6 @@ function createMockCdp() {
         getPorts: vi.fn(() => [9222]),
         switchTarget: vi.fn().mockResolvedValue(undefined),
         ops: {},
-        autoFollowOutput: vi.fn().mockResolvedValue(undefined),
     };
 }
 
@@ -511,28 +501,7 @@ describe('Executor', () => {
         });
     });
 
-    // -----------------------------------------------------------------------
-    // UIWatcher 委譲
-    // -----------------------------------------------------------------------
 
-    describe('UIWatcher 委譲', () => {
-        it('startUIWatcher should not throw', () => {
-            const { executor } = createExecutor();
-            expect(() => executor.startUIWatcher()).not.toThrow();
-        });
-
-        it('stopUIWatcher should not throw even when not started', () => {
-            const { executor } = createExecutor();
-            expect(() => executor.stopUIWatcher()).not.toThrow();
-        });
-
-        it('startUIWatcher twice should stop previous watcher', () => {
-            const { executor } = createExecutor();
-            executor.startUIWatcher();
-            expect(() => executor.startUIWatcher()).not.toThrow();
-            executor.stopUIWatcher();
-        });
-    });
 
     // -----------------------------------------------------------------------
     // enqueueScheduled

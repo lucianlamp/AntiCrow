@@ -315,6 +315,54 @@ export class SubagentHandle {
     }
 
     /**
+     * サブエージェントにプロンプトを送信するが、レスポンスは待たない（Fire-and-Forget）。
+     *
+     * チームモード（orchestrateTeam）で使用する。
+     * レスポンスの収集は teamOrchestrator.collectResponses() の
+     * waitForResponseWithPattern() に一本化するため、ここでは watchResponse() を呼ばない。
+     *
+     * 従来の sendPrompt() は writePrompt + watchResponse の両方を行うが、
+     * collectResponses() も同じパターンのファイルを監視するため二重待機になっていた。
+     * この問題（FileIpc: aborted before waiting）を解消するために分離。
+     *
+     * @returns IPC プロンプトファイルのパスと、レスポンスの期待先パス
+     */
+    async sendPromptFireAndForget(prompt: string): Promise<{ promptFile: string; callbackPath: string }> {
+        if (this._state !== 'READY') {
+            throw new Error(`sendPromptFireAndForget() は READY 状態でのみ呼び出し可能（現在: ${this._state}）`);
+        }
+
+        this._state = 'BUSY';
+        this.currentTask = prompt;
+        logDebug(`[SubagentHandle] ${this.name}: BUSY (fire-and-forget)`);
+
+        const timestamp = Date.now();
+        const callbackPath = path.join(
+            this.ipcDir,
+            `subagent_${this.name}_response_${timestamp}.json`,
+        );
+
+        // プロンプトファイル書き込み
+        const promptData: SubagentPrompt = {
+            type: 'subagent_prompt',
+            from: extractWorkspaceName(
+                this.cdpBridge.getActiveTargetTitle() ?? 'anti-crow',
+            ),
+            to: this.name,
+            timestamp,
+            prompt,
+            timeout_ms: this.config.promptTimeoutMs,
+            callback_path: callbackPath,
+        };
+
+        const promptFile = writePrompt(this.ipcDir, promptData);
+        logDebug(`[SubagentHandle] sendPromptFireAndForget: IPC ファイル書き込み完了: ${path.basename(promptFile)}, callbackPath=${path.basename(callbackPath)}`);
+
+        // watchResponse() は呼ばない — レスポンスは collectResponses() が収集する
+        return { promptFile, callbackPath };
+    }
+
+    /**
      * サブエージェントをシャットダウンし、リソースをクリーンアップする。
      */
     async close(): Promise<void> {

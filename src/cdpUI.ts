@@ -958,31 +958,4 @@ export async function isAgentRunning(
     return false;
 }
 
-// -----------------------------------------------------------------------
-// autoFollowOutput — AI出力追従（スクロール + 展開 + 権限承認）
-// -----------------------------------------------------------------------
 
-export async function autoFollowOutput(
-    ops: CdpBridgeOps,
-): Promise<void> {
-    // NOTE: isAgentRunning チェックは UIWatcher 側でステータスバー更新専用に使用。
-    // autoFollowOutput 自体はゲーティングしない（ダイアログ表示中にストップボタンが
-    // 非表示になり、承認ボタンがクリックされなくなる問題を防止）。
-
-    // 1. チャットエリアを最下部にスクロール（まずスクロールして新しいコンテンツを表示）
-    await scrollToBottom(ops);
-
-    // 2. 折りたたまれたセクションを展開（承認ボタンが見えるように先に展開）
-    await clickExpandAll(ops);
-
-    // 3. パネル狭小時のドロップアップ チェブロンを展開（隠れた承認ボタンを表示する）
-    await clickDropupChevron(ops);
-
-    // 4. スクロール＆展開で出てきた承認ボタンを自動クリック（VSCodeコマンド + DOM探索）
-    await autoApprove(ops);
-
-    // 5. 権限確認ダイアログを自動承認
-    await dismissPermissionDialog(ops);
-
-    logDebug('CDP: autoFollowOutput completed');
-}

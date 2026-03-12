@@ -549,8 +549,7 @@ export const messages = {
   'admin.pro.free': '🆓 **Free** — Free ({0} tasks/day, {1} tasks/week)',
   'admin.pro.lifetime': '♾️ **Lifetime** — $50 (one-time purchase, all features unlimited)',
   'admin.pro.featuresTitle': '**🔒 Pro-Only Features**',
-  'admin.pro.autoAcceptEnhancedLabel': 'Enhanced auto-accept (pesosz co-op mode)',
-  'admin.pro.autoAcceptEnhancedDesc': 'Enhanced auto-accept features (VSCode command approval, auto-scroll, expand, permission dialogs). Turn OFF if using pesosz/antigravity-auto-accept only.',
+
   'admin.pro.unlimitedTasks': 'Unlimited tasks',
   'admin.pro.trialRemaining': '🆓 **Pro Trial**: **{0}** days remaining',
   'admin.pro.trialExpired': '⏰ **Pro Trial Expired** — Upgrade to Pro to keep using all features!',
@@ -843,11 +842,11 @@ export const messages = {
   'bot.unknownCommand': '⚠️ Unknown command: /{0}',
 
   // -----------------------------------------------------------------------
-  // autoModeController.ts — Auto Mode
+  // autoModeController.ts — Continuous Auto
   // -----------------------------------------------------------------------
-  'command.auto.desc': 'Auto Mode — AI automatically executes tasks in sequence (Pro only)',
+  'command.auto.desc': 'Continuous Auto — AI automatically executes tasks in sequence (Pro only)',
   'command.auto.promptDesc': 'Task prompt (e.g. --steps 10 --confirm semi Redesign the landing page)',
-  'command.autoConfig.desc': 'View and configure Auto Mode settings',
+  'command.autoConfig.desc': 'View and configure Continuous Auto settings',
   'command.update.desc': 'Update AntiCrow to the latest version',
 
   // --- Update notifications ---
@@ -861,33 +860,33 @@ export const messages = {
   // --- Help: update ---
   'admin.help.cmdUpdate': '`/update` — Update to the latest version',
 
-  // --- Auto Mode notifications ---
+  // --- Continuous Auto notifications ---
   'autoMode.defaultPrompt': 'Automatically execute the next task based on suggestions',
-  'autoMode.started': '🚀 **Auto Mode Started**\n━━━━━━━━━━━━━━━━━━━━\n\n📝 Task: {0}\n⚙️ Settings: Max {1} steps / {2} min\n🔒 Safety Guard: Enabled',
-  'autoMode.stopped': '⏹️ **Auto Mode Stopped**\n\nStopped at step {0}/{1}.',
-  'autoMode.completed': '📊 **Auto Mode Completed**\n━━━━━━━━━━━━━━━━━━━━\n\n✅ Steps Completed: {0}/{1}\n⏱️ Total Time: {2}\n🛡️ Safety Triggers: {3}',
+  'autoMode.started': '🚀 **Continuous Auto Started**\n━━━━━━━━━━━━━━━━━━━━\n\n📝 Task: {0}\n⚙️ Settings: Max {1} steps / {2} min\n🔒 Safety Guard: Enabled',
+  'autoMode.stopped': '⏹️ **Continuous Auto Stopped**\n\nStopped at step {0}/{1}.',
+  'autoMode.completed': '📊 **Continuous Auto Completed**\n━━━━━━━━━━━━━━━━━━━━\n\n✅ Steps Completed: {0}/{1}\n⏱️ Total Time: {2}\n🛡️ Safety Triggers: {3}',
   'autoMode.stepComplete': '✅ **Step {0}/{1} Complete** ({2})\n━━━━━━━━━━━━━━━━━━━━\n\n📄 {3}',
   'autoMode.stepSuggestions': '\n\n💡 Suggestions referenced by AI:\n{0}',
   'autoMode.progress': '\n\n⏱️ Elapsed: {0} / {1} min',
-  'autoMode.error': '❌ **Auto Mode Error**\n\nError occurred at step {0}: {1}',
-  'autoMode.alreadyRunning': '⚠️ Auto Mode is already running. Use `/stop` to stop it first.',
-  'autoMode.proRequired': '⚠️ Auto Mode is a Pro-only feature.',
-  'autoMode.notRunning': '⚠️ Auto Mode is not running.',
+  'autoMode.error': '❌ **Continuous Auto Error**\n\nError occurred at step {0}: {1}',
+  'autoMode.alreadyRunning': '⚠️ Continuous Auto is already running. Use `/stop` to stop it first.',
+  'autoMode.proRequired': '⚠️ Continuous Auto is a Pro-only feature.',
+  'autoMode.notRunning': '⚠️ Continuous Auto is not running.',
   'autoMode.promptRequired': '⚠️ Please specify a prompt.\nUsage: `/auto Redesign the landing page`',
   'autoMode.stopButton': '❌ Stop',
 
   // --- Safety Guard ---
-  'autoMode.safety.detected': '🚨 **Safety Guard Triggered**\n━━━━━━━━━━━━━━━━━━━━\n\n⚠️ Dangerous action detected\n\n🔍 Detection: {0}\n📝 Pattern: `{1}`\n\n⏸️ Auto Mode paused',
+  'autoMode.safety.detected': '🚨 **Safety Guard Triggered**\n━━━━━━━━━━━━━━━━━━━━\n\n⚠️ Dangerous action detected\n\n🔍 Detection: {0}\n📝 Pattern: `{1}`\n\n⏸️ Continuous Auto paused',
   'autoMode.safety.approve': '✅ Approve',
   'autoMode.safety.skip': '⏭️ Skip',
   'autoMode.safety.stop': '🛑 Stop',
   'autoMode.safety.approved': '✅ Safety check approved. Resuming loop.',
   'autoMode.safety.skipped': '⏭️ Skipped this step. Moving to next step.',
-  'autoMode.safety.stopped': '🛑 Auto Mode stopped by safety check.',
+  'autoMode.safety.stopped': '🛑 Continuous Auto stopped by safety check.',
   'autoMode.safety.warn': '⚠️ **Safety Warning**: {0} (pattern: `{1}`) — Loop continues',
 
   // --- Help ---
-  'admin.help.cmdAuto': '`/auto` — Auto Mode (AI automatic execution) Pro only',
+  'admin.help.cmdAuto': '`/auto` — Continuous Auto (AI automatic execution) Pro only',
 
   // --- Phase 2: ai-select prompt ---
   'autoMode.aiSelectPrompt': 'The following suggestions were displayed recently. Choose the most appropriate one and execute it. Briefly explain your selection reason.\n\n[Suggestions]\n{0}\n\n{1}',
@@ -896,8 +895,8 @@ export const messages = {
   'autoMode.confirm.prompt': '⏸️ **Step {0}/{1} Complete — Continue?**\n━━━━━━━━━━━━━━━━━━━━\n\nChoose whether to proceed to the next step or stop here.',
   'autoMode.confirm.continueBtn': '▶️ Continue',
   'autoMode.confirm.stopBtn': '🛑 Stop',
-  'autoMode.confirm.continued': '▶️ Auto Mode continuing.',
-  'autoMode.confirm.stopped': '🛑 Auto Mode stopped by confirmation.',
+  'autoMode.confirm.continued': '▶️ Continuous Auto continuing.',
+  'autoMode.confirm.stopped': '🛑 Continuous Auto stopped by confirmation.',
 
   // --- Phase 2: diffSummary ---
   'autoMode.diffSummary.title': '📊 **Changes:**',

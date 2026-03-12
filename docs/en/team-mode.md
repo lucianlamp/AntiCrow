@@ -1,26 +1,26 @@
-# Team Mode
+# Agent agent team mode
 
 > 👥 Multiple AI sub-agents work on tasks in parallel (Pro only)
 
 ## Overview
 
-Team Mode splits large tasks across multiple sub-agents (separate Antigravity windows) for parallel processing. For example, 3 independent file modifications can be handled by 3 sub-agents simultaneously, dramatically reducing processing time.
+Agent agent team mode splits large tasks across multiple sub-agents (separate Antigravity windows) for parallel processing. For example, 3 independent file modifications can be handled by 3 sub-agents simultaneously, dramatically reducing processing time.
 
 ## Usage
 
-### Enable Team Mode
+### Enable Agent agent team mode
 
 1. Execute the `/team` command
 2. Click the "🟢 Team ON" button
 
-### Disable Team Mode
+### Disable Agent agent team mode
 
 1. Execute the `/team` command
 2. Click the "🔴 Team OFF" button
 
 ### Executing Tasks
 
-With team mode enabled, when you post a regular message, AI determines:
+With Agent agent team mode enabled, when you post a regular message, AI determines:
 
 - If the task is **splittable** → Automatically distributed to sub-agents
 - If the task is **not splittable** → Executed by the main agent alone
@@ -29,7 +29,7 @@ With team mode enabled, when you post a regular message, AI determines:
 
 AI splits tasks based on these criteria:
 
-**Split (use team mode):**
+**Split (use Agent agent team mode):**
 
 - Changes spanning 3 or more files
 - Work requiring implementation + testing + deployment
@@ -49,7 +49,7 @@ The `/team` command shows the following:
 
 | Item | Description |
 |------|-------------|
-| Team Mode | Enabled / Disabled |
+| Agent agent team mode | Enabled / Disabled |
 | Active Sub-agents | Number of currently active agents |
 | Timeout | Maximum execution time for sub-agents |
 | Monitor Interval | Progress check interval |
@@ -57,7 +57,7 @@ The `/team` command shows the following:
 
 ## Help Mode 🤝
 
-Team mode includes a built-in **Help Mode**. Sub-agents that finish their tasks early automatically help with other incomplete tasks.
+Agent agent team mode includes a built-in **Help Mode**. Sub-agents that finish their tasks early automatically help with other incomplete tasks.
 
 ### Help Priority
 
@@ -73,7 +73,7 @@ Team mode includes a built-in **Help Mode**. Sub-agents that finish their tasks 
 
 ## Notes
 
-- Team Mode is a **Pro plan exclusive** feature
+- Agent agent team mode is a **Pro plan exclusive** feature
 - The repository must have at least one commit
 - Each sub-agent runs in a separate Antigravity window
 - After completion, changes are automatically merged into the main branch

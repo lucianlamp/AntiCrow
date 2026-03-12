@@ -194,9 +194,9 @@ describe('autoModeController — stopAutoMode', () => {
             { reason: 'similarity', expected: '類似した結果' },
             { reason: 'safety_stop', expected: 'セーフティガード' },
             { reason: 'confirm_stop', expected: '確認モード' },
-            { reason: 'new_session', expected: '新しいオートモードセッション' },
+            { reason: 'new_session', expected: '新しい連続オートセッション' },
             { reason: 'error', expected: 'エラーが発生' },
-            { reason: 'auto_reset', expected: '既存のオートモードを停止' },
+            { reason: 'auto_reset', expected: '既存の連続オートを停止' },
             { reason: 'manual', expected: '手動で停止' },
         ];
 

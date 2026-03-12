@@ -26,7 +26,7 @@ AntiCrow は一般公開を前提とした拡張機能です。
 | ❌ 禁止 | ✅ 代替 |
 |---|---|
 | CDP / Chrome DevTools Protocol | （記載しない） |
-| ポート番号 / port / 9222 / 9333 | （記載しない） |
+| ポート番号 / port / 9222 / 9000 | （記載しない） |
 | WebSocket | （記載しない） |
 | `--remote-debugging-port` | （記載しない） |
 | ファイルパス（VSIX 内部構造） | （記載しない） |
