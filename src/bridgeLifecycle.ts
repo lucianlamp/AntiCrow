@@ -119,8 +119,8 @@ async function redeliverStaleResponses(
     ctx: BridgeContext,
     staleResponses: import('./fileIpc').StaleResponse[],
 ): Promise<void> {
-    // 連続オート中は stale response リカバリーをスキップ
-    // （連続オートのレスポンス管理は autoModeContinueLoop が担当）
+    // 連続オートモード中は stale response リカバリーをスキップ
+    // （連続オートモードのレスポンス管理は autoModeContinueLoop が担当）
     if (isAutoModeActive()) {
         logDebug('Bridge: skipping stale response recovery — auto mode is active');
         return;
@@ -774,7 +774,7 @@ async function startBridgeInternal(
     // 定期 stale response チェック（5分間隔 — 再起動後に AI が書いたレスポンスもピックアップ）
     ctx.staleRecoveryTimer = setInterval(async () => {
         if (!ctx.fileIpc || !ctx.bot || !ctx.bot.isReady()) { return; }
-        // 連続オート中はスキップ（autoModeContinueLoop がレスポンスを管理中）
+        // 連続オートモード中はスキップ（autoModeContinueLoop がレスポンスを管理中）
         if (isAutoModeActive()) {
             logDebug('Bridge: skipping periodic stale check — auto mode is active');
             return;

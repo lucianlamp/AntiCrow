@@ -144,7 +144,7 @@ export async function handleButtonInteraction(
         if (await handleMiscButton(ctx, interaction, customId)) { return; }
         if (await handleTeamButton(ctx, interaction, customId)) { return; }
 
-        // ----- 連続オート: 確認モード応答ボタン -----
+        // ----- 連続オートモード: 確認モード応答ボタン -----
         if (customId === 'confirm_continue' || customId === 'confirm_stop') {
             try {
                 const autoMode: any = await import('./autoModeController');
@@ -162,7 +162,7 @@ export async function handleButtonInteraction(
             return;
         }
 
-        // ----- 連続オート: /auto-config 設定変更ボタン -----
+        // ----- 連続オートモード: /auto-config 設定変更ボタン -----
         if (customId.startsWith('autoconfig_')) {
             try {
                 const channel = interaction.channel;
@@ -214,7 +214,7 @@ export async function handleButtonInteraction(
             return;
         }
 
-        // ----- 連続オート関連ボタン -----
+        // ----- 連続オートモード関連ボタン -----
         if (
             customId === 'safety_approve' ||
             customId === 'safety_skip' ||

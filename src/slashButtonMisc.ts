@@ -134,7 +134,7 @@ export async function handleMiscButton(
         return true;
     }
 
-    // ----- 「🔄 連続オートで実行」ボタン（Phase 3: /suggest → /auto 連携） -----
+    // ----- 「🔄 連続オートモードで実行」ボタン（Phase 3: /suggest → /auto 連携） -----
     if (customId === SUGGEST_AUTO_MODE_ID) {
         const channelId = interaction.channelId;
         const suggestions = getAllSuggestions(channelId);
@@ -144,7 +144,7 @@ export async function handleMiscButton(
             return true;
         }
 
-        // 全SUGGESTIONSを初期プロンプトとして連続オート開始
+        // 全SUGGESTIONSを初期プロンプトとして連続オートモード開始
         const suggestionPrompts = suggestions.map((s, i) => `${i + 1}. ${s.label}: ${s.prompt}`).join('\n');
         const autoPrompt = `以下の提案をすべて順番に実行してください:\n\n${suggestionPrompts}`;
 
@@ -154,13 +154,13 @@ export async function handleMiscButton(
             return true;
         }
 
-        await interaction.reply({ embeds: [buildEmbed('🔄 **連続オートを開始します...**\n提案をすべて順番に自動実行します', EmbedColor.Info)] });
+        await interaction.reply({ embeds: [buildEmbed('🔄 **連続オートモードを開始します...**\n提案をすべて順番に自動実行します', EmbedColor.Info)] });
 
         // ワークスペースキーの取得
         const repoRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
         const wsKey = repoRoot || 'default';
 
-        // 連続オート開始
+        // 連続オートモード開始
         const prompt = await startAutoMode(channel as any, wsKey, autoPrompt, { maxSteps: suggestions.length + 2 });
         // プロンプトをパイプラインに投入
         processSuggestionPrompt(ctx, channelId, prompt, interaction.user.id).catch((e: unknown) => {

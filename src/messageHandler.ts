@@ -243,8 +243,8 @@ export async function handleDiscordMessage(
             await channel.send({ embeds: [buildEmbed(plan.discord_templates.ack, EmbedColor.Info)] });
         }
 
-        // 連続オート状態リセット: requires_confirmation: false で新規計画が来た場合、
-        // 既存の連続オートループを停止する（意図しない連続オート起動防止）
+        // 連続オートモード状態リセット: requires_confirmation: false で新規計画が来た場合、
+        // 既存の連続オートモードループを停止する（意図しない連続オートモード起動防止）
         if (!plan.requires_confirmation && isAutoModeActive()) {
             logDebug('handleDiscordMessage: Auto mode was active but requires_confirmation=false — stopping auto mode to prevent unintended auto execution');
             await stopAutoMode(channel, 'auto_reset');
@@ -317,7 +317,7 @@ export async function handleDiscordMessage(
             }
         }
 
-        // 連続オート開始: startAutoMode() で currentState を初期化
+        // 連続オートモード開始: startAutoMode() で currentState を初期化
         // これにより executor.ts の isAutoModeActive() が true を返し、
         // onAutoModeComplete コールバック経由で autoModeContinueLoop が起動する
         if (confirmAutoMode) {
@@ -454,7 +454,7 @@ export async function processSuggestionPrompt(
 
             const { plan, guild } = result;
 
-            // 確認フロー（連続オート中は確認をスキップ）
+            // 確認フロー（連続オートモード中は確認をスキップ）
             if (plan.requires_confirmation && !isAutoModeActive()) {
                 setProcessingStatus(wsKey, {
                     wsKey, phase: 'confirming', startTime: Date.now(),

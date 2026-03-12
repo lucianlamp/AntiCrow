@@ -28,7 +28,7 @@ export type GateLevel = 'pro' | 'free';
  */
 export const PRO_ONLY_FEATURES: ReadonlySet<string> = new Set([
     'teamMode',     // チームモード（複数サブエージェント並行実行）
-    'autoMode',     // 連続オート（自動連続タスク実行）
+    'autoMode',     // 連続オートモード（自動連続タスク実行）
     // suggestions は Free でも利用可能
 ]);
 

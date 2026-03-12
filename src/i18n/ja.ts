@@ -875,11 +875,11 @@ export const messages = {
   'bot.unknownCommand': '⚠️ 不明なコマンド: /{0}',
 
   // -----------------------------------------------------------------------
-  // autoModeController.ts — 連続オート関連
+  // autoModeController.ts — 連続オートモード関連
   // -----------------------------------------------------------------------
-  'command.auto.desc': '連続オート — AIが自動的にタスクを連続実行します（Pro限定）',
+  'command.auto.desc': '連続オートモード — AIが自動的にタスクを連続実行します（Pro限定）',
   'command.auto.promptDesc': 'タスクのプロンプト（例: --steps 10 --confirm semi LPをリニューアルして）',
-  'command.autoConfig.desc': '連続オートの設定を表示・変更します',
+  'command.autoConfig.desc': '連続オートモードの設定を表示・変更します',
   'command.update.desc': 'AntiCrow を最新バージョンに更新します',
 
   // --- アップデート通知 ---
@@ -893,33 +893,33 @@ export const messages = {
   // --- ヘルプに update を追加 ---
   'admin.help.cmdUpdate': '`/update` — 最新版に更新',
 
-  // --- 連続オート通知 ---
+  // --- 連続オートモード通知 ---
   'autoMode.defaultPrompt': '提案に基づいて次のタスクを自動実行してください',
-  'autoMode.started': '🚀 **連続オート開始**\n━━━━━━━━━━━━━━━━━━━━\n\n📝 タスク: {0}\n⚙️ 設定: 最大{1}ステップ / {2}分\n🔒 セーフティガード: 有効',
-  'autoMode.stopped': '⏹️ **連続オート停止**\n\nステップ {0}/{1} で停止しました。',
-  'autoMode.completed': '📊 **連続オート完了**\n━━━━━━━━━━━━━━━━━━━━\n\n✅ 完了ステップ: {0}/{1}\n⏱️ 合計時間: {2}\n🛡️ セーフティ発動: {3}回',
+  'autoMode.started': '🚀 **連続オートモード開始**\n━━━━━━━━━━━━━━━━━━━━\n\n📝 タスク: {0}\n⚙️ 設定: 最大{1}ステップ / {2}分\n🔒 セーフティガード: 有効',
+  'autoMode.stopped': '⏹️ **連続オートモード停止**\n\nステップ {0}/{1} で停止しました。',
+  'autoMode.completed': '📊 **連続オートモード完了**\n━━━━━━━━━━━━━━━━━━━━\n\n✅ 完了ステップ: {0}/{1}\n⏱️ 合計時間: {2}\n🛡️ セーフティ発動: {3}回',
   'autoMode.stepComplete': '✅ **ステップ {0}/{1} 完了** ({2})\n━━━━━━━━━━━━━━━━━━━━\n\n📄 {3}',
   'autoMode.stepSuggestions': '\n\n💡 AIが参照した提案:\n{0}',
   'autoMode.progress': '\n\n⏱️ 経過: {0} / {1}分',
-  'autoMode.error': '❌ **連続オートエラー**\n\nステップ {0} でエラーが発生しました: {1}',
-  'autoMode.alreadyRunning': '⚠️ 連続オートは既に実行中です。先に `/stop` で停止してください。',
-  'autoMode.proRequired': '⚠️ 連続オートは Pro プラン限定機能です。',
-  'autoMode.notRunning': '⚠️ 連続オートは実行されていません。',
+  'autoMode.error': '❌ **連続オートモードエラー**\n\nステップ {0} でエラーが発生しました: {1}',
+  'autoMode.alreadyRunning': '⚠️ 連続オートモードは既に実行中です。先に `/stop` で停止してください。',
+  'autoMode.proRequired': '⚠️ 連続オートモードは Pro プラン限定機能です。',
+  'autoMode.notRunning': '⚠️ 連続オートモードは実行されていません。',
   'autoMode.promptRequired': '⚠️ プロンプトを指定してください。\n使い方: `/auto LPをリニューアルして`',
   'autoMode.stopButton': '❌ 停止',
 
   // --- セーフティガード ---
-  'autoMode.safety.detected': '🚨 **セーフティガード発動**\n━━━━━━━━━━━━━━━━━━━━\n\n⚠️ 危険なアクションを検知しました\n\n🔍 検知内容: {0}\n📝 パターン: `{1}`\n\n⏸️ 連続オートを一時停止しました',
+  'autoMode.safety.detected': '🚨 **セーフティガード発動**\n━━━━━━━━━━━━━━━━━━━━\n\n⚠️ 危険なアクションを検知しました\n\n🔍 検知内容: {0}\n📝 パターン: `{1}`\n\n⏸️ 連続オートモードを一時停止しました',
   'autoMode.safety.approve': '✅ 承認',
   'autoMode.safety.skip': '⏭️ スキップ',
   'autoMode.safety.stop': '🛑 停止',
   'autoMode.safety.approved': '✅ セーフティチェックを承認しました。ループを再開します。',
   'autoMode.safety.skipped': '⏭️ このステップをスキップしました。次のステップに進みます。',
-  'autoMode.safety.stopped': '🛑 セーフティチェックにより連続オートを停止しました。',
+  'autoMode.safety.stopped': '🛑 セーフティチェックにより連続オートモードを停止しました。',
   'autoMode.safety.warn': '⚠️ **セーフティ警告**: {0}（パターン: `{1}`）— ループは続行します',
 
   // --- ヘルプ ---
-  'admin.help.cmdAuto': '`/auto` — 連続オート（AI自動連続実行）Pro限定',
+  'admin.help.cmdAuto': '`/auto` — 連続オートモード（AI自動連続実行）Pro限定',
 
   // --- Phase 2: ai-select プロンプト ---
   'autoMode.aiSelectPrompt': '以下の提案が直前に表示されています。これらの中から最も適切なものを1つ選んで実行してください。選択理由も簡潔に述べてください。\n\n【提案一覧】\n{0}\n\n{1}',
@@ -928,8 +928,8 @@ export const messages = {
   'autoMode.confirm.prompt': '⏸️ **ステップ {0}/{1} 完了 — 続行しますか？**\n━━━━━━━━━━━━━━━━━━━━\n\n次のステップに進むか、ここで停止するかを選んでください。',
   'autoMode.confirm.continueBtn': '▶️ 続行',
   'autoMode.confirm.stopBtn': '🛑 停止',
-  'autoMode.confirm.continued': '▶️ 連続オートを続行します。',
-  'autoMode.confirm.stopped': '🛑 確認モードにより連続オートを停止しました。',
+  'autoMode.confirm.continued': '▶️ 連続オートモードを続行します。',
+  'autoMode.confirm.stopped': '🛑 確認モードにより連続オートモードを停止しました。',
 
   // --- Phase 2: diffSummary ---
   'autoMode.diffSummary.title': '📊 **変更差分:**',

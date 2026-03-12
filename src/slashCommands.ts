@@ -72,7 +72,7 @@ export const slashCommandDefinitions = [
         .setName('team')
         .setDescription(t('command.team.desc')),
 
-    // /auto — 連続オート（AI自動連続実行）
+    // /auto — 連続オートモード（AI自動連続実行）
     new SlashCommandBuilder()
         .setName('auto')
         .setDescription(t('command.auto.desc'))
@@ -83,7 +83,7 @@ export const slashCommandDefinitions = [
                 .setRequired(false),
         ),
 
-    // /auto-config — 連続オート設定の表示・変更
+    // /auto-config — 連続オートモード設定の表示・変更
     new SlashCommandBuilder()
         .setName('auto-config')
         .setDescription(t('command.autoConfig.desc')),

@@ -359,7 +359,7 @@ export class Executor {
                             await sendSuggestionButtons(suggestions, notifyChannel, this.postSuggestions);
                         }
                     },
-                    // 連続オート: ステップ完了時に次のプロンプトを自動投入
+                    // 連続オートモード: ステップ完了時に次のプロンプトを自動投入
                     onAutoModeComplete: isAutoModeActive(plan.workspace_name)
                         ? (suggestions: SuggestionItem[], cleanContent: string) => {
                             this.autoModeContinueLoop(notifyChannel, suggestions, cleanContent, plan)
@@ -491,11 +491,11 @@ export class Executor {
     }
 
     // -----------------------------------------------------------------------
-    // 連続オートループ
+    // 連続オートモードループ
     // -----------------------------------------------------------------------
 
     /**
-     * 連続オートの次ステップを自動投入するループ。
+     * 連続オートモードの次ステップを自動投入するループ。
      * onStepComplete → 次プロンプト構築 → CDP 送信 → waitForResponse → sendProcessedResponse
      * を繰り返す。onStepComplete が null を返したらループ終了。
      */
@@ -558,7 +558,7 @@ export class Executor {
                 // ユーザーメモリを再読み込み
                 this.userMemory = loadUserMemory(plan.workspace_name);
 
-                // プロンプト構築（連続オート用：plan_generation をスキップして直接 execution）
+                // プロンプト構築（連続オートモード用：plan_generation をスキップして直接 execution）
                 const nextFinalPrompt = buildFinalPrompt({
                     plan: { ...plan, prompt: nextPrompt },
                     responsePath: nextResponsePath,

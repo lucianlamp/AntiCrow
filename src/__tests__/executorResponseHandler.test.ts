@@ -334,7 +334,7 @@ describe('sendTeamResponse', () => {
             })).resolves.not.toThrow();
         });
 
-        it('連続オート中 + onAutoModeComplete 設定時は SUGGESTIONS がスキップされること', async () => {
+        it('連続オートモード中 + onAutoModeComplete 設定時は SUGGESTIONS がスキップされること', async () => {
             const { parseSuggestions } = await import('../suggestionParser');
             const callbacks = createMockCallbacks();
             // onAutoModeComplete を設定
@@ -346,7 +346,7 @@ describe('sendTeamResponse', () => {
                 cleanContent: 'テスト結果',
             });
 
-            // 連続オートをアクティブに
+            // 連続オートモードをアクティブに
             mockIsAutoModeActive.mockReturnValue(true);
 
             await sendTeamResponse({
@@ -365,7 +365,7 @@ describe('sendTeamResponse', () => {
             mockIsAutoModeActive.mockReturnValue(false);
         });
 
-        it('連続オート中でも onAutoModeComplete 未設定時は SUGGESTIONS が送信されること', async () => {
+        it('連続オートモード中でも onAutoModeComplete 未設定時は SUGGESTIONS が送信されること', async () => {
             const { parseSuggestions } = await import('../suggestionParser');
             const callbacks = createMockCallbacks();
             // onAutoModeComplete は設定しない（チームモード完了時のパターン）
@@ -377,7 +377,7 @@ describe('sendTeamResponse', () => {
                 cleanContent: 'テスト結果',
             });
 
-            // 連続オートをアクティブに
+            // 連続オートモードをアクティブに
             mockIsAutoModeActive.mockReturnValue(true);
 
             await sendTeamResponse({
@@ -394,7 +394,7 @@ describe('sendTeamResponse', () => {
             mockIsAutoModeActive.mockReturnValue(false);
         });
 
-        it('連続オート非アクティブ時は SUGGESTIONS が通常送信されること', async () => {
+        it('連続オートモード非アクティブ時は SUGGESTIONS が通常送信されること', async () => {
             const { parseSuggestions } = await import('../suggestionParser');
             const callbacks = createMockCallbacks();
             const plan = createMockPlan();
