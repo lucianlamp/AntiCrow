@@ -164,16 +164,12 @@ export default function HeroSection() {
         <div className="absolute inset-0 bg-gradient-to-b from-background/60 via-background/40 to-background" />
       </div>
 
-      {/* Floating Orbs */}
-      <motion.div
-        animate={{ x: [0, 30, 0], y: [0, -20, 0] }}
-        transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
-        className="absolute top-1/4 left-[10%] w-64 h-64 rounded-full bg-indigo/10 blur-[80px]"
+      {/* Floating Orbs — CSS animation でGPU合成レイヤー処理 */}
+      <div
+        className="absolute top-1/4 left-[10%] w-64 h-64 rounded-full bg-indigo/10 blur-[80px] animate-float-orb-1"
       />
-      <motion.div
-        animate={{ x: [0, -20, 0], y: [0, 30, 0] }}
-        transition={{ duration: 10, repeat: Infinity, ease: "easeInOut" }}
-        className="absolute bottom-1/4 right-[10%] w-80 h-80 rounded-full bg-coral/10 blur-[100px]"
+      <div
+        className="absolute bottom-1/4 right-[10%] w-80 h-80 rounded-full bg-coral/10 blur-[100px] animate-float-orb-2"
       />
 
       <div className="container relative z-10">
@@ -407,40 +403,34 @@ export default function HeroSection() {
             <div className="absolute w-[400px] h-[400px] rounded-full bg-gradient-to-br from-indigo/20 to-coral/20 blur-[60px]" />
 
             {/* Mascot */}
-            <motion.img
+            <img
               src="https://d2xsxph8kpxj0f.cloudfront.net/310519663098678574/gUFQQZFwAHiwr6GHCExuzr/AntiCrowFullBody_7b5bfad5.PNG"
               alt="AntiCrow Mascot - Discord と Antigravity を繋ぐカラスのマスコット"
               width={420}
               height={420}
               loading="lazy"
               decoding="async"
-              className="relative w-[340px] h-[340px] xl:w-[420px] xl:h-[420px] object-contain drop-shadow-2xl"
-              animate={{ y: [0, -15, 0] }}
-              transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+              className="relative w-[340px] h-[340px] xl:w-[420px] xl:h-[420px] object-contain drop-shadow-2xl animate-float-mascot"
             />
 
-            {/* Floating Cards around mascot */}
-            <motion.div
-              animate={{ y: [0, -8, 0], rotate: [0, 2, 0] }}
-              transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
-              className="absolute top-8 right-0 glass-card rounded-xl px-4 py-3"
+            {/* Floating Cards around mascot — CSS animation */}
+            <div
+              className="absolute top-8 right-0 glass-card rounded-xl px-4 py-3 animate-float-card-1"
             >
               <div className="flex items-center gap-2">
                 <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
                 <span className="text-xs font-medium text-foreground">{t('hero.floatingAiRunning')}</span>
               </div>
-            </motion.div>
+            </div>
 
-            <motion.div
-              animate={{ y: [0, 10, 0], rotate: [0, -2, 0] }}
-              transition={{ duration: 3.5, repeat: Infinity, ease: "easeInOut", delay: 1 }}
-              className="absolute bottom-12 left-0 glass-card rounded-xl px-4 py-3"
+            <div
+              className="absolute bottom-12 left-0 glass-card rounded-xl px-4 py-3 animate-float-card-2"
             >
               <div className="flex items-center gap-2">
                 <span className="text-xs">💬</span>
                 <span className="text-xs font-medium text-foreground">{t('hero.floatingRelay')}</span>
               </div>
-            </motion.div>
+            </div>
           </motion.div>
         </div>
       </div>

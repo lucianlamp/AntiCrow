@@ -1,4 +1,4 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useRef, useState, useEffect, type ReactNode } from "react";
 import { Helmet } from "react-helmet-async";
 import { useTranslation } from "react-i18next";
 import Navbar from "@/components/Navbar";
@@ -12,6 +12,33 @@ const SecuritySection = lazy(() => import("@/components/SecuritySection"));
 const FAQSection = lazy(() => import("@/components/FAQSection"));
 const DisclaimerSection = lazy(() => import("@/components/DisclaimerSection"));
 const CTASection = lazy(() => import("@/components/CTASection"));
+
+// IntersectionObserver で遅延レンダリング
+function LazyVisible({ children, minHeight = "40vh" }: { children: ReactNode; minHeight?: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setVisible(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: "200px" }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  if (visible) {
+    return <Suspense fallback={<div style={{ minHeight }} />}>{children}</Suspense>;
+  }
+  return <div ref={ref} style={{ minHeight }} />;
+}
 
 export default function Home() {
   const { t, i18n } = useTranslation();
@@ -30,14 +57,14 @@ export default function Home() {
         <meta property="og:description" content={t("meta.ogDescription")} />
         <meta property="og:site_name" content="AntiCrow" />
         <meta property="og:locale" content={currentLang === "ja" ? "ja_JP" : "en_US"} />
-        <meta property="og:image" content="https://d2xsxph8kpxj0f.cloudfront.net/310519663098678574/gUFQQZFwAHiwr6GHCExuzr/AntiCrowFullBody_7b5bfad5.PNG" />
-        <meta property="og:image:width" content="420" />
-        <meta property="og:image:height" content="420" />
-        <meta property="og:image:alt" content="AntiCrow Mascot" />
+        <meta property="og:image" content="https://anticrow.pages.dev/ogp.png" />
+        <meta property="og:image:width" content="1200" />
+        <meta property="og:image:height" content="630" />
+        <meta property="og:image:alt" content="AntiCrow - Control Antigravity from Anywhere via Discord" />
         <meta name="twitter:card" content="summary_large_image" />
         <meta name="twitter:title" content={t("meta.ogTitle")} />
         <meta name="twitter:description" content={t("meta.ogDescription")} />
-        <meta name="twitter:image" content="https://d2xsxph8kpxj0f.cloudfront.net/310519663098678574/gUFQQZFwAHiwr6GHCExuzr/AntiCrowFullBody_7b5bfad5.PNG" />
+        <meta name="twitter:image" content="https://anticrow.pages.dev/ogp.png" />
         <meta name="twitter:site" content="@lucianlampdefi" />
         <meta name="robots" content="index, follow" />
         <link rel="canonical" href={canonicalUrl} />
@@ -48,18 +75,23 @@ export default function Home() {
       <Navbar />
       <main className="relative z-10">
         <HeroSection />
-        <Suspense fallback={<div className="min-h-[40vh]" />}>
+        <LazyVisible minHeight="40vh">
           <FeaturesSection />
+        </LazyVisible>
+        <LazyVisible minHeight="40vh">
           <SecuritySection />
-        </Suspense>
-        <Suspense fallback={<div className="min-h-[30vh]" />}>
+        </LazyVisible>
+        <LazyVisible minHeight="30vh">
           <FAQSection />
+        </LazyVisible>
+        <LazyVisible minHeight="20vh">
           <DisclaimerSection />
+        </LazyVisible>
+        <LazyVisible minHeight="20vh">
           <CTASection />
-        </Suspense>
+        </LazyVisible>
       </main>
       <Footer />
     </div>
   );
 }
-
