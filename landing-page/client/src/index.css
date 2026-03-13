@@ -188,3 +188,39 @@ html {
 ::-webkit-scrollbar-thumb:hover {
   background: oklch(0.45 0.06 260);
 }
+
+/* パフォーマンス最適化: framer-motion infinite → CSS animation */
+@keyframes float-orb-1 {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  50% { transform: translate3d(30px, -20px, 0); }
+}
+@keyframes float-orb-2 {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  50% { transform: translate3d(-20px, 30px, 0); }
+}
+@keyframes float-mascot {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  50% { transform: translate3d(0, -15px, 0); }
+}
+@keyframes float-card-1 {
+  0%, 100% { transform: translate3d(0, 0, 0) rotate(0deg); }
+  50% { transform: translate3d(0, -8px, 0) rotate(2deg); }
+}
+@keyframes float-card-2 {
+  0%, 100% { transform: translate3d(0, 0, 0) rotate(0deg); }
+  50% { transform: translate3d(0, 10px, 0) rotate(-2deg); }
+}
+.animate-float-orb-1 { animation: float-orb-1 8s ease-in-out infinite; will-change: transform; }
+.animate-float-orb-2 { animation: float-orb-2 10s ease-in-out infinite; will-change: transform; }
+.animate-float-mascot { animation: float-mascot 4s ease-in-out infinite; will-change: transform; }
+.animate-float-card-1 { animation: float-card-1 3s ease-in-out infinite; will-change: transform; }
+.animate-float-card-2 { animation: float-card-2 3.5s ease-in-out 1s infinite; will-change: transform; }
+
+/* アクセスコードゲート: エラー時シェイク */
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-8px); }
+  40% { transform: translateX(8px); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(4px); }
+}

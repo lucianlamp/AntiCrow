@@ -175,6 +175,10 @@
             {
                 "title": "API キーの取り扱い",
                 "description": "AntiCrow は API キーの露出を防ぐ設計ですが、Antigravity の AI の判断により、キーが意図しない形で使用される可能性があります。"
+            },
+            {
+                "title": "アカウントリスク",
+                "description": "CDPを通じた自動操作はOAuthキーやAPIキーの不正利用には該当しませんが、Google側の検知によりAntigravityで使用しているGoogleアカウントが制限・停止される可能性がゼロではありません。"
             }
         ],
         "legalParagraph1": "開発者は、本拡張機能および連携先の Antigravity の使用により生じたいかなる損害（データの損失、コードの破損、セキュリティ侵害、業務の中断、その他の直接的・間接的損害を含むがこれらに限定されない）についても、一切の責任を負いません。Antigravity の AI による自律的な判断に起因するリスクについても同様です。",
@@ -190,5 +194,35 @@
         "privacyUrl": "https://anticrow.gitbook.io/anticrow-docs/privacy",
         "securityPolicy": "セキュリティポリシー",
         "securityUrl": "https://anticrow.gitbook.io/anticrow-docs/security"
+    },
+    "download": {
+        "pageTitle": "Download | AntiCrow",
+        "backToHome": "ホームに戻る",
+        "title": "AntiCrow",
+        "titleSuffix": "Download",
+        "subtitle": "Antigravity 拡張機能の最新バージョンをダウンロード",
+        "loading": "バージョン情報を取得中...",
+        "error": "バージョン情報の取得に失敗しました",
+        "updatedAt": "更新日時:",
+        "downloadButton": "ダウンロード (.vsix)",
+        "installTitle": "インストール手順",
+        "step1Title": "1. ダウンロード",
+        "step1Desc": "下のボタンから .vsix ファイルをダウンロード",
+        "step2Title": "2. インストール",
+        "step2Desc": "ターミナルで以下のコマンドを実行",
+        "step2Code": "antigravity --install-extension <ダウンロードしたファイルのパス>",
+        "step3Title": "3. 完了",
+        "step3Desc": "Antigravity を再起動すれば AntiCrow が有効に！",
+        "footer": "このページは招待されたユーザー向けです。",
+        "disclaimerTitle": "ご利用前にお読みください",
+        "agreeLabel": "上記の免責事項を読み、理解しました",
+        "accessCode": {
+            "title": "アクセスコードを入力",
+            "subtitle": "ダウンロードにはアクセスコードが必要です",
+            "placeholder": "コードを入力...",
+            "submit": "認証",
+            "error": "コードが正しくありません",
+            "hint": "アクセスコードは招待時に提供されます"
+        }
     }
 }

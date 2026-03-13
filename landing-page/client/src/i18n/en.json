@@ -175,6 +175,10 @@
             {
                 "title": "API Key Handling",
                 "description": "AntiCrow is designed to prevent API key exposure, but Antigravity's AI judgment may use keys in unintended ways."
+            },
+            {
+                "title": "Account Risk",
+                "description": "Automated operations via CDP do not constitute misuse of OAuth or API keys. However, there is a non-zero possibility that the Google account used with Antigravity may be restricted or suspended due to Google's detection mechanisms."
             }
         ],
         "legalParagraph1": "The developer assumes no liability for any damages arising from the use of this extension or the connected Antigravity platform, including but not limited to data loss, code corruption, security breaches, business interruption, or other direct and indirect damages. The same applies to risks from Antigravity's AI-driven autonomous decisions.",
@@ -190,5 +194,35 @@
         "privacyUrl": "https://anticrow.gitbook.io/anticrow-docs/docs-en/privacy",
         "securityPolicy": "Security Policy",
         "securityUrl": "https://anticrow.gitbook.io/anticrow-docs/docs-en/security"
+    },
+    "download": {
+        "pageTitle": "Download | AntiCrow",
+        "backToHome": "Back to Home",
+        "title": "AntiCrow",
+        "titleSuffix": "Download",
+        "subtitle": "Download the latest version of the Antigravity extension",
+        "loading": "Fetching version info...",
+        "error": "Failed to fetch version info",
+        "updatedAt": "Updated:",
+        "downloadButton": "Download (.vsix)",
+        "installTitle": "Installation Steps",
+        "step1Title": "1. Download",
+        "step1Desc": "Download the .vsix file from the button above",
+        "step2Title": "2. Install",
+        "step2Desc": "Run the following command in your terminal",
+        "step2Code": "antigravity --install-extension <path-to-downloaded-file>",
+        "step3Title": "3. Done",
+        "step3Desc": "Restart Antigravity and AntiCrow will be active!",
+        "footer": "This page is for invited users only.",
+        "disclaimerTitle": "Please Read Before Use",
+        "agreeLabel": "I have read and understood the above disclaimer",
+        "accessCode": {
+            "title": "Enter Access Code",
+            "subtitle": "An access code is required to download",
+            "placeholder": "Enter code...",
+            "submit": "Verify",
+            "error": "Invalid access code",
+            "hint": "Access code is provided with your invitation"
+        }
     }
 }
