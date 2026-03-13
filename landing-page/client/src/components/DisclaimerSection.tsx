@@ -1,8 +1,8 @@
 import { motion } from "framer-motion";
-import { AlertTriangle, ShieldAlert, ShieldCheck, Code2, KeyRound } from "lucide-react";
+import { AlertTriangle, ShieldAlert, ShieldCheck, Code2, KeyRound, UserX } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
-const riskIcons = [ShieldAlert, Code2, KeyRound];
+const riskIcons = [ShieldAlert, Code2, KeyRound, UserX];
 
 export default function DisclaimerSection() {
   const { t } = useTranslation();
