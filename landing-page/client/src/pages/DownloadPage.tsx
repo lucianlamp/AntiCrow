@@ -171,8 +171,25 @@ export default function DownloadPage() {
     {
       icon: Terminal,
       title: t("download.step2Title"),
-      desc: t("download.step2Desc"),
-      code: t("download.step2Code"),
+      desc: t("download.step2MethodLabel"),
+      methods: [
+        {
+          icon: Terminal,
+          title: t("download.step2ATitle"),
+          desc: t("download.step2ADesc"),
+          code: t("download.step2ACode"),
+        },
+        {
+          icon: Package,
+          title: t("download.step2BTitle"),
+          desc: t("download.step2BDesc"),
+          steps: [
+            t("download.step2BStep1"),
+            t("download.step2BStep2"),
+            t("download.step2BStep3"),
+          ],
+        },
+      ],
     },
     {
       icon: CheckCircle,
@@ -407,24 +424,58 @@ export default function DownloadPage() {
                   initial={{ opacity: 0, x: -15 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ duration: 0.4, delay: 0.4 + i * 0.1 }}
-                  className="glass-card rounded-xl p-5 flex gap-4"
+                  className="glass-card rounded-xl p-5 flex flex-col gap-4"
                 >
-                  <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center">
-                    <step.icon className="w-5 h-5 text-primary" />
+                  <div className="flex gap-4">
+                    <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center">
+                      <step.icon className="w-5 h-5 text-primary" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-semibold text-foreground mb-1">
+                        {step.title}
+                      </h3>
+                      <p className="text-muted-foreground text-sm">{step.desc}</p>
+                    </div>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <h3 className="font-semibold text-foreground mb-1">
-                      {step.title}
-                    </h3>
-                    <p className="text-muted-foreground text-sm">{step.desc}</p>
-                    {step.code && (
-                      <div className="mt-3 rounded-lg bg-secondary/60 border border-border px-4 py-3 font-mono text-sm overflow-x-auto">
-                        <code className="text-primary/90 whitespace-pre">
-                          {step.code}
-                        </code>
-                      </div>
-                    )}
-                  </div>
+                  {"methods" in step && step.methods && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-1">
+                      {step.methods.map((method, mi) => (
+                        <div
+                          key={mi}
+                          className="rounded-lg bg-secondary/40 border border-border p-4 space-y-3"
+                        >
+                          <div className="flex items-center gap-2">
+                            <method.icon className="w-4 h-4 text-primary" />
+                            <span className="font-semibold text-foreground text-sm">
+                              {method.title}
+                            </span>
+                          </div>
+                          <p className="text-muted-foreground text-xs">
+                            {method.desc}
+                          </p>
+                          {"code" in method && method.code && (
+                            <div className="rounded-lg bg-secondary/60 border border-border px-3 py-2 font-mono text-xs overflow-x-auto">
+                              <code className="text-primary/90 whitespace-pre">
+                                {method.code}
+                              </code>
+                            </div>
+                          )}
+                          {"steps" in method && method.steps && (
+                            <ol className="space-y-1.5 text-xs text-muted-foreground">
+                              {method.steps.map((s: string, si: number) => (
+                                <li key={si} className="flex gap-2">
+                                  <span className="flex-shrink-0 w-5 h-5 rounded-full bg-primary/10 text-primary text-[10px] font-bold flex items-center justify-center">
+                                    {si + 1}
+                                  </span>
+                                  <span className="pt-0.5">{s}</span>
+                                </li>
+                              ))}
+                            </ol>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </motion.div>
               ))}
             </motion.div>

@@ -4,7 +4,7 @@
 
 AntiCrow は Antigravity の拡張機能（VSIX）として提供されます。
 
-### インストール方法
+### 方法A: コマンドライン
 
 ```bash
 antigravity --install-extension anti-crow-0.1.1.vsix --force
@@ -12,7 +12,11 @@ antigravity --install-extension anti-crow-0.1.1.vsix --force
 
 > ℹ️ バージョンは配布ファイルに合わせてください。
 
-または、Antigravity のコマンドパレット（`Ctrl+Shift+P`）から「Extensions: Install from VSIX...」を選択してインストールできます。
+### 方法B: コマンドパレット（GUI）
+
+1. `Ctrl+Shift+P`（Mac: `Cmd+Shift+P`）でコマンドパレットを開く
+2. 「Extensions: Install from VSIX...」と入力して選択
+3. ダウンロードした `.vsix` ファイルを選択してインストール
 
 ### 推奨拡張機能
 
