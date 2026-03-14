@@ -77,7 +77,7 @@ vi.mock('../autoModeConfig', () => ({
         selectionMode: 'ai-select',
         confirmMode: 'auto',
         maxSteps: 10,
-        maxDuration: 1800000,
+        maxDuration: 3600000,
     },
 }));
 

@@ -40,7 +40,7 @@ export interface TeamConfig {
 // ---------------------------------------------------------------------------
 
 const DEFAULT_CONFIG: TeamConfig = {
-    enabled: false,
+    enabled: true,
     maxAgents: 3,
     responseTimeoutMs: 900_000,   // 15分
     monitorIntervalMs: 15_000,    // 15秒

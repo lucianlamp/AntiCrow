@@ -20,7 +20,7 @@ export const AUTO_MODE_DEFAULTS: AutoModeConfig = {
     selectionMode: 'auto-delegate',
     confirmMode: 'auto',
     maxSteps: 10,
-    maxDuration: 30 * 60 * 1000, // 30分 = 1800000ms
+    maxDuration: 60 * 60 * 1000, // 60分 = 3600000ms
 };
 
 // ---------------------------------------------------------------------------
