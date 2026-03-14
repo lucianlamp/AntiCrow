@@ -8,7 +8,8 @@
         "build": "vite build",
         "preview": "vite preview --host",
         "check": "tsc --noEmit",
-        "format": "prettier --write ."
+        "format": "prettier --write .",
+        "deploy": "wrangler pages deploy dist/public --project-name anticrow"
     },
     "dependencies": {
         "@hookform/resolvers": "^5.2.2",
