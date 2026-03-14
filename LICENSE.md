@@ -1,21 +1,24 @@
-# MIT License
+# Anti-Crow License
 
-Copyright (c) 2026 LUCIAN (lucianlamp)
+Copyright (c) 2026 LUCIAN (lucianlamp). All Rights Reserved.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+## Terms
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+This software is proprietary and confidential. By installing or using the
+Anti-Crow extension ("Software"), you agree to the following terms:
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+1. **Permitted Use**: You may install and use the Software as a VS Code / Antigravity extension for your personal or commercial development work.
+
+2. **Restrictions**: You may NOT, without prior written permission from the copyright holder:
+   - Copy, reproduce, or duplicate the source code or compiled output
+   - Modify, adapt, or create derivative works based on the Software
+   - Distribute, sublicense, sell, or transfer the Software to any third party
+   - Reverse engineer, decompile, or disassemble the Software
+
+3. **No Warranty**: THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+
+4. **Limitation of Liability**: IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY ARISING FROM THE USE OF THE SOFTWARE.
+
+## Contact
+
+For licensing inquiries, please contact the copyright holder via [X (Twitter)](https://x.com/lucianlampdefi).
