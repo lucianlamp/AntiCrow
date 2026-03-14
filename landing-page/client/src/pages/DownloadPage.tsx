@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Helmet } from "react-helmet-async";
 import { motion } from "framer-motion";
-import { Download, Package, Terminal, CheckCircle, AlertCircle, Loader2, ArrowLeft, Shield, AlertTriangle, Wrench, Lock, KeyRound } from "lucide-react";
+import { Download, Package, Terminal, CheckCircle, AlertCircle, Loader2, ArrowLeft, Shield, AlertTriangle, Wrench, Lock, KeyRound, BookOpen, Globe } from "lucide-react";
 import { Link } from "wouter";
 import { useTranslation } from "react-i18next";
 
@@ -226,26 +226,40 @@ export default function DownloadPage() {
       {/* 未認証: アクセスコードゲート表示 */}
       {!isAuthenticated ? (
         <>
-          <div className="relative z-10 container mx-auto pt-8 px-4">
+          <div className="relative z-10 container mx-auto pt-8 px-4 flex justify-between items-center">
             <Link href="/">
               <span className="inline-flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors text-sm cursor-pointer">
                 <ArrowLeft className="w-4 h-4" />
                 {t("download.backToHome")}
               </span>
             </Link>
+            <button
+              onClick={() => i18n.changeLanguage(i18n.language === 'ja' ? 'en' : 'ja')}
+              className="inline-flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors text-sm cursor-pointer px-2.5 py-1 rounded-lg hover:bg-secondary/50"
+            >
+              <Globe className="w-4 h-4" />
+              {i18n.language === 'ja' ? 'EN' : 'JA'}
+            </button>
           </div>
           <AccessCodeGate onAuthenticated={() => setIsAuthenticated(true)} />
         </>
       ) : (
         <>
           {/* Back link */}
-          <div className="relative z-10 container mx-auto pt-8 px-4">
+          <div className="relative z-10 container mx-auto pt-8 px-4 flex justify-between items-center">
             <Link href="/">
               <span className="inline-flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors text-sm cursor-pointer">
                 <ArrowLeft className="w-4 h-4" />
                 {t("download.backToHome")}
               </span>
             </Link>
+            <button
+              onClick={() => i18n.changeLanguage(i18n.language === 'ja' ? 'en' : 'ja')}
+              className="inline-flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors text-sm cursor-pointer px-2.5 py-1 rounded-lg hover:bg-secondary/50"
+            >
+              <Globe className="w-4 h-4" />
+              {i18n.language === 'ja' ? 'EN' : 'JA'}
+            </button>
           </div>
 
           {/* Main content */}
@@ -478,6 +492,33 @@ export default function DownloadPage() {
                   )}
                 </motion.div>
               ))}
+            </motion.div>
+
+            {/* Docs link section */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.5 }}
+              className="glass-card rounded-2xl p-8 mt-12 text-center"
+            >
+              <div className="inline-flex items-center justify-center w-14 h-14 rounded-xl bg-primary/10 border border-primary/20 mb-4">
+                <BookOpen className="w-7 h-7 text-primary" />
+              </div>
+              <h3 className="text-xl font-bold font-heading text-foreground mb-2">
+                {t("download.docsTitle")}
+              </h3>
+              <p className="text-muted-foreground text-sm mb-6 max-w-md mx-auto">
+                {t("download.docsDesc")}
+              </p>
+              <a
+                href="https://anticrow.gitbook.io/anticrow-docs/getting-started"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 px-6 py-3 rounded-xl font-semibold text-sm transition-all duration-300 bg-primary/15 text-primary hover:bg-primary/25 border border-primary/20 hover:border-primary/40"
+              >
+                <BookOpen className="w-4 h-4" />
+                {t("download.docsButton")}
+              </a>
             </motion.div>
 
             {/* Note */}
