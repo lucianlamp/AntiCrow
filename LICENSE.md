@@ -21,4 +21,4 @@ Anti-Crow extension ("Software"), you agree to the following terms:
 
 ## Contact
 
-For licensing inquiries, please contact the copyright holder via [X (Twitter)](https://x.com/lucianlampdefi).
+For licensing inquiries, please contact the copyright holder via [X (Twitter)](https://x.com/lucianlamp).
