@@ -40,15 +40,18 @@ export async function handleMiscButton(
 
     // ----- Pro 関連ボタン -----
     if (customId === 'pro_info') {
+        // Discord API 3秒タイムアウト回避: ライセンスチェックは
+        // ネットワーク呼び出し（checker.check(true)）を含むため遅延する可能性がある
+        await interaction.deferReply();
         try {
             // VS Code 側のライセンス情報コマンドを実行
             await vscode.commands.executeCommand('anti-crow.licenseInfo');
-            await interaction.reply({
+            await interaction.editReply({
                 embeds: [buildEmbed(t('misc.pro.infoShown'), EmbedColor.Success)],
             });
         } catch (e) {
             logError('pro_info button failed', e);
-            await interaction.reply({
+            await interaction.editReply({
                 embeds: [buildEmbed(t('misc.pro.infoError'), EmbedColor.Error)],
             });
         }
