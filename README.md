@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="images/ogp.png" alt="AntiCrow Banner" width="100%" />
+  <img src="https://raw.githubusercontent.com/lucianlamp/AntiCrow/main/images/ogp.png" alt="AntiCrow Banner" width="100%" />
 </p>
 
 # 🐦‍⬛ AntiCrow

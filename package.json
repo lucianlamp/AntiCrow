@@ -141,10 +141,9 @@
     "typecheck": "tsc -p ./ --noEmit",
     "bundle": "node ./esbuild.js",
     "package": "npx -y @vscode/vsce package --no-dependencies --allow-missing-repository --skip-license --baseContentUrl \".\" --baseImagesUrl \".\"",
-    "deploy": "npm run compile && npm run bundle && npm run package && antigravity --install-extension anti-crow-0.1.2.vsix --force",
+    "deploy": "npm run compile && npm run bundle && npm run package",
     "test": "vitest run",
-    "vscode:prepublish": "npm run typecheck && npm run bundle",
-    "upload:r2": "npx tsx scripts/upload-r2.ts"
+    "vscode:prepublish": "npm run typecheck && npm run bundle"
   },
   "dependencies": {
     "chrome-remote-interface": "^0.34.0",

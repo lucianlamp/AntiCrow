@@ -52,18 +52,9 @@ npx -y ovsx publish anti-crow-{version}.vsix -p $env:OVSX_PAT
 https://open-vsx.org/extension/lucianlamp/anti-crow
 ```
 
-## R2 デプロイとの併用
-
-Open VSX 公開と R2 デプロイは独立して実行可能。通常のリリースフローでは両方実行する:
-
-1. `npm run bundle && npx vsce package` — VSIX ビルド
-2. `npx ovsx publish` — Open VSX 公開
-3. `npx wrangler r2 object put` — R2 アップロード（`r2-deploy` スキル参照）
-4. `antigravity --install-extension` — ローカルインストール
-
 ## 注意事項
 
 - **namespace の作成は初回のみ**。`lucianlamp` は作成済み。
-- **ライセンス**: `package.json` は `"UNLICENSED"`（All Rights Reserved）。
-- **リポジトリ**: プライベート。ソースコードは非公開のまま VSIX のみ配布。
+- **ライセンス**: MIT。
+- **リポジトリ**: パブリック（https://github.com/lucianlamp/AntiCrow）。
 - **バージョン**: `package.json` の `version` と VSIX ファイル名を一致させること。
