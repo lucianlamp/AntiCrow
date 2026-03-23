@@ -1,6 +1,6 @@
 # 🐦‍⬛ AntiCrow
 
-![Version](https://img.shields.io/badge/version-0.1.4-blue)
+![Version](https://img.shields.io/badge/version-0.1.7-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Node.js](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen)
 
@@ -98,9 +98,7 @@ AntiCrow acts as a bridge between Discord and Antigravity.
 
 ### 3️⃣ Install the Extension
 
-1. Obtain the `.vsix` file from the developer
-2. In Antigravity, open Command Palette (`Ctrl+Shift+P`) → Select **Extensions: Install from VSIX...**
-3. Select the `.vsix` file to install
+Install from [OpenVSX Marketplace](https://open-vsx.org/extension/lucianlamp/anti-crow), or search for **"AntiCrow"** in the Antigravity extension marketplace.
 
 ### 4️⃣ Initial Configuration
 
@@ -217,7 +215,6 @@ Toggle on/off with the `/team` command.
 | `/suggest` | Re-display suggestion buttons |
 | `/screenshot` | Capture current screen |
 | `/soul` | View/reset customization settings |
-
 | `/update` | Auto-update to latest version |
 | `/help` | Display usage guide |
 

@@ -27,7 +27,7 @@ AntiCrow は、Discord のメッセージを通じて Antigravity（AI コーデ
 5. [エージェントチームモード](team-mode.md)
 6. [テンプレート機能](templates.md)
 7. [スケジュール実行](schedules.md)
-8. [ライセンスについて](pro-plan.md)
+8. [ライセンス・プラン](pro-plan.md)
 9. [よくある質問](faq.md)
 
 ## 動作要件
