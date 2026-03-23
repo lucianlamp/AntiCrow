@@ -1,0 +1,17 @@
+# 目次
+
+- [はじめに](README.md)
+- [インストール・初期設定](getting-started.md)
+- [基本的な使い方](basic-usage.md)
+- [スラッシュコマンド一覧](commands.md)
+- [連続オートモード](auto-mode.md)
+- [エージェントチームモード](team-mode.md)
+- [テンプレート機能](templates.md)
+- [スケジュール実行](schedules.md)
+- [ライセンスについて](pricing.md)
+- [全機能無料](pro-plan.md)
+- [環境別セットアップ](platform-differences.md)
+- [よくある質問](faq.md)
+- [⚠️ 免責事項](disclaimer.md)
+- [🔒 プライバシーポリシー](privacy.md)
+- [🛡️ セキュリティポリシー](security.md)

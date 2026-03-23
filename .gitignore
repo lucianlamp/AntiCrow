@@ -1,0 +1,45 @@
+# Dependencies
+node_modules/
+
+# Build / compile output
+out/
+dist/
+tsconfig.tsbuildinfo
+
+# Package artifacts
+*.vsix
+
+# Test
+.vscode-test/
+coverage/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+
+# Temp / debug files
+tmp_*.json
+test-*.txt
+test_*.txt
+tsc_errors.txt
+tsc_output*.txt
+typecheck_output*.txt
+vsce-output.txt
+scripts/vscode_commands_dump.json
+
+# Cloudflare
+.wrangler/
+
+# AntiCrow local data
+.anticrow/
+
+# Claude Code
+.claude/
+
+# OS
+.DS_Store
+Thumbs.db

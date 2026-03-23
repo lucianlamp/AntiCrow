@@ -1,0 +1,11 @@
+# すべてを除外してから必要なものだけ含める
+**
+
+# 含めるファイル
+!out/extension.js
+!package.json
+!README.md
+!CHANGELOG.md
+!LICENSE.md
+!images/**
+!scripts/anticrow.ps1

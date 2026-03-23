@@ -1,0 +1,182 @@
+{
+    "meta": {
+        "title": "AntiCrow - AI Coding Partner Connecting Discord and Antigravity",
+        "description": "Just send a message on Discord and AI codes for you. AntiCrow is a VSCode extension that bridges Discord and Antigravity. From your phone, anywhere.",
+        "ogTitle": "AntiCrow - Your AI Coding Partner",
+        "ogDescription": "Discord × Antigravity. Delegate coding to AI from your phone. Results arrive on Discord. That's it."
+    },
+    "nav": {
+        "features": "Features",
+        "howItWorks": "How it works",
+        "security": "Security",
+        "faq": "FAQ",
+        "install": "Install"
+    },
+    "hero": {
+        "badge": "Now Available on OpenVSX",
+        "headline1": "Connecting Discord",
+        "headline2": "and Antigravity —",
+        "headline3": "Your Coding Partner",
+        "subtitle": "Send a message on Discord. Antigravity codes. Results arrive on Discord. That's it.",
+        "docsLink": "📖 View Documentation",
+        "docsUrl": "https://anticrow.gitbook.io/anticrow-docs/docs-en/",
+        "floatingAiRunning": "AI Running...",
+        "floatingRelay": "Discord → Antigravity"
+    },
+    "features": {
+        "label": "Features",
+        "title1": "Features that",
+        "title2": "Supercharge Your Workflow",
+        "subtitle": "Control everything about AI coding from Discord. From your phone, anywhere.",
+        "items": [
+            {
+                "title": "Remote from Phone",
+                "description": "Delegate tasks via Discord even when you're on the go"
+            },
+            {
+                "title": "Scheduled Tasks",
+                "description": "Register daily or weekly automated tasks with cron expressions"
+            },
+            {
+                "title": "Agent Team Mode",
+                "description": "Multiple AIs execute tasks in parallel at high speed",
+                "badge": "Pro"
+            },
+            {
+                "title": "Continuous Auto Mode",
+                "description": "AI autonomously executes tasks in sequence with safety guards",
+                "badge": "Pro"
+            },
+            {
+                "title": "Memory",
+                "description": "Remember past learnings and apply them to future tasks"
+            },
+            {
+                "title": "Multi-Workspace",
+                "description": "Automatically create Discord channels for each project"
+            }
+        ],
+        "howItWorks": {
+            "label": "How it works",
+            "title1": "Just",
+            "title2": "3 Simple Steps",
+            "subtitle": "Send a message on Discord. AntiCrow handles the rest.",
+            "steps": [
+                {
+                    "title": "Send a Message",
+                    "description": "Just write what you want to do in Discord. Works from your phone too"
+                },
+                {
+                    "title": "AI Executes",
+                    "description": "AntiCrow automatically launches AI and starts coding"
+                },
+                {
+                    "title": "Get Results",
+                    "description": "Get notified on Discord when done. Track progress in real-time"
+                }
+            ]
+        }
+    },
+    "security": {
+        "label": "Security",
+        "title1": "Security &",
+        "title2": "Privacy",
+        "subtitle": "Your data never leaves your PC. Fully local processing for peace of mind.",
+        "items": [
+            {
+                "title": "Local Processing",
+                "description": "All processing runs on your PC. No data sent to external servers."
+            },
+            {
+                "title": "Encrypted Storage",
+                "description": "Bot Token stored with SecretStorage encryption."
+            },
+            {
+                "title": "Access Control",
+                "description": "User ID-based access control."
+            },
+            {
+                "title": "No Telemetry",
+                "description": "No telemetry or usage statistics collected."
+            }
+        ]
+    },
+    "faq": {
+        "label": "FAQ",
+        "title1": "Frequently Asked",
+        "title2": "Questions",
+        "items": [
+            {
+                "question": "Can I use it while away from my desk?",
+                "answer": "Yes, anywhere Discord works. As long as your PC is online, you can delegate tasks via Discord from any device — phone, tablet, or another PC."
+            },
+            {
+                "question": "Is the Bot Token safe?",
+                "answer": "It's encrypted with SecretStorage and never stored as plaintext. The token is only used locally and never transmitted to external servers."
+            },
+            {
+                "question": "Can I manage multiple projects?",
+                "answer": "Discord categories are automatically created for independent project management. Each project gets dedicated channels for organized task tracking."
+            },
+            {
+                "question": "Is there a Pro trial?",
+                "answer": "Yes, 14-day free trial. Access all Pro features including Continuous Auto Mode and Agent Team Mode."
+            }
+        ]
+    },
+    "cta": {
+        "title1": "Ready to",
+        "title2": "Code",
+        "title3": "from",
+        "title4": "Anywhere?",
+        "subtitle": "AntiCrow is now available. Install from OpenVSX or the Antigravity marketplace and start coding from your phone.",
+        "installOpenVSX": "Install from OpenVSX",
+        "searchAntigravity": "Search \"AntiCrow\" in Antigravity",
+        "copied": "Copied!",
+        "docs": "Documentation",
+        "docsUrl": "https://anticrow.gitbook.io/anticrow-docs/docs-en/"
+    },
+    "disclaimer": {
+        "label": "Disclaimer",
+        "title1": "Please",
+        "title2": "Review",
+        "title3": "Before Use",
+        "safetyTitle": "🛡️ AntiCrow Safety",
+        "safetyDescription": "The AntiCrow extension itself contains no malicious or destructive operations. It is designed to prevent API keys and secret information from being exposed externally. AntiCrow serves as a relay from Discord instructions to Antigravity.",
+        "warningTitle": "⚠️ Risks from Antigravity",
+        "warningDescription": "Due to the nature of Antigravity (AI coding editor) that AntiCrow integrates with, the AI may execute unintended actions such as file operations or external service requests. These risks stem from Antigravity's design, not AntiCrow. Use is entirely at your own risk.",
+        "cdpTitle": "🔧 Technical Architecture",
+        "cdpDescription": "AntiCrow does not use Antigravity's OAuth keys or API keys. It operates the Antigravity editor directly via CDP (Chrome DevTools Protocol). This means there is no risk of being banned for OAuth token misuse. However, if Antigravity updates restrict CDP-based operations, some or all AntiCrow features may stop working. Use at your own risk.",
+        "risks": [
+            {
+                "title": "Automated Operation Risks",
+                "description": "Antigravity's AI-driven automation may cause unintended file modifications or deletions."
+            },
+            {
+                "title": "Code Modification Risks",
+                "description": "Code auto-generated or auto-edited by Antigravity's AI may break your existing codebase."
+            },
+            {
+                "title": "API Key Handling",
+                "description": "AntiCrow is designed to prevent API key exposure, but Antigravity's AI judgment may use keys in unintended ways."
+            },
+            {
+                "title": "Account Risk",
+                "description": "Automated operations via CDP do not constitute misuse of OAuth or API keys. However, there is a non-zero possibility that the Google account used with Antigravity may be restricted or suspended due to Google's detection mechanisms."
+            }
+        ],
+        "legalParagraph1": "The developer assumes no liability for any damages arising from the use of this extension or the connected Antigravity platform, including but not limited to data loss, code corruption, security breaches, business interruption, or other direct and indirect damages. The same applies to risks from Antigravity's AI-driven autonomous decisions.",
+        "legalParagraph2": "This extension is provided \"AS IS\" without warranty of any kind, express or implied, including but not limited to warranties of merchantability, fitness for a particular purpose, and non-infringement.",
+        "legalParagraph3": "The AntiCrow extension itself contains no malicious or destructive code. However, risks arising from Antigravity's AI-driven autonomous actions are inherent to the Antigravity platform, not AntiCrow. The developer assumes no liability for any damages arising from the use of this extension or the connected Antigravity platform. This extension is provided \"AS IS\" without warranty of any kind."
+    },
+    "footer": {
+        "features": "Features",
+        "howItWorks": "How it works",
+        "security": "Security",
+        "faq": "FAQ",
+        "privacy": "Privacy Policy",
+        "privacyUrl": "https://anticrow.gitbook.io/anticrow-docs/docs-en/privacy",
+        "securityPolicy": "Security Policy",
+        "securityUrl": "https://anticrow.gitbook.io/anticrow-docs/docs-en/security"
+    }
+}

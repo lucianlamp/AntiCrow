@@ -1,0 +1,171 @@
+{
+  "name": "anti-crow",
+  "displayName": "AntiCrow",
+  "description": "Control Antigravity AI from Discord — send natural language tasks, schedule or run instantly, and get results back in real time.",
+  "version": "0.1.7",
+  "publisher": "lucianlamp",
+  "author": "lucianlamp",
+  "icon": "images/AntiCrowIcon.png",
+  "license": "MIT",
+  "homepage": "https://anticrow.gitbook.io/anticrow-docs/en",
+  "bugs": {
+    "url": "https://anticrow.pages.dev/"
+  },
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "discord-bot",
+    "automation",
+    "bridge",
+    "antigravity",
+    "remote-control"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "anti-crow.start",
+        "title": "Start",
+        "category": "AntiCrow"
+      },
+      {
+        "command": "anti-crow.stop",
+        "title": "Stop",
+        "category": "AntiCrow"
+      },
+      {
+        "command": "anti-crow.setToken",
+        "title": "Set Bot Token",
+        "category": "AntiCrow"
+      },
+      {
+        "command": "anti-crow.showPlans",
+        "title": "Show Plans",
+        "category": "AntiCrow"
+      },
+      {
+        "command": "anti-crow.clearPlans",
+        "title": "Clear All Plans",
+        "category": "AntiCrow"
+      },
+      {
+        "command": "anti-crow.createShortcut",
+        "title": "Create Desktop Shortcut",
+        "category": "AntiCrow"
+      },
+      {
+        "command": "anti-crow.toggleAutoAccept",
+        "title": "Toggle Auto Accept",
+        "category": "AntiCrow"
+      }
+    ],
+    "configuration": {
+      "title": "AntiCrow",
+      "properties": {
+        "antiCrow.allowedUserIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "メッセージ処理を許可する Discord ユーザーID一覧。空の場合は全ユーザーを拒否（セキュリティ保護）。 / Allowed Discord user IDs. Empty = all denied (security). Enable Developer Mode to copy user IDs."
+        },
+        "antiCrow.botToken": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Bot Token 設定状態（SecretStorage に暗号化保存）。\n\nトークンを設定するには、コマンドパレット（`Ctrl+Shift+P`）から **[AntiCrow: Set Bot Token](command:anti-crow.setToken)** を実行してください。\n\n設定完了後、このチェックボックスは自動的にオンになります。\n\n---\n\nBot Token status (encrypted in SecretStorage).\n\nTo set the token, run **[AntiCrow: Set Bot Token](command:anti-crow.setToken)** from the Command Palette (`Ctrl+Shift+P`).\n\nThis checkbox is automatically enabled after the token is set."
+        },
+        "antiCrow.cdpPort": {
+          "type": "number",
+          "default": 9000,
+          "markdownDescription": "CDP（Chrome DevTools Protocol）接続に使用する固定ポート番号。Antigravity 起動時に `--remote-debugging-port` に使用されます。\n\nこのポートで Antigravity を起動するデスクトップショートカットを作成するには、**[Create Desktop Shortcut](command:anti-crow.createShortcut)** を実行してください。\n\n---\n\nFixed port for CDP (Chrome DevTools Protocol) connection. Used as `--remote-debugging-port` when launching Antigravity.\n\nTo create a desktop shortcut that launches Antigravity with this port, run **[Create Desktop Shortcut](command:anti-crow.createShortcut)**."
+        },
+        "antiCrow.autoStart": {
+          "type": "boolean",
+          "default": true,
+          "description": "VS Code起動時に自動でブリッジを開始する / Auto-start the bridge when VS Code launches"
+        },
+        "antiCrow.language": {
+          "type": "string",
+          "default": "ja",
+          "enum": [
+            "ja",
+            "en"
+          ],
+          "enumDescriptions": [
+            "日本語",
+            "English"
+          ],
+          "description": "AntiCrow の UI・プロンプト表示言語 / UI and prompt display language"
+        },
+        "antiCrow.responseTimeoutMs": {
+          "type": "number",
+          "default": 0,
+          "description": "最後の進捗更新からのアイドルタイムアウト（ミリ秒）。0 = 無制限。進捗報告がある限りリセットされます。 / Idle timeout since last progress update (ms). 0 = unlimited. Resets as long as progress is reported."
+        },
+        "antiCrow.maxRetries": {
+          "type": "number",
+          "default": 0,
+          "description": "タイムアウトや接続断時の自動リトライ回数（0で無効）。 / Auto-retry count on timeout or disconnection (0 = disabled)."
+        },
+        "antiCrow.categoryArchiveDays": {
+          "type": "number",
+          "default": 7,
+          "description": "ワークスペースカテゴリーの自動アーカイブ日数。この日数以上使用されていないカテゴリーは自動削除されます。0で無効。 / Auto-archive workspace categories after N days of inactivity. 0 = disabled."
+        },
+        "antiCrow.workspaceParentDirs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "markdownDescription": "新規ワークスペース作成時のフォルダ配置先ディレクトリです。 / Parent directories for new workspace creation.\n\n例 / Example: `C:\\Users\\user\\dev`, `C:\\Users\\user\\projects`"
+        },
+        "antiCrow.workspacePaths": {
+          "type": "object",
+          "default": {},
+          "description": "ワークスペース名からフォルダパスへの自動マッピング（内部使用）。手動編集不要。 / Auto-mapping from workspace names to folder paths (internal use). No manual editing required."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "typecheck": "tsc -p ./ --noEmit",
+    "bundle": "node ./esbuild.js",
+    "package": "npx -y @vscode/vsce package --no-dependencies --allow-missing-repository --skip-license --baseContentUrl \".\" --baseImagesUrl \".\"",
+    "deploy": "npm run compile && npm run bundle && npm run package && antigravity --install-extension anti-crow-0.1.2.vsix --force",
+    "test": "vitest run",
+    "vscode:prepublish": "npm run typecheck && npm run bundle",
+    "upload:r2": "npx tsx scripts/upload-r2.ts"
+  },
+  "dependencies": {
+    "chrome-remote-interface": "^0.34.0",
+    "discord.js": "^14.16.3",
+    "luxon": "^3.5.0",
+    "node-cron": "^3.0.3",
+    "ws": "^8.18.0",
+    "yaml": "^2.8.2"
+  },
+  "devDependencies": {
+    "@types/luxon": "^3.4.2",
+    "@types/node": "^20.12.7",
+    "@types/node-cron": "^3.0.11",
+    "@types/uuid": "^10.0.0",
+    "@types/vscode": "^1.90.0",
+    "@types/ws": "^8.5.10",
+    "@vitest/coverage-v8": "^4.0.18",
+    "dotenv": "^17.3.1",
+    "esbuild": "^0.27.3",
+    "typescript": "^5.4.5",
+    "vitest": "^4.0.18"
+  }
+}

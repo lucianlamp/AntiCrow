@@ -1,0 +1,17 @@
+# Table of contents
+
+* [🐦‍⬛ Introduction](README.md)
+* [Getting Started](getting-started.md)
+* [Basic Usage](basic-usage.md)
+* [Slash Commands](commands.md)
+* [Continuous Auto Mode](auto-mode.md)
+* [Agent Team Mode](team-mode.md)
+* [Templates](templates.md)
+* [Scheduled Execution](schedules.md)
+* [About AntiCrow](pro-plan.md)
+* [Pricing](pricing.md)
+* [Platform Differences](platform-differences.md)
+* [FAQ](faq.md)
+* [⚠️ Disclaimer](disclaimer.md)
+* [🔒 Privacy Policy](privacy.md)
+* [🛡️ Security Policy](security.md)

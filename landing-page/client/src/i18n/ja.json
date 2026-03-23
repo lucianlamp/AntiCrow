@@ -1,0 +1,182 @@
+{
+    "meta": {
+        "title": "AntiCrow - Discord と Antigravity を繋ぐ AI コーディングパートナー",
+        "description": "Discord でメッセージを送るだけで AI がコーディング。AntiCrow は Discord と Antigravity を繋ぐ VSCode 拡張機能です。スマホからでも、どこからでも。",
+        "ogTitle": "AntiCrow - あなたの AI コーディングパートナー",
+        "ogDescription": "Discord × Antigravity。スマホから AI にコーディングを依頼。結果は Discord に届く。それだけ。"
+    },
+    "nav": {
+        "features": "機能",
+        "howItWorks": "使い方",
+        "security": "セキュリティ",
+        "faq": "FAQ",
+        "install": "インストール"
+    },
+    "hero": {
+        "badge": "OpenVSX で公開中",
+        "headline1": "Discord と",
+        "headline2": "Antigravity を繋ぐ",
+        "headline3": "あなたの相棒",
+        "subtitle": "Discord でメッセージを送る。Antigravity がコーディング。結果が Discord に届く。それだけ。",
+        "docsLink": "📖 ドキュメントを見る",
+        "docsUrl": "https://anticrow.gitbook.io/anticrow-docs/",
+        "floatingAiRunning": "AI 実行中...",
+        "floatingRelay": "Discord → Antigravity"
+    },
+    "features": {
+        "label": "Features",
+        "title1": "あなたのワークフローを",
+        "title2": "加速させる機能",
+        "subtitle": "Discord を起点に、AI コーディングの全てをコントロール。スマホひとつで、どこからでも。",
+        "items": [
+            {
+                "title": "スマホから遠隔操作",
+                "description": "外出先でも Discord からタスクを依頼できる"
+            },
+            {
+                "title": "定期実行",
+                "description": "cron 式で毎日・毎週の自動タスクを登録"
+            },
+            {
+                "title": "エージェントチームモード",
+                "description": "複数 AI が並列でタスクを高速実行",
+                "badge": "Pro"
+            },
+            {
+                "title": "連続オートモード",
+                "description": "AIがタスクを自律的に連続実行。セーフティガードで安全に自動化",
+                "badge": "Pro"
+            },
+            {
+                "title": "メモリー",
+                "description": "過去の学びを記憶して次のタスクに活かす"
+            },
+            {
+                "title": "複数WS対応",
+                "description": "プロジェクトごとに Discord チャンネルを自動作成"
+            }
+        ],
+        "howItWorks": {
+            "label": "How it works",
+            "title1": "使い方はたった",
+            "title2": "3ステップ",
+            "subtitle": "Discord でメッセージを送るだけ。あとは AntiCrow が全部やります。",
+            "steps": [
+                {
+                    "title": "メッセージを送る",
+                    "description": "やりたいことを Discord に書くだけ。スマホからでもOK"
+                },
+                {
+                    "title": "AI が実行",
+                    "description": "AntiCrow が自動で AI を起動してコーディング開始"
+                },
+                {
+                    "title": "結果を受け取る",
+                    "description": "完了したら Discord に通知。進捗もリアルタイムで確認できる"
+                }
+            ]
+        }
+    },
+    "security": {
+        "label": "Security",
+        "title1": "セキュリティ &",
+        "title2": "プライバシー",
+        "subtitle": "あなたのデータは、あなたの PC から出ません。完全ローカル処理で、安心して使えます。",
+        "items": [
+            {
+                "title": "ローカル処理",
+                "description": "すべての処理は PC 上で完結。外部サーバーにデータ送信なし。"
+            },
+            {
+                "title": "暗号化保存",
+                "description": "Bot Token は SecretStorage で暗号化保存。"
+            },
+            {
+                "title": "アクセス制御",
+                "description": "ユーザー ID ベースのアクセス制御。"
+            },
+            {
+                "title": "テレメトリなし",
+                "description": "テレメトリ・使用統計の収集なし。"
+            }
+        ]
+    },
+    "faq": {
+        "label": "FAQ",
+        "title1": "よくある",
+        "title2": "質問",
+        "items": [
+            {
+                "question": "外出先からも使える？",
+                "answer": "Discord さえ使えればどこからでも。PC がオンラインであれば OK です。スマホ、タブレット、別の PC — どのデバイスからでも Discord 経由でタスクを依頼できます。"
+            },
+            {
+                "question": "Bot Token は安全？",
+                "answer": "SecretStorage で暗号化保存されます。設定ファイルに平文記録されることはありません。また、Token はローカル環境でのみ使用され、外部サーバーに送信されることはありません。"
+            },
+            {
+                "question": "複数プロジェクトを同時に管理できる？",
+                "answer": "自動で Discord カテゴリーが作られ、プロジェクトごとに独立管理できます。各プロジェクトには専用のチャンネルが割り当てられ、タスクの進捗や結果が整理されます。"
+            },
+            {
+                "question": "Pro トライアルはある？",
+                "answer": "14日間無料でお試し可能です。連続オートモードやエージェントチームモードなど、Pro 限定の機能をすべてお試しいただけます。"
+            }
+        ]
+    },
+    "cta": {
+        "title1": "どこからでも",
+        "title2": "コーディング",
+        "title3": "する",
+        "title4": "準備はできた？",
+        "subtitle": "AntiCrow は公開中です。OpenVSX または Antigravity マーケットプレイスからインストールして、スマホからコーディングを始めよう。",
+        "installOpenVSX": "OpenVSX からインストール",
+        "searchAntigravity": "Antigravity 内で「AntiCrow」を検索",
+        "copied": "コピーしました！",
+        "docs": "ドキュメント",
+        "docsUrl": "https://anticrow.gitbook.io/anticrow-docs/"
+    },
+    "disclaimer": {
+        "label": "Disclaimer",
+        "title1": "ご利用前に",
+        "title2": "ご確認",
+        "title3": "ください",
+        "safetyTitle": "🛡️ AntiCrow の安全性",
+        "safetyDescription": "AntiCrow 拡張機能自体には、悪意のある操作や破壊的な操作は一切含まれていません。API キーやシークレット情報を外部に露出させるような仕組みも排除するよう設計しています。AntiCrow は Discord からの指示を Antigravity に中継する役割を担っています。",
+        "warningTitle": "⚠️ Antigravity 由来のリスクについて",
+        "warningDescription": "AntiCrow が連携する Antigravity（AI コーディングエディタ）の仕様として、AI の判断によりファイル操作や外部サービスへのリクエスト送信など、ユーザーの意図しないアクションが実行される可能性があります。これらのリスクは AntiCrow 側の問題ではなく、Antigravity 本体の仕様に起因します。ご利用は全て自己責任となります。",
+        "cdpTitle": "🔧 技術的な仕組みについて",
+        "cdpDescription": "AntiCrow は Antigravity の OAuth キーや API キーを一切使用しません。CDP（Chrome DevTools Protocol）経由で Antigravity エディタそのものを直接操作します。そのため OAuth トークンの不正利用による BAN のリスクはありませんが、Antigravity のアップデートにより CDP 経由の操作が制限された場合、AntiCrow の一部または全部の機能が動作しなくなる可能性があります。自己責任のもとでご使用ください。",
+        "risks": [
+            {
+                "title": "自動操作のリスク",
+                "description": "Antigravity の AI による自動操作は、意図しないファイルの変更・削除を引き起こす可能性があります。"
+            },
+            {
+                "title": "コード変更リスク",
+                "description": "Antigravity の AI が自動生成・自動編集したコードが、既存のコードベースを破壊する可能性があります。"
+            },
+            {
+                "title": "API キーの取り扱い",
+                "description": "AntiCrow は API キーの露出を防ぐ設計ですが、Antigravity の AI の判断により、キーが意図しない形で使用される可能性があります。"
+            },
+            {
+                "title": "アカウントリスク",
+                "description": "CDPを通じた自動操作はOAuthキーやAPIキーの不正利用には該当しませんが、Google側の検知によりAntigravityで使用しているGoogleアカウントが制限・停止される可能性がゼロではありません。"
+            }
+        ],
+        "legalParagraph1": "開発者は、本拡張機能および連携先の Antigravity の使用により生じたいかなる損害（データの損失、コードの破損、セキュリティ侵害、業務の中断、その他の直接的・間接的損害を含むがこれらに限定されない）についても、一切の責任を負いません。Antigravity の AI による自律的な判断に起因するリスクについても同様です。",
+        "legalParagraph2": "本拡張機能は「現状のまま（AS IS）」で提供されます。明示的・黙示的を問わず、商品性、特定目的への適合性、権利非侵害の保証を含む一切の保証をいたしません。",
+        "legalParagraph3": "The AntiCrow extension itself contains no malicious or destructive code. However, risks arising from Antigravity's AI-driven autonomous actions are inherent to the Antigravity platform, not AntiCrow. The developer assumes no liability for any damages arising from the use of this extension or the connected Antigravity platform. This extension is provided \"AS IS\" without warranty of any kind."
+    },
+    "footer": {
+        "features": "機能",
+        "howItWorks": "使い方",
+        "security": "セキュリティ",
+        "faq": "FAQ",
+        "privacy": "プライバシーポリシー",
+        "privacyUrl": "https://anticrow.gitbook.io/anticrow-docs/privacy",
+        "securityPolicy": "セキュリティポリシー",
+        "securityUrl": "https://anticrow.gitbook.io/anticrow-docs/security"
+    }
+}
