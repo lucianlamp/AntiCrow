@@ -1,3 +1,4 @@
+import { Github } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 export default function Footer() {
@@ -26,6 +27,11 @@ export default function Footer() {
             <span className="text-[oklch(0.35_0.02_260)]">|</span>
             <a href={t("footer.privacyUrl")} target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors">{t("footer.privacy")}</a>
             <a href={t("footer.securityUrl")} target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors">{t("footer.securityPolicy")}</a>
+            <span className="text-[oklch(0.35_0.02_260)]">|</span>
+            <a href="https://github.com/lucianlamp/AntiCrow" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 hover:text-foreground transition-colors">
+              <Github className="w-3.5 h-3.5" />
+              {t("footer.github")}
+            </a>
           </div>
 
           {/* Copyright */}

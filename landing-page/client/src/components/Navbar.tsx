@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Menu, X, Globe } from "lucide-react";
+import { Menu, X, Globe, Github } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 export default function Navbar() {
@@ -64,6 +64,15 @@ export default function Navbar() {
 
         {/* CTA + Lang Toggle */}
         <div className="hidden md:flex items-center gap-3">
+          <a
+            href="https://github.com/lucianlamp/AntiCrow"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-center w-9 h-9 text-muted-foreground hover:text-foreground rounded-full border border-[oklch(0.3_0.03_260_/_40%)] hover:border-[oklch(0.4_0.04_260_/_50%)] transition-all"
+            aria-label="GitHub"
+          >
+            <Github className="w-4 h-4" />
+          </a>
           <button
             onClick={toggleLanguage}
             className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-muted-foreground hover:text-foreground rounded-full border border-[oklch(0.3_0.03_260_/_40%)] hover:border-[oklch(0.4_0.04_260_/_50%)] transition-all"
@@ -112,6 +121,15 @@ export default function Navbar() {
                 </a>
               ))}
               <div className="flex items-center gap-3 mt-2">
+                <a
+                  href="https://github.com/lucianlamp/AntiCrow"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center w-12 h-12 text-muted-foreground hover:text-foreground rounded-full border border-[oklch(0.3_0.03_260_/_40%)]"
+                  aria-label="GitHub"
+                >
+                  <Github className="w-5 h-5" />
+                </a>
                 <button
                   onClick={toggleLanguage}
                   className="flex items-center gap-1.5 px-4 py-3 text-sm font-semibold text-muted-foreground rounded-full border border-[oklch(0.3_0.03_260_/_40%)]"

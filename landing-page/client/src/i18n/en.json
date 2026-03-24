@@ -10,6 +10,7 @@
         "howItWorks": "How it works",
         "security": "Security",
         "faq": "FAQ",
+        "github": "GitHub",
         "install": "Install"
     },
     "hero": {
@@ -134,7 +135,8 @@
         "searchAntigravity": "Search \"AntiCrow\" in Antigravity",
         "copied": "Copied!",
         "docs": "Documentation",
-        "docsUrl": "https://anticrow.gitbook.io/anticrow-docs/docs-en/"
+        "docsUrl": "https://anticrow.gitbook.io/anticrow-docs/docs-en/",
+        "github": "View on GitHub"
     },
     "disclaimer": {
         "label": "Disclaimer",
@@ -177,6 +179,7 @@
         "privacy": "Privacy Policy",
         "privacyUrl": "https://anticrow.gitbook.io/anticrow-docs/docs-en/privacy",
         "securityPolicy": "Security Policy",
-        "securityUrl": "https://anticrow.gitbook.io/anticrow-docs/docs-en/security"
+        "securityUrl": "https://anticrow.gitbook.io/anticrow-docs/docs-en/security",
+        "github": "GitHub"
     }
 }

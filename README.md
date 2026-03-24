@@ -8,6 +8,8 @@
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Node.js](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen)
 
+[Website](https://anticrow.pages.dev) | [Documentation](https://anticrow.gitbook.io/en) | [OpenVSX](https://open-vsx.org/extension/lucianlamp/anti-crow)
+
 **Discord → Antigravity Automation Bridge**
 
 Send a natural language message from Discord on your phone → Antigravity executes it automatically → Results are sent back to Discord 🚀

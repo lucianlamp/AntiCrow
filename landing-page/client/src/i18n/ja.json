@@ -10,6 +10,7 @@
         "howItWorks": "使い方",
         "security": "セキュリティ",
         "faq": "FAQ",
+        "github": "GitHub",
         "install": "インストール"
     },
     "hero": {
@@ -134,7 +135,8 @@
         "searchAntigravity": "Antigravity 内で「AntiCrow」を検索",
         "copied": "コピーしました！",
         "docs": "ドキュメント",
-        "docsUrl": "https://anticrow.gitbook.io/anticrow-docs/"
+        "docsUrl": "https://anticrow.gitbook.io/anticrow-docs/",
+        "github": "GitHub で見る"
     },
     "disclaimer": {
         "label": "Disclaimer",
@@ -177,6 +179,7 @@
         "privacy": "プライバシーポリシー",
         "privacyUrl": "https://anticrow.gitbook.io/anticrow-docs/privacy",
         "securityPolicy": "セキュリティポリシー",
-        "securityUrl": "https://anticrow.gitbook.io/anticrow-docs/security"
+        "securityUrl": "https://anticrow.gitbook.io/anticrow-docs/security",
+        "github": "GitHub"
     }
 }
