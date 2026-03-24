@@ -40,13 +40,11 @@
             },
             {
                 "title": "Agent Team Mode",
-                "description": "Multiple AIs execute tasks in parallel at high speed",
-                "badge": "Pro"
+                "description": "Multiple AIs execute tasks in parallel at high speed"
             },
             {
                 "title": "Continuous Auto Mode",
-                "description": "AI autonomously executes tasks in sequence with safety guards",
-                "badge": "Pro"
+                "description": "AI autonomously executes tasks in sequence with safety guards"
             },
             {
                 "title": "Memory",
@@ -118,10 +116,6 @@
             {
                 "question": "Can I manage multiple projects?",
                 "answer": "Discord categories are automatically created for independent project management. Each project gets dedicated channels for organized task tracking."
-            },
-            {
-                "question": "Is there a Pro trial?",
-                "answer": "Yes, 14-day free trial. Access all Pro features including Continuous Auto Mode and Agent Team Mode."
             }
         ]
     },
