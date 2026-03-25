@@ -78,8 +78,9 @@ export class SubagentManager {
             );
         }
 
-        // ワークスペース名を決定（オーバーライド優先）
-        const mainWsName = workspaceName ?? this.cdpBridge.getActiveWorkspaceName() ?? 'anti-crow';
+        // ワークスペース名を決定（オーバーライド優先）→ サニタイズして安全な名前にする
+        const rawWsName = workspaceName ?? this.cdpBridge.getActiveWorkspaceName() ?? 'anti-crow';
+        const mainWsName = rawWsName.toLowerCase().replace(/\s+/g, '-').replace(/-{2,}/g, '-').replace(/^-|-$/g, '');
         // agentIndex 指定時はその番号で命名（チームモード並行起動でのシャッフル防止）
         // 未指定時は従来通りグローバルカウンターで命名（後方互換）
         const name = agentIndex !== undefined
@@ -160,7 +161,8 @@ export class SubagentManager {
     list(workspaceName?: string): SubagentInfo[] {
         const all = Array.from(this.agents.values()).map((h) => h.info);
         if (workspaceName) {
-            return all.filter((info) => info.name.startsWith(`${workspaceName}-`));
+            const sanitized = workspaceName.toLowerCase().replace(/\s+/g, '-').replace(/-{2,}/g, '-').replace(/^-|-$/g, '');
+            return all.filter((info) => info.name.startsWith(`${sanitized}-`));
         }
         return all;
     }
