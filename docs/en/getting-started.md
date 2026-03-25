@@ -78,9 +78,10 @@ By default, AntiCrow starts automatically when Antigravity launches. To disable:
 
 After configuration, an AntiCrow icon appears in the status bar.
 
-- 🟢 **Active** — Bot is online and processing messages
-- 🟡 **Standby** — Another workspace is managing the bot
-- 🔴 **Stopped** — Bot is stopped
+- ✅ **Active** — Bot is online and processing messages
+- 👁 **Standby** — Bridge is running but Bot is not ready (starting up, reconnecting, or managed by another workspace)
+- 🔌 **Disconnected** — Not connected (click to start)
+- 🚫 **Stopped** — Bot is stopped
 
 Go to your Discord server and send a message in a text channel to verify it's working.
 
