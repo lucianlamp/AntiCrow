@@ -3,7 +3,7 @@
 // ---------------------------------------------------------------------------
 // 責務:
 //   /status, /schedules, /stop, /newchat, /workspace, /queue,
-//   /templates, /model, /mode, /suggest, /pro, /team コマンドの処理
+//   /templates, /model, /mode, /suggest, /team コマンドの処理
 // ---------------------------------------------------------------------------
 import * as vscode from 'vscode';
 import {

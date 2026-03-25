@@ -29,7 +29,12 @@ To get the most out of AntiCrow, install the following extension:
 6. Enable **Privileged Gateway Intents**:
    - Message Content Intent
    - Server Members Intent
-7. Grant **Bot Permissions**:
+
+## 3. Invite the Bot to Your Server
+
+1. Go to "OAuth2" → "URL Generator" in the Developer Portal
+2. Scopes: Select `bot`
+3. Bot Permissions: Select the following:
    - Send Messages
    - Manage Channels
    - Read Message History
@@ -41,12 +46,6 @@ To get the most out of AntiCrow, install the following extension:
    - Create Public Threads
    - Send Messages in Threads
    - Manage Threads
-
-## 3. Invite the Bot to Your Server
-
-1. Go to "OAuth2" → "URL Generator" in the Developer Portal
-2. Scopes: Select `bot`
-3. Bot Permissions: Select the permissions listed above
 4. Open the generated URL in your browser to invite the bot
 
 ## 4. Configure AntiCrow
@@ -63,12 +62,7 @@ For security, configure which Discord users are allowed to operate the bot.
 
 1. Enable "Developer Mode" in Discord Settings → Advanced
 2. Right-click your username → "Copy User ID"
-3. In Antigravity Settings (`Ctrl+,`), search for `antiCrow.allowedUserIds`
-4. Add your user ID to the JSON array:
-
-```json
-"antiCrow.allowedUserIds": ["123456789012345678"]
-```
+3. Open the extension settings from the Antigravity sidebar, and add your user ID via **"Add Item"** under the **Allowed User Ids** field in the **AntiCrow** section
 
 > ⚠️ **Important**: If this setting is empty, all user messages will be rejected.
 

@@ -4,7 +4,7 @@
 
 # 🐦‍⬛ AntiCrow
 
-![Version](https://img.shields.io/badge/version-0.1.9-blue)
+![Version](https://img.shields.io/badge/version-0.2.0-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Node.js](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen)
 

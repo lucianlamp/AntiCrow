@@ -37,6 +37,15 @@ scripts/vscode_commands_dump.json
 # AntiCrow local data
 .anticrow/
 
+# Editor
+.vscode/
+
+# Antigravity agent skills (auto-generated)
+.agent/
+
+# Superpowers plans/specs (session artifacts)
+docs/superpowers/
+
 # Claude Code
 .claude/
 

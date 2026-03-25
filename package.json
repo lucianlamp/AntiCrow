@@ -2,7 +2,7 @@
   "name": "anti-crow",
   "displayName": "AntiCrow",
   "description": "Control Antigravity AI from Discord — send natural language tasks, schedule or run instantly, and get results back in real time.",
-  "version": "0.1.9",
+  "version": "0.2.0",
   "publisher": "lucianlamp",
   "author": "lucianlamp",
   "icon": "images/AntiCrowIcon.png",

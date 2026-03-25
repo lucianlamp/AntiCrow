@@ -883,7 +883,7 @@ export const messages = {
   'autoMode.safety.warn': '⚠️ **セーフティ警告**: {0}（パターン: `{1}`）— ループは続行します',
 
   // --- ヘルプ ---
-  'admin.help.cmdAuto': '`/auto` — 連続オートモード（AI自動連続実行）Pro限定',
+  'admin.help.cmdAuto': '`/auto` — 連続オートモード（AI自動連続実行）',
 
   // --- Phase 2: ai-select プロンプト ---
   'autoMode.aiSelectPrompt': '以下の提案が直前に表示されています。これらの中から最も適切なものを1つ選んで実行してください。選択理由も簡潔に述べてください。\n\n【提案一覧】\n{0}\n\n{1}',

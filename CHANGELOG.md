@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-03-25
+
+### Changed
+
+- All features are now free — removed Pro tier, licensing system, and all Pro-related UI labels
+- Removed Pro badge from Agent Team Mode and Continuous Auto Mode in landing page (EN/JA)
+- Removed Pro trial FAQ entry from landing page (EN/JA)
+- Removed license system section and `/pro` command from embedded agent skill
+- Removed "Pro限定" label from `/help` command output
+- Updated getting-started docs to use extension settings UI instead of `Ctrl+,` for `allowedUserIds` configuration
+- Moved Bot Permissions list from Bot section to OAuth2 section in getting-started docs (EN/JA)
+
+### Removed
+
+- Removed `.agent/`, `.vscode/`, `docs/superpowers/` from git tracking (auto-generated / local-only files)
+
 ## [0.1.9] - 2026-03-24
 
 ### Removed

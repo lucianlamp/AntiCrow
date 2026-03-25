@@ -13,7 +13,7 @@
 //   - slashButtonMode.ts      — モード管理ボタン
 
 //   - slashButtonTeam.ts      — チーム・サブエージェント関連ボタン
-//   - slashButtonMisc.ts      — Pro・キュー・提案ボタン
+//   - slashButtonMisc.ts      — キュー・提案ボタン
 //   - slashModalHandlers.ts   — モーダル送信ハンドラ群
 // ---------------------------------------------------------------------------
 
