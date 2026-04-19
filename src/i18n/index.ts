@@ -5,8 +5,9 @@
  * 対応するメッセージを返す。デフォルトは 'ja'。
  */
 
-import { messages as jaMessages, PROMPT_RULES_MD as jaPromptRules, type MessageKey } from './ja';
-import { messages as enMessages, PROMPT_RULES_MD as enPromptRules } from './en';
+import { messages as jaMessages, type MessageKey } from './ja';
+import { messages as enMessages } from './en';
+import PROMPT_RULES_MD from '../assets/prompt_rules.md';
 
 // ---------------------------------------------------------------------------
 // 言語定義
@@ -22,13 +23,8 @@ const messagesMap: Record<Language, MessageMap> = {
     en: enMessages,
 };
 
-const promptRulesMap: Record<Language, string> = {
-    ja: jaPromptRules,
-    en: enPromptRules,
-};
-
 // ---------------------------------------------------------------------------
-// 現在の言語を取得（遅延評価）
+// 現在の言語を取得（メインプロセス等の環境によって取得元が異なる）
 // ---------------------------------------------------------------------------
 
 /**
@@ -100,11 +96,11 @@ export function tArray(key: MessageKey): string[] {
 }
 
 /**
- * 現在の言語に対応する PROMPT_RULES_MD 全文を返す。
+ * PROMPT_RULES_MD 全文を返す。
+ * (現在は英ポータルでの運用に基づき、全言語共通で English 版のルールを返す)
  */
 export function getLocalizedPromptRules(): string {
-    const lang = getCurrentLanguage();
-    return promptRulesMap[lang] || promptRulesMap.ja;
+    return PROMPT_RULES_MD;
 }
 
 // ---------------------------------------------------------------------------
