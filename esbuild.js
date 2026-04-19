@@ -29,4 +29,7 @@ esbuild.build({
     minify: true,
     treeShaking: true,
     define,
+    loader: {
+        '.md': 'text',
+    },
 }).catch(() => process.exit(1));
