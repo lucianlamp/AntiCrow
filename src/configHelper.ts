@@ -55,7 +55,7 @@ export function getConfig(): vscode.WorkspaceConfiguration {
 }
 
 /** i18n 言語設定を取得する（デフォルト: 'ja'） */
-function getLanguage(): string {
+export function getLanguage(): string {
     return getConfig().get<string>('language') || 'ja';
 }
 
